@@ -1,0 +1,86 @@
+name: mediasswint
+
+# -----------------------------------------------------------------
+# Stack de producción (Coolify-friendly).
+# - web: construido desde apps/web/Dockerfile (target: runner)
+# - postgres: 18-alpine con volumen persistente
+# - redis: 8.6-alpine con AOF habilitado + volumen persistente
+# - restart: unless-stopped en los 3 servicios
+# - healthchecks en los 3 servicios
+#
+# Uso local:
+#   docker compose up -d --build
+# -----------------------------------------------------------------
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: runner
+    image: mediasswint/web:latest
+    container_name: mediasswint-web
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-mediass}:${POSTGRES_PASSWORD:-mediass}@postgres:5432/${POSTGRES_DB:-mediass}
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/health').then(r=>{process.exit(r.ok?0:1)}).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  postgres:
+    image: postgres:18-alpine
+    container_name: mediasswint-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-mediass}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mediass}
+      POSTGRES_DB: ${POSTGRES_DB:-mediass}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mediass} -d ${POSTGRES_DB:-mediass}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:8.6-alpine
+    container_name: mediasswint-redis
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+volumes:
+  postgres_data:
+    name: mediasswint_postgres_data
+  redis_data:
+    name: mediasswint_redis_data

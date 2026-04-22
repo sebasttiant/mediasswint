@@ -1,0 +1,56 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    ":separateMajorReleases",
+    ":prImmediately"
+  ],
+  "timezone": "America/Argentina/Buenos_Aires",
+  "prHourlyLimit": 2,
+  "prConcurrentLimit": 5,
+  "labels": ["dependencies"],
+  "rangeStrategy": "bump",
+  "postUpdateOptions": ["pnpmDedupe"],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on monday"]
+  },
+  "packageRules": [
+    {
+      "description": "Patch updates: semanales, agrupados, no automerge",
+      "matchUpdateTypes": ["patch"],
+      "schedule": ["every weekend"],
+      "groupName": "patch updates",
+      "automerge": false
+    },
+    {
+      "description": "Minor updates: quincenales (sábado cada 2 semanas), agrupados",
+      "matchUpdateTypes": ["minor"],
+      "schedule": ["every 2 weeks on saturday"],
+      "groupName": "minor updates",
+      "automerge": false
+    },
+    {
+      "description": "Major updates: requieren aprobación manual en Dependency Dashboard",
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true,
+      "automerge": false
+    },
+    {
+      "description": "Docker base image pinning",
+      "matchDatasources": ["docker"],
+      "schedule": ["every 2 weeks on saturday"]
+    },
+    {
+      "description": "GitHub Actions updates mensuales",
+      "matchManagers": ["github-actions"],
+      "schedule": ["before 6am on the first day of the month"]
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["security"]
+  }
+}

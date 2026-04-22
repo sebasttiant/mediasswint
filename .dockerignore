@@ -1,0 +1,38 @@
+# VCS / docs
+.git
+.gitignore
+.github
+*.md
+!README.md
+
+# Deps y builds
+**/node_modules
+**/.next
+**/dist
+**/build
+**/.turbo
+**/coverage
+
+# Envs (NUNCA copiar al image)
+.env
+.env.*
+!.env.example
+
+# Logs / OS / IDE
+*.log
+.DS_Store
+Thumbs.db
+.vscode
+.idea
+
+# Docker y datos locales
+docker/data
+docker-compose*.yml
+!docker-compose.yml
+!apps/web/Dockerfile
+Dockerfile*
+!apps/web/Dockerfile
+
+# Artefactos de desarrollo
+.pnpm-store
+*.tsbuildinfo
