@@ -25,6 +25,13 @@ COPY apps/web/prisma ./apps/web/prisma/
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile
 
+# ---------- migrator (oneshot: apply pending migrations and exit) ----------
+# Inherits deps so Prisma CLI, schema and migrations are already present.
+# Used by the `migrate` compose service; web depends_on its successful exit.
+FROM deps AS migrator
+WORKDIR /app/apps/web
+CMD ["pnpm", "exec", "prisma", "migrate", "deploy", "--schema", "prisma/schema.prisma"]
+
 # ---------- builder ----------
 FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules

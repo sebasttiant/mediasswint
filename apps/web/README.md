@@ -45,6 +45,25 @@ curl -s http://localhost:3000/api/health | jq
 ## Notas técnicas
 
 - `next.config.ts` usa `output: "standalone"` para imagen de runtime liviana
-- El Dockerfile define targets `dev` y `runner`
+- El Dockerfile define targets `dev`, `runner` y `migrator`
 - Runtime productivo corre como usuario no-root
 - Prisma v0 vive en `apps/web/prisma/schema.prisma`
+
+## Migraciones en despliegue
+
+El compose de producción orquesta las migraciones como un paso bloqueante
+previo al arranque de `web`:
+
+1. `postgres` debe estar `service_healthy`
+2. El servicio oneshot `migrate` (target `migrator`) corre
+   `prisma migrate deploy` y termina
+3. `web` arranca solo si `migrate` terminó con exit 0
+   (`service_completed_successfully`)
+
+Si hay una migración pendiente y falla, `web` **no arranca** — el deploy
+queda rojo explícitamente. Si no hay pendientes, `migrate` imprime
+"No pending migrations to apply" y sale en segundos (idempotente).
+
+Este patrón es portable: funciona en `docker compose up` local y en
+Coolify (que ejecuta compose nativamente). No requiere comandos
+pre-deploy configurados fuera del repo.
