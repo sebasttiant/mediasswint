@@ -21,7 +21,10 @@ Desde la raíz:
 ```bash
 pnpm --filter @mediasswint/web lint
 pnpm --filter @mediasswint/web typecheck
+pnpm --filter @mediasswint/web test:unit
 pnpm --filter @mediasswint/web build
+pnpm --filter @mediasswint/web prisma:validate
+pnpm --filter @mediasswint/web prisma:migrate:dev
 ```
 
 ## Healthcheck
@@ -44,3 +47,4 @@ curl -s http://localhost:3000/api/health | jq
 - `next.config.ts` usa `output: "standalone"` para imagen de runtime liviana
 - El Dockerfile define targets `dev` y `runner`
 - Runtime productivo corre como usuario no-root
+- Prisma v0 vive en `apps/web/prisma/schema.prisma`

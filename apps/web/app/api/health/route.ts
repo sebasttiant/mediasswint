@@ -1,21 +1,10 @@
 import { NextResponse } from "next/server";
 import { Client as PgClient } from "pg";
 import { createClient as createRedisClient } from "redis";
+import { getHealthHttpStatus, type HealthPayload, type ServiceStatus } from "@/lib/health";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
-type ServiceStatus =
-  | { ok: true; latency_ms: number }
-  | { ok: false; error: string };
-
-type HealthPayload = {
-  app: { ok: true };
-  services: {
-    postgres: ServiceStatus;
-    redis: ServiceStatus;
-  };
-};
 
 async function checkPostgres(): Promise<ServiceStatus> {
   const url = process.env.DATABASE_URL;
@@ -62,6 +51,5 @@ export async function GET() {
     services: { postgres, redis },
   };
 
-  const allOk = postgres.ok && redis.ok;
-  return NextResponse.json(payload, { status: allOk ? 200 : 503 });
+  return NextResponse.json(payload, { status: getHealthHttpStatus(payload) });
 }
