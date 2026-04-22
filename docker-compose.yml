@@ -1,37 +1,32 @@
-name: mediasswint-dev
+name: mediasswint
 
 # -----------------------------------------------------------------
-# Stack de desarrollo (Docker-first, hot reload).
-# - web: target "dev" con bind mount sobre apps/web + node_modules anónimo
-# - postgres: 18-alpine con volumen persistente (data sobrevive down/up)
-# - redis: 8.6-alpine con AOF + volumen persistente
+# Stack de producción (Coolify-friendly).
+# - web: construido desde apps/web/Dockerfile (target: runner)
+# - postgres: 18-alpine con volumen persistente
+# - redis: 8.6-alpine con AOF habilitado + volumen persistente
 # - restart: unless-stopped en los 3 servicios
+# - healthchecks en los 3 servicios
 #
-# Uso:
-#   pnpm infra:dev       # build + up
-#   pnpm infra:dev:down  # stop
+# Uso local:
+#   docker compose up -d --build
 # -----------------------------------------------------------------
 
 services:
   web:
     build:
-      context: ..
+      context: .
       dockerfile: apps/web/Dockerfile
-      target: dev
-    image: mediasswint/web:dev
-    container_name: mediasswint-web-dev
+      target: runner
+    image: mediasswint/web:latest
+    container_name: mediasswint-web
     restart: unless-stopped
     ports:
       - "${APP_PORT:-3000}:3000"
     environment:
-      NODE_ENV: development
-      DATABASE_URL: postgresql://mediass:mediass@postgres:5432/mediass
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-mediass}:${POSTGRES_PASSWORD:-mediass}@postgres:5432/${POSTGRES_DB:-mediass}
       REDIS_URL: redis://redis:6379
-      WATCHPACK_POLLING: "true"
-    volumes:
-      - ../apps/web:/app/apps/web
-      - web_node_modules:/app/apps/web/node_modules
-      - web_next_cache:/app/apps/web/.next
     depends_on:
       postgres:
         condition: service_healthy
@@ -45,23 +40,21 @@ services:
         - "fetch('http://127.0.0.1:3000/api/health').then(r=>{process.exit(r.ok?0:1)}).catch(()=>process.exit(1))"
       interval: 30s
       timeout: 5s
-      retries: 5
-      start_period: 60s
+      retries: 3
+      start_period: 20s
 
   postgres:
     image: postgres:18-alpine
-    container_name: mediasswint-postgres-dev
+    container_name: mediasswint-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: mediass
-      POSTGRES_PASSWORD: mediass
-      POSTGRES_DB: mediass
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${POSTGRES_USER:-mediass}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mediass}
+      POSTGRES_DB: ${POSTGRES_DB:-mediass}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mediass -d mediass"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mediass} -d ${POSTGRES_DB:-mediass}"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -69,7 +62,7 @@ services:
 
   redis:
     image: redis:8.6-alpine
-    container_name: mediasswint-redis-dev
+    container_name: mediasswint-redis
     restart: unless-stopped
     command:
       - redis-server
@@ -77,8 +70,6 @@ services:
       - "yes"
       - --appendfsync
       - everysec
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -90,10 +81,6 @@ services:
 
 volumes:
   postgres_data:
-    name: mediasswint_postgres_data_dev
+    name: mediasswint_postgres_data
   redis_data:
-    name: mediasswint_redis_data_dev
-  web_node_modules:
-    name: mediasswint_web_node_modules_dev
-  web_next_cache:
-    name: mediasswint_web_next_cache_dev
+    name: mediasswint_redis_data

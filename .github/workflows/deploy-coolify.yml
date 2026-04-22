@@ -1,0 +1,58 @@
+name: Deploy (Coolify)
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        default: "production"
+        type: choice
+        options:
+          - production
+          - staging
+
+concurrency:
+  group: deploy-coolify-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Trigger Coolify deploy (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Check required secrets
+        env:
+          WEBHOOK: ${{ secrets.COOLIFY_WEBHOOK_URL }}
+          TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+        run: |
+          if [ -z "${WEBHOOK}" ] || [ -z "${TOKEN}" ]; then
+            echo "::error::Missing secrets COOLIFY_WEBHOOK_URL or COOLIFY_TOKEN"
+            exit 1
+          fi
+
+      - name: Trigger Coolify webhook
+        env:
+          WEBHOOK: ${{ secrets.COOLIFY_WEBHOOK_URL }}
+          TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+        run: |
+          HTTP_CODE=$(curl -sS -o /tmp/deploy.out -w "%{http_code}" \
+            -X POST "${WEBHOOK}" \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H "Content-Type: application/json" \
+            --max-time 30)
+          echo "HTTP ${HTTP_CODE}"
+          echo "--- response ---"
+          cat /tmp/deploy.out || true
+          echo
+          if [ "${HTTP_CODE}" -lt 200 ] || [ "${HTTP_CODE}" -ge 300 ]; then
+            exit 1
+          fi
+
+      - name: Summary
+        run: |
+          echo "## Coolify deploy triggered" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Environment: **${{ inputs.environment }}**" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Ref: \`${{ github.ref_name }}\` @ \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"

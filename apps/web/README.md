@@ -1,36 +1,46 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# @mediasswint/web
 
-## Getting Started
+Aplicación web de MEDIASSWINT (Next.js 16.2.4, App Router, TypeScript).
 
-First, run the development server:
+## Ejecución
+
+Este workspace está pensado para correr dentro de Docker Compose desde la raíz del monorepo.
+
+Desde `mediasswint/`:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm infra:dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+La app queda disponible en `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Scripts del workspace
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Desde la raíz:
 
-## Learn More
+```bash
+pnpm --filter @mediasswint/web lint
+pnpm --filter @mediasswint/web typecheck
+pnpm --filter @mediasswint/web build
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Healthcheck
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Endpoint: `GET /api/health`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- Verifica app viva
+- Ejecuta `SELECT 1` contra PostgreSQL
+- Ejecuta `PING` contra Redis
+- Devuelve `200` si ambos servicios están OK, `503` si alguno falla
 
-## Deploy on Vercel
+Prueba rápida:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+curl -s http://localhost:3000/api/health | jq
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Notas técnicas
+
+- `next.config.ts` usa `output: "standalone"` para imagen de runtime liviana
+- El Dockerfile define targets `dev` y `runner`
+- Runtime productivo corre como usuario no-root
