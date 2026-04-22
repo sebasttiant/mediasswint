@@ -21,5 +21,14 @@
     "infra:dev:down": "docker compose -f docker/docker-compose.dev.yml down",
     "infra:dev:logs": "docker compose -f docker/docker-compose.dev.yml logs -f",
     "infra:dev:ps": "docker compose -f docker/docker-compose.dev.yml ps"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/engines",
+      "prisma",
+      "esbuild",
+      "sharp",
+      "unrs-resolver"
+    ]
   }
 }

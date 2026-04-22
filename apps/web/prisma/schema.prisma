@@ -1,0 +1,121 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum TemplateFieldType {
+  TEXT
+  NUMBER
+  BOOLEAN
+  DATE
+  SELECT
+}
+
+enum MeasurementSessionStatus {
+  DRAFT
+  COMPLETED
+  VOID
+}
+
+model Patient {
+  id             String               @id @default(cuid())
+  documentType   String?
+  documentNumber String?
+  fullName       String
+  birthDate      DateTime?
+  phone          String?
+  email          String?
+  notes          String?
+  sessions       MeasurementSession[]
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@unique([documentType, documentNumber])
+  @@index([fullName])
+  @@index([documentNumber])
+}
+
+model MeasurementTemplate {
+  id          String               @id @default(cuid())
+  code        String?              @unique
+  name        String
+  version     Int                  @default(1)
+  description String?
+  isActive    Boolean              @default(true)
+  sections    TemplateSection[]
+  sessions    MeasurementSession[]
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  @@unique([name, version])
+  @@index([isActive])
+}
+
+model TemplateSection {
+  id         String              @id @default(cuid())
+  templateId String
+  title      String
+  sortOrder  Int                 @default(0)
+  template   MeasurementTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  fields     TemplateField[]
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+
+  @@unique([templateId, title])
+  @@index([templateId, sortOrder])
+}
+
+model TemplateField {
+  id         String             @id @default(cuid())
+  sectionId  String
+  key        String
+  label      String
+  fieldType  TemplateFieldType
+  unit       String?
+  isRequired Boolean            @default(false)
+  sortOrder  Int                @default(0)
+  section    TemplateSection    @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  values     MeasurementValue[]
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  @@unique([sectionId, key])
+  @@index([sectionId, sortOrder])
+}
+
+model MeasurementSession {
+  id         String                   @id @default(cuid())
+  patientId  String
+  templateId String?
+  status     MeasurementSessionStatus @default(DRAFT)
+  measuredAt DateTime                 @default(now())
+  notes      String?
+  patient    Patient                  @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  template   MeasurementTemplate?     @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  values     MeasurementValue[]
+  createdAt  DateTime                 @default(now())
+  updatedAt  DateTime                 @updatedAt
+
+  @@index([patientId, measuredAt])
+  @@index([templateId])
+  @@index([status])
+}
+
+model MeasurementValue {
+  id           String             @id @default(cuid())
+  sessionId    String
+  fieldId      String
+  valueText    String?
+  valueNumber  Decimal?           @db.Decimal(10, 2)
+  valueBoolean Boolean?
+  session      MeasurementSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  field        TemplateField      @relation(fields: [fieldId], references: [id], onDelete: Restrict)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@unique([sessionId, fieldId])
+  @@index([fieldId])
+}

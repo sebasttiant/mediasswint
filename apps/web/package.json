@@ -7,9 +7,15 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:unit": "node --test --import tsx \"tests/**/*.test.ts\"",
+    "prisma:validate": "prisma validate --schema prisma/schema.prisma",
+    "prisma:format": "prisma format --schema prisma/schema.prisma",
+    "prisma:generate": "prisma generate --schema prisma/schema.prisma",
+    "prisma:migrate:dev": "prisma migrate dev --schema prisma/schema.prisma"
   },
   "dependencies": {
+    "@prisma/client": "7.7.0",
     "next": "16.2.4",
     "pg": "8.13.1",
     "react": "19.2.4",
@@ -21,8 +27,11 @@
     "@types/pg": "^8.11.10",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "dotenv": "16.6.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
+    "prisma": "7.7.0",
+    "tsx": "4.20.5",
     "typescript": "^5"
   }
 }

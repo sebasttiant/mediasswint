@@ -212,10 +212,22 @@ Para activar Renovate en el repo: instalar la [Renovate GitHub App](https://gith
 | `pnpm docker:up` | stack prod-like local (compose raíz) |
 | `pnpm docker:down` | stop stack prod-like |
 | `pnpm lint` / `pnpm typecheck` / `pnpm build` | delega a `@mediasswint/web` |
+| `pnpm --filter @mediasswint/web prisma:validate` | valida schema Prisma v0 |
+| `pnpm --filter @mediasswint/web prisma:migrate:dev` | crea/aplica migraciones Prisma |
+
+---
+
+## Decisiones de modelado (Prisma v0)
+
+- El dominio inicial cubre `Patient`, `MeasurementTemplate`, `TemplateSection`, `TemplateField`, `MeasurementSession` y `MeasurementValue`.
+- Se priorizó trazabilidad y evolución: todas las entidades tienen `createdAt` y `updatedAt`.
+- `MeasurementValue` soporta tipos múltiples (`valueText`, `valueNumber`, `valueBoolean`) para evitar rediseño prematuro del storage.
+- `MeasurementSession` permite `templateId` nullable para capturas históricas/legacy sin romper integridad del paciente.
+- Índices iniciales enfocados en consultas de operación: paciente+fecha, estado de sesión, orden de secciones/campos.
 
 ---
 
 ## Estado actual
 
-Etapa 1 — bootstrap production-ready. Sin schema de dominio, sin ETL, sin features.
+Etapa 1 — bootstrap production-ready + Prisma v0 inicial. Sin ETL, sin features de negocio finales.
 El healthcheck `/api/health` solo valida conectividad con Postgres y Redis.
