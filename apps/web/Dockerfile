@@ -20,7 +20,8 @@ RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 # ---------- deps (cacheable) ----------
 FROM base AS deps
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
-COPY apps/web/package.json ./apps/web/
+COPY apps/web/package.json apps/web/prisma.config.ts ./apps/web/
+COPY apps/web/prisma ./apps/web/prisma/
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile
 
