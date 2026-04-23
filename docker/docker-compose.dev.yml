@@ -22,7 +22,7 @@ services:
     container_name: mediasswint-web-dev
     restart: unless-stopped
     ports:
-      - "${APP_PORT:-3000}:3000"
+      - "${APP_PORT:-3131}:3131"
     environment:
       NODE_ENV: development
       DATABASE_URL: postgresql://mediass:mediass@postgres:5432/mediass
@@ -42,7 +42,7 @@ services:
         - CMD
         - node
         - -e
-        - "fetch('http://127.0.0.1:3000/api/health').then(r=>{process.exit(r.ok?0:1)}).catch(()=>process.exit(1))"
+        - "fetch('http://127.0.0.1:3131/api/health').then(r=>{process.exit(r.ok?0:1)}).catch(()=>process.exit(1))"
       interval: 30s
       timeout: 5s
       retries: 5

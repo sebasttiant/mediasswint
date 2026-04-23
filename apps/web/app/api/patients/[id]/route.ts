@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { getCookieValue, getSessionCookieName, verifySessionToken } from "@/lib/auth";
 import { getPatient } from "@/lib/patients";
 
 type Params = {
@@ -7,6 +8,13 @@ type Params = {
 };
 
 export async function GET(_request: Request, { params }: Params) {
+  const sessionCookie = getCookieValue(_request.headers.get("cookie"), getSessionCookieName());
+  const session = await verifySessionToken(sessionCookie);
+
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { id } = await params;
 
   if (!id.trim()) {

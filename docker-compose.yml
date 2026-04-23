@@ -2,17 +2,17 @@ name: mediasswint
 
 # -----------------------------------------------------------------
 # Stack de producción (Coolify-friendly).
-# - migrate: oneshot (target: migrator) que corre `prisma migrate deploy`
-#   antes de que web arranque. Idempotente: si no hay migraciones
-#   pendientes, sale 0 sin cambios.
+# - migrate: init service (target: migrator) que corre
+#   `prisma migrate deploy`, deja marker de éxito y permanece vivo.
+#   Idempotente: si no hay migraciones pendientes, queda healthy sin cambios.
 # - web: construido desde apps/web/Dockerfile (target: runner)
 # - postgres: 18-alpine con volumen persistente
 # - redis: 8.6-alpine con AOF habilitado + volumen persistente
-# - restart: unless-stopped en web/postgres/redis; migrate usa "no".
+# - restart: unless-stopped en web/postgres/redis/migrate.
 # - healthchecks en los 3 servicios de larga duración.
 #
 # Orden de arranque:
-#   postgres healthy -> migrate completed -> web starts
+#   postgres healthy -> migrate healthy -> web starts
 #   (si migrate falla, web no arranca)
 #
 # Uso local:
@@ -27,12 +27,18 @@ services:
       target: migrator
     image: mediasswint/migrate:latest
     container_name: mediasswint-migrate
-    restart: "no"
+    restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-mediass}:${POSTGRES_PASSWORD:-mediass}@postgres:5432/${POSTGRES_DB:-mediass}
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/migrated.ok"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 15s
 
   web:
     build:
@@ -43,7 +49,7 @@ services:
     container_name: mediasswint-web
     restart: unless-stopped
     ports:
-      - "${APP_PORT:-3000}:3000"
+      - "${APP_PORT:-3131}:3131"
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://${POSTGRES_USER:-mediass}:${POSTGRES_PASSWORD:-mediass}@postgres:5432/${POSTGRES_DB:-mediass}
@@ -54,13 +60,13 @@ services:
       redis:
         condition: service_healthy
       migrate:
-        condition: service_completed_successfully
+        condition: service_healthy
     healthcheck:
       test:
         - CMD
         - node
         - -e
-        - "fetch('http://127.0.0.1:3000/api/health').then(r=>{process.exit(r.ok?0:1)}).catch(()=>process.exit(1))"
+        - "fetch('http://127.0.0.1:3131/api/health').then(r=>{process.exit(r.ok?0:1)}).catch(()=>process.exit(1))"
       interval: 30s
       timeout: 5s
       retries: 3
@@ -75,7 +81,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mediass}
       POSTGRES_DB: ${POSTGRES_DB:-mediass}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mediass} -d ${POSTGRES_DB:-mediass}"]
       interval: 10s

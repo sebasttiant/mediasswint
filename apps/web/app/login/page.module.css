@@ -1,0 +1,191 @@
+.page {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: clamp(0.75rem, 2.5vw, 1.25rem);
+  background:
+    radial-gradient(circle at 15% 20%, rgba(179, 3, 3, 0.2), transparent 40%),
+    radial-gradient(circle at 85% 80%, rgba(255, 255, 255, 0.08), transparent 38%),
+    linear-gradient(135deg, #0b1325 0%, #17233b 45%, #7d0202 100%);
+}
+
+.shell {
+  width: min(1040px, 100%);
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  border-radius: 20px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 20px 60px rgba(2, 6, 23, 0.35);
+}
+
+.brandPanel {
+  background: linear-gradient(160deg, rgba(2, 6, 23, 0.95), rgba(30, 41, 59, 0.9));
+  color: #f9fafb;
+  padding: clamp(1rem, 3vw, 2rem);
+  display: grid;
+  align-content: center;
+  gap: 0.9rem;
+}
+
+.kicker {
+  color: #fca5a5;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+.subtitle {
+  margin-top: 0.2rem;
+  color: #d1d5db;
+  max-width: 48ch;
+}
+
+.bullets {
+  margin-top: 0.6rem;
+  list-style: none;
+  display: grid;
+  gap: 0.55rem;
+  color: #e5e7eb;
+}
+
+.bullets li {
+  position: relative;
+  padding-left: 1.1rem;
+}
+
+.bullets li::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: #ef4444;
+  position: absolute;
+  left: 0;
+  top: 0.44rem;
+}
+
+.card {
+  background: #ffffff;
+  padding: clamp(1rem, 3vw, 2rem);
+  display: grid;
+  align-content: center;
+}
+
+.brandPanel h1 {
+  font-size: clamp(1.35rem, 3.2vw, 2.25rem);
+  line-height: 1.15;
+}
+
+.brandPanel p,
+.bullets li,
+.cardSubtitle,
+.form label {
+  font-size: clamp(0.92rem, 1.6vw, 1rem);
+}
+
+.cardKicker {
+  color: #b30303;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+}
+
+.cardSubtitle {
+  margin-top: 0.25rem;
+  color: #6b7280;
+}
+
+.form {
+  margin-top: 1rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.form label {
+  display: grid;
+  gap: 0.35rem;
+  color: #374151;
+  font-size: 0.9rem;
+}
+
+.form input {
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 0.75rem 0.8rem;
+  font: inherit;
+}
+
+.form button {
+  margin-top: 0.4rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #b30303, #8f0202);
+  color: #fff;
+  padding: 0.78rem 0.9rem;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.form button:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.form button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.error {
+  margin-top: 0.7rem;
+  color: #b91c1c;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 860px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+
+  .brandPanel {
+    min-height: 220px;
+  }
+
+  .bullets {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .page {
+    padding: max(0.65rem, env(safe-area-inset-top))
+      max(0.65rem, env(safe-area-inset-right))
+      max(0.65rem, env(safe-area-inset-bottom))
+      max(0.65rem, env(safe-area-inset-left));
+  }
+
+  .shell {
+    border-radius: 14px;
+  }
+
+  .brandPanel {
+    gap: 0.65rem;
+    min-height: 180px;
+  }
+
+  .kicker,
+  .cardKicker {
+    font-size: 0.72rem;
+  }
+
+  .form {
+    gap: 0.65rem;
+  }
+
+  .form button {
+    width: 100%;
+  }
+}

@@ -13,10 +13,11 @@
 **/.turbo
 **/coverage
 
-# Envs (NUNCA copiar al image)
-.env
-.env.*
+# Envs (NUNCA copiar al image) — patrones recursivos para matchear apps/*/.env
+**/.env
+**/.env.*
 !.env.example
+!**/.env.example
 
 # Logs / OS / IDE
 *.log
