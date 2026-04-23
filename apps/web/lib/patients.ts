@@ -1,6 +1,7 @@
 import type { Patient } from "@prisma/client";
 
 import type { CreatePatientInput, ListPatientsQuery } from "@/lib/patients-input";
+import { getPrisma } from "@/lib/prisma";
 
 type ServiceErrorCode = "CONFLICT" | "NOT_FOUND" | "UNKNOWN";
 
@@ -22,7 +23,7 @@ function isUniqueViolation(error: unknown): boolean {
 
 const defaultRepository: PatientsRepository = {
   async create(input) {
-    const { prisma } = await import("@/lib/prisma");
+    const prisma = getPrisma();
 
     return prisma.patient.create({
       data: {
@@ -38,7 +39,7 @@ const defaultRepository: PatientsRepository = {
   },
 
   async list(query) {
-    const { prisma } = await import("@/lib/prisma");
+    const prisma = getPrisma();
 
     return prisma.patient.findMany({
       where: query.q
@@ -65,7 +66,7 @@ const defaultRepository: PatientsRepository = {
   },
 
   async getById(id) {
-    const { prisma } = await import("@/lib/prisma");
+    const prisma = getPrisma();
 
     return prisma.patient.findUnique({ where: { id } });
   },
@@ -94,7 +95,8 @@ export async function listPatients(
   try {
     const patients = await repository.list(query);
     return { ok: true, value: patients };
-  } catch {
+  } catch (error) {
+    console.error("[patients:list]", error);
     return { ok: false, error: "UNKNOWN" };
   }
 }
@@ -110,7 +112,8 @@ export async function getPatient(
     }
 
     return { ok: true, value: patient };
-  } catch {
+  } catch (error) {
+    console.error("[patients:get]", error);
     return { ok: false, error: "UNKNOWN" };
   }
 }

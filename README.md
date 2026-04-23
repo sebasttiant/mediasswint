@@ -65,7 +65,7 @@ pnpm infra:dev:logs
 ### 4. Validar healthcheck
 
 ```bash
-curl -s http://localhost:3000/api/health | jq
+curl -s http://localhost:3131/api/health | jq
 ```
 
 Respuesta esperada (HTTP 200):
@@ -97,7 +97,7 @@ Para probar el build standalone exacto que va a producción:
 ```bash
 cp .env.example .env
 docker compose up -d --build
-curl http://localhost:3000/api/health
+curl http://localhost:3131/api/health
 ```
 
 Se construye el Dockerfile target `runner` (image `mediasswint/web:latest`), corre como usuario no-root dentro del contenedor.
@@ -129,10 +129,13 @@ Ver `.env.example` (único source-of-truth). Nunca commitear `.env` real — est
 | Var | Default dev | Uso |
 |---|---|---|
 | `NODE_ENV` | `development` | modo de Next |
-| `APP_PORT` | `3000` | puerto expuesto al host |
+| `APP_PORT` | `3131` | puerto expuesto al host |
 | `POSTGRES_USER` / `_PASSWORD` / `_DB` | `mediass` / `mediass` / `mediass` | credenciales dev del contenedor postgres |
 | `DATABASE_URL` | `postgresql://mediass:mediass@localhost:5432/mediass` | conexión desde host (si corrés `pnpm dev` fuera de docker) |
 | `REDIS_URL` | `redis://localhost:6379` | conexión desde host |
+| `AUTH_USER` | `admin` | usuario del login interno |
+| `AUTH_PASSWORD` | `admin123` | contraseña del login interno |
+| `AUTH_SECRET` | `change-this-in-prod` | firma de cookie de sesión |
 
 **Dentro** de docker compose, la app usa hostnames de la red interna (`postgres`, `redis`). El compose inyecta las URLs correctas automáticamente.
 

@@ -16,7 +16,8 @@
     "prisma:migrate:dev": "prisma migrate dev --schema prisma/schema.prisma"
   },
   "dependencies": {
-    "@prisma/client": "7.7.0",
+    "@prisma/adapter-pg": "7.8.0",
+    "@prisma/client": "7.8.0",
     "next": "16.2.4",
     "pg": "8.13.1",
     "react": "19.2.4",
@@ -31,7 +32,7 @@
     "dotenv": "16.6.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
-    "prisma": "7.7.0",
+    "prisma": "7.8.0",
     "tsx": "4.20.5",
     "typescript": "^5"
   }

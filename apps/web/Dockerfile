@@ -22,6 +22,7 @@ FROM base AS deps
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY apps/web/package.json apps/web/prisma.config.ts ./apps/web/
 COPY apps/web/prisma ./apps/web/prisma/
+ENV DATABASE_URL=postgresql://mediass:mediass@postgres:5432/mediass
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile
 
@@ -30,7 +31,7 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
 # Used by the `migrate` compose service; web depends_on its successful exit.
 FROM deps AS migrator
 WORKDIR /app/apps/web
-CMD ["pnpm", "exec", "prisma", "migrate", "deploy", "--schema", "prisma/schema.prisma"]
+CMD ["sh", "-c", "pnpm exec prisma migrate deploy --schema prisma/schema.prisma && touch /tmp/migrated.ok && tail -f /dev/null"]
 
 # ---------- builder ----------
 FROM base AS builder
@@ -44,9 +45,9 @@ FROM base AS dev
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
 ENV NODE_ENV=development \
-    PORT=3000 \
+    PORT=3131 \
     HOSTNAME=0.0.0.0
-EXPOSE 3000
+EXPOSE 3131
 CMD ["pnpm", "--filter", "@mediasswint/web", "dev"]
 
 # ---------- runner (producción standalone, no-root) ----------
@@ -54,7 +55,7 @@ FROM ${NODE_IMAGE} AS runner
 WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
-    PORT=3000 \
+    PORT=3131 \
     HOSTNAME=0.0.0.0
 
 # Usuario no-root dedicado
@@ -66,10 +67,14 @@ COPY --from=builder --chown=app:app /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=app:app /app/apps/web/.next/static ./apps/web/.next/static
 COPY --from=builder --chown=app:app /app/apps/web/public ./apps/web/public
 
+# Prisma runtime support (pnpm + monorepo): asegura cliente/engines presentes
+COPY --from=deps --chown=app:app /app/node_modules ./node_modules
+COPY --from=deps --chown=app:app /app/apps/web/node_modules ./apps/web/node_modules
+
 USER app
-EXPOSE 3000
+EXPOSE 3131
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>{process.exit(r.ok?0:1)}).catch(()=>process.exit(1))"
+  CMD node -e "fetch('http://127.0.0.1:3131/api/health').then(r=>{process.exit(r.ok?0:1)}).catch(()=>process.exit(1))"
 
 CMD ["node", "apps/web/server.js"]

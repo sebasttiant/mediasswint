@@ -1,9 +1,20 @@
 import { NextResponse } from "next/server";
 
+import { getCookieValue, getSessionCookieName, verifySessionToken } from "@/lib/auth";
 import { parseCreatePatientInput, parseListPatientsQuery } from "@/lib/patients-input";
 import { createPatient, listPatients } from "@/lib/patients";
 
+async function ensureAuth(request: Request) {
+  const sessionCookie = getCookieValue(request.headers.get("cookie"), getSessionCookieName());
+  return verifySessionToken(sessionCookie);
+}
+
 export async function POST(request: Request) {
+  const session = await ensureAuth(request);
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   let body: unknown;
 
   try {
@@ -36,6 +47,11 @@ export async function POST(request: Request) {
 }
 
 export async function GET(request: Request) {
+  const session = await ensureAuth(request);
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const searchParams = new URL(request.url).searchParams;
   const parsedQuery = parseListPatientsQuery(searchParams);
 

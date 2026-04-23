@@ -12,7 +12,9 @@ Desde `mediasswint/`:
 pnpm infra:dev
 ```
 
-La app queda disponible en `http://localhost:3000`.
+La app queda disponible en `http://localhost:3131`.
+
+Ruta inicial: `http://localhost:3131/login` (auth básica interna con cookie httpOnly).
 
 ## Scripts del workspace
 
@@ -39,7 +41,7 @@ Endpoint: `GET /api/health`
 Prueba rápida:
 
 ```bash
-curl -s http://localhost:3000/api/health | jq
+curl -s http://localhost:3131/api/health | jq
 ```
 
 ## Notas técnicas
@@ -55,14 +57,14 @@ El compose de producción orquesta las migraciones como un paso bloqueante
 previo al arranque de `web`:
 
 1. `postgres` debe estar `service_healthy`
-2. El servicio oneshot `migrate` (target `migrator`) corre
-   `prisma migrate deploy` y termina
-3. `web` arranca solo si `migrate` terminó con exit 0
-   (`service_completed_successfully`)
+2. El servicio `migrate` (target `migrator`) corre
+   `prisma migrate deploy`, deja un marker de éxito y queda vivo.
+3. `web` arranca solo cuando `migrate` está `healthy`
+   (`service_healthy`)
 
 Si hay una migración pendiente y falla, `web` **no arranca** — el deploy
 queda rojo explícitamente. Si no hay pendientes, `migrate` imprime
-"No pending migrations to apply" y sale en segundos (idempotente).
+"No pending migrations to apply" y queda en estado healthy.
 
 Este patrón es portable: funciona en `docker compose up` local y en
 Coolify (que ejecuta compose nativamente). No requiere comandos
