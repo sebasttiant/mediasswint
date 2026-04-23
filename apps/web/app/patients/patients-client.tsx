@@ -66,6 +66,7 @@ export default function PatientsClient() {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadPatients();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
