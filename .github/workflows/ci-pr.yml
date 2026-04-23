@@ -19,6 +19,12 @@ concurrency:
   group: ci-pr-${{ github.ref }}
   cancel-in-progress: true
 
+# Placeholder CI-only — needed so prisma.config.ts's env("DATABASE_URL")
+# resolves during `pnpm install` (postinstall runs `prisma generate`) and
+# `pnpm build`. Neither command opens a DB connection.
+env:
+  DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+
 jobs:
   validate:
     name: Lint + Typecheck
