@@ -1,13 +1,29 @@
 import { NextResponse } from "next/server";
 
-import { createSessionToken, getSessionCookieName, isValidLogin } from "@/lib/auth";
+import {
+  type AuthUser,
+  authenticateUser as defaultAuthenticateUser,
+  createSessionToken as defaultCreateSessionToken,
+  getSessionCookieName,
+  getSessionDurationSeconds,
+} from "@/lib/auth";
 
 type LoginBody = {
   user?: string;
   password?: string;
 };
 
-export async function POST(request: Request) {
+export type LoginDeps = {
+  authenticate: (user: string, password: string) => Promise<AuthUser | null>;
+  createToken: (subject: string) => Promise<string>;
+};
+
+const defaultDeps: LoginDeps = {
+  authenticate: defaultAuthenticateUser,
+  createToken: defaultCreateSessionToken,
+};
+
+export async function handleLoginRequest(request: Request, deps: LoginDeps = defaultDeps) {
   let body: LoginBody;
 
   try {
@@ -23,11 +39,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Usuario y contraseña son requeridos" }, { status: 400 });
   }
 
-  if (!isValidLogin(user, password)) {
+  let authenticated: AuthUser | null;
+  try {
+    authenticated = await deps.authenticate(user, password);
+  } catch {
     return NextResponse.json({ error: "Credenciales inválidas" }, { status: 401 });
   }
 
-  const token = await createSessionToken(user);
+  if (!authenticated) {
+    return NextResponse.json({ error: "Credenciales inválidas" }, { status: 401 });
+  }
+
+  const token = await deps.createToken(authenticated.id);
 
   const response = NextResponse.json({ ok: true }, { status: 200 });
   response.cookies.set({
@@ -37,8 +60,12 @@ export async function POST(request: Request) {
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    maxAge: 60 * 60 * 12,
+    maxAge: getSessionDurationSeconds(),
   });
 
   return response;
+}
+
+export async function POST(request: Request) {
+  return handleLoginRequest(request);
 }

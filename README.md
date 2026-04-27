@@ -133,8 +133,8 @@ Ver `.env.example` (único source-of-truth). Nunca commitear `.env` real — est
 | `POSTGRES_USER` / `_PASSWORD` / `_DB` | `mediass` / `mediass` / `mediass` | credenciales dev del contenedor postgres |
 | `DATABASE_URL` | `postgresql://mediass:mediass@localhost:5432/mediass` | conexión desde host (si corrés `pnpm dev` fuera de docker) |
 | `REDIS_URL` | `redis://localhost:6379` | conexión desde host |
-| `AUTH_USER` | `admin` | usuario del login interno |
-| `AUTH_PASSWORD` | `admin123` | contraseña del login interno |
+| `AUTH_USER` | — | email del usuario inicial para el bootstrap one-off |
+| `AUTH_PASSWORD` | — | contraseña inicial para el bootstrap one-off |
 | `AUTH_SECRET` | `change-this-in-prod` | firma de cookie de sesión |
 
 **Dentro** de docker compose, la app usa hostnames de la red interna (`postgres`, `redis`). El compose inyecta las URLs correctas automáticamente.
@@ -169,6 +169,25 @@ Node version: leída de `.nvmrc`. pnpm cache habilitado. Builds de Docker cachea
 5. Deploy manual: `Actions` → `Deploy (Coolify)` → `Run workflow` → elegir environment.
 
 Coolify se encarga del TLS, dominios y health monitoring.
+
+### Bootstrap del usuario inicial (one-off)
+
+Tras el primer deploy, la tabla `User` arranca vacía. Para provisionar el usuario inicial sin meter el script en la imagen `runner`, el Dockerfile expone un stage `bootstrapper` que hereda de `builder` (source + deps completas) y se ejecuta a demanda:
+
+```bash
+# 1. Build puntual del target bootstrapper
+docker build --target bootstrapper -t mediasswint/bootstrapper:latest -f apps/web/Dockerfile .
+
+# 2. Ejecutar one-off contra la DB destino
+docker run --rm \
+  --network <stack-network> \
+  -e DATABASE_URL="postgresql://<user>:<pass>@postgres:5432/<db>" \
+  -e AUTH_USER="admin@tu-dominio.com" \
+  -e AUTH_PASSWORD="<contraseña-fuerte>" \
+  mediasswint/bootstrapper:latest
+```
+
+En Coolify se dispara como "one-off command" sobre la imagen del target `bootstrapper`, pasando las mismas tres variables. Es idempotente: si el email ya existe, actualiza el hash.
 
 ---
 

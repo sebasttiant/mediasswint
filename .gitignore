@@ -25,6 +25,7 @@ pnpm-debug.log*
 .idea/
 *.swp
 *.swo
+.atl/
 
 # OS
 .DS_Store
