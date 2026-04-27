@@ -1,3 +1,7 @@
+import { hash as argon2Hash, verify as argon2Verify } from "@node-rs/argon2";
+
+import { getPrisma } from "@/lib/prisma";
+
 const SESSION_COOKIE_NAME = "mediasswint_session";
 const SESSION_DURATION_SECONDS = 60 * 60 * 12;
 
@@ -6,16 +10,33 @@ type SessionPayload = {
   exp: number;
 };
 
+export type AuthUser = {
+  id: string;
+  email: string;
+  passwordHash: string;
+  isActive: boolean;
+};
+
+export type UsersRepository = {
+  findByEmail(email: string): Promise<AuthUser | null>;
+  upsertBootstrapUser(input: { email: string; passwordHash: string }): Promise<AuthUser>;
+};
+
 function getAuthSecret() {
   return process.env.AUTH_SECRET?.trim() || "mediasswint-dev-secret";
 }
 
-function getAuthUser() {
-  return process.env.AUTH_USER?.trim() || "admin";
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
 }
 
-function getAuthPassword() {
-  return process.env.AUTH_PASSWORD?.trim() || "admin123";
+function toAuthUser(user: AuthUser): AuthUser {
+  return {
+    id: user.id,
+    email: user.email,
+    passwordHash: user.passwordHash,
+    isActive: user.isActive,
+  };
 }
 
 function bytesToBase64(bytes: Uint8Array) {
@@ -98,12 +119,93 @@ export async function verifySessionToken(token: string | null | undefined) {
   }
 }
 
-export function isValidLogin(user: string, password: string) {
-  return user === getAuthUser() && password === getAuthPassword();
+export async function hashPassword(password: string) {
+  return argon2Hash(password);
+}
+
+export async function verifyPasswordHash(passwordHash: string, password: string) {
+  try {
+    return await argon2Verify(passwordHash, password);
+  } catch {
+    return false;
+  }
+}
+
+const defaultUsersRepository: UsersRepository = {
+  async findByEmail(email) {
+    const prisma = getPrisma();
+    const user = await prisma.user.findUnique({ where: { email } });
+    return user ? toAuthUser(user) : null;
+  },
+  async upsertBootstrapUser({ email, passwordHash }) {
+    const prisma = getPrisma();
+    const user = await prisma.user.upsert({
+      where: { email },
+      update: { passwordHash, isActive: true },
+      create: { email, passwordHash },
+    });
+    return toAuthUser(user);
+  },
+};
+
+export function getDefaultUsersRepository(): UsersRepository {
+  return defaultUsersRepository;
+}
+
+export async function authenticateUser(
+  user: string,
+  password: string,
+  repository: UsersRepository = defaultUsersRepository,
+): Promise<AuthUser | null> {
+  const email = normalizeEmail(user);
+  if (!email || !password) return null;
+
+  let persisted: AuthUser | null;
+  try {
+    persisted = await repository.findByEmail(email);
+  } catch (error) {
+    console.error("[auth:findByEmail]", error);
+    return null;
+  }
+
+  if (!persisted || !persisted.isActive) return null;
+
+  let isValid: boolean;
+  try {
+    isValid = await verifyPasswordHash(persisted.passwordHash, password);
+  } catch (error) {
+    console.error("[auth:verify]", error);
+    return null;
+  }
+
+  if (!isValid) return null;
+
+  return toAuthUser(persisted);
+}
+
+export async function bootstrapAuthUser(
+  input: { email: string; password: string },
+  repository: UsersRepository = defaultUsersRepository,
+): Promise<AuthUser> {
+  const email = normalizeEmail(input.email);
+  if (!email) {
+    throw new Error("bootstrap requires a non-empty email");
+  }
+  if (!input.password) {
+    throw new Error("bootstrap requires a non-empty password");
+  }
+
+  const passwordHash = await hashPassword(input.password);
+  const persisted = await repository.upsertBootstrapUser({ email, passwordHash });
+  return toAuthUser(persisted);
 }
 
 export function getSessionCookieName() {
   return SESSION_COOKIE_NAME;
+}
+
+export function getSessionDurationSeconds() {
+  return SESSION_DURATION_SECONDS;
 }
 
 export function getCookieValue(cookieHeader: string | null, name: string) {

@@ -13,9 +13,11 @@
     "prisma:validate": "prisma validate --schema prisma/schema.prisma",
     "prisma:format": "prisma format --schema prisma/schema.prisma",
     "prisma:generate": "prisma generate --schema prisma/schema.prisma",
-    "prisma:migrate:dev": "prisma migrate dev --schema prisma/schema.prisma"
+    "prisma:migrate:dev": "prisma migrate dev --schema prisma/schema.prisma",
+    "auth:bootstrap": "tsx scripts/bootstrap-auth-user.ts"
   },
   "dependencies": {
+    "@node-rs/argon2": "^2.0.2",
     "@prisma/adapter-pg": "7.8.0",
     "@prisma/client": "7.8.0",
     "next": "16.2.4",
