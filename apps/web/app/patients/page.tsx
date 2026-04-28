@@ -1,15 +1,18 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { getSessionCookieName, verifySessionToken } from "@/lib/auth";
+import { getSessionCookieName, requireActiveUserFromRequest } from "@/lib/auth";
 
 import PatientsClient from "./patients-client";
 
 export default async function PatientsPage() {
   const sessionCookie = (await cookies()).get(getSessionCookieName())?.value;
-  const session = await verifySessionToken(sessionCookie);
+  const request = new Request("http://localhost/patients", {
+    headers: sessionCookie ? { cookie: `${getSessionCookieName()}=${encodeURIComponent(sessionCookie)}` } : undefined,
+  });
+  const user = await requireActiveUserFromRequest(request);
 
-  if (!session) {
+  if (!user) {
     redirect("/login");
   }
 

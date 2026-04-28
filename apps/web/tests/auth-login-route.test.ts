@@ -12,12 +12,16 @@ function jsonRequest(body: unknown) {
   });
 }
 
-function buildAuthUser(overrides?: Partial<{ id: string; email: string; passwordHash: string; isActive: boolean }>) {
+function buildAuthUser(
+  overrides?: Partial<{ id: string; email: string; passwordHash: string; isActive: boolean; fullName: string | null; role: "ADMIN" | "STAFF" }>,
+) {
   return {
     id: overrides?.id ?? "user-1",
     email: overrides?.email ?? "admin@mediasswint.test",
     passwordHash: overrides?.passwordHash ?? "hash",
     isActive: overrides?.isActive ?? true,
+    fullName: overrides?.fullName ?? "Admin User",
+    role: overrides?.role ?? "ADMIN",
   };
 }
 
@@ -102,8 +106,11 @@ describe("handleLoginRequest", () => {
     );
 
     assert.equal(response.status, 200);
-    const payload = (await response.json()) as { ok?: boolean };
+    const payload = (await response.json()) as { ok?: boolean; passwordHash?: string; role?: string; fullName?: string | null };
     assert.equal(payload.ok, true);
+    assert.equal(payload.passwordHash, undefined);
+    assert.equal(payload.role, undefined);
+    assert.equal(payload.fullName, undefined);
 
     const setCookie = response.headers.get("set-cookie");
     assert.ok(setCookie, "expected set-cookie header");

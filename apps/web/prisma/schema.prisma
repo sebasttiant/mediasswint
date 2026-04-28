@@ -11,10 +11,18 @@ model User {
   email        String   @unique
   passwordHash String
   isActive     Boolean  @default(true)
+  fullName     String?
+  role         UserRole @default(STAFF)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   @@index([isActive])
+  @@index([role])
+}
+
+enum UserRole {
+  ADMIN
+  STAFF
 }
 
 enum TemplateFieldType {

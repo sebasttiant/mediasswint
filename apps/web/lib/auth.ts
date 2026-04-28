@@ -10,15 +10,20 @@ type SessionPayload = {
   exp: number;
 };
 
+export type UserRole = "ADMIN" | "STAFF";
+
 export type AuthUser = {
   id: string;
   email: string;
   passwordHash: string;
   isActive: boolean;
+  fullName: string | null;
+  role: UserRole;
 };
 
 export type UsersRepository = {
   findByEmail(email: string): Promise<AuthUser | null>;
+  findById(id: string): Promise<AuthUser | null>;
   upsertBootstrapUser(input: { email: string; passwordHash: string }): Promise<AuthUser>;
 };
 
@@ -30,12 +35,18 @@ function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
-function toAuthUser(user: AuthUser): AuthUser {
+export function normalizeUserRole(role: unknown): UserRole {
+  return role === "ADMIN" || role === "STAFF" ? role : "STAFF";
+}
+
+function toAuthUser(user: AuthUser | (Omit<AuthUser, "fullName" | "role"> & { fullName?: string | null; role?: unknown })): AuthUser {
   return {
     id: user.id,
     email: user.email,
     passwordHash: user.passwordHash,
     isActive: user.isActive,
+    fullName: user.fullName ?? null,
+    role: normalizeUserRole(user.role),
   };
 }
 
@@ -137,12 +148,17 @@ const defaultUsersRepository: UsersRepository = {
     const user = await prisma.user.findUnique({ where: { email } });
     return user ? toAuthUser(user) : null;
   },
+  async findById(id) {
+    const prisma = getPrisma();
+    const user = await prisma.user.findUnique({ where: { id } });
+    return user ? toAuthUser(user) : null;
+  },
   async upsertBootstrapUser({ email, passwordHash }) {
     const prisma = getPrisma();
     const user = await prisma.user.upsert({
       where: { email },
-      update: { passwordHash, isActive: true },
-      create: { email, passwordHash },
+      update: { passwordHash, isActive: true, role: "ADMIN" },
+      create: { email, passwordHash, role: "ADMIN" },
     });
     return toAuthUser(user);
   },
@@ -198,6 +214,35 @@ export async function bootstrapAuthUser(
   const passwordHash = await hashPassword(input.password);
   const persisted = await repository.upsertBootstrapUser({ email, passwordHash });
   return toAuthUser(persisted);
+}
+
+export async function requireActiveUserFromRequest(
+  request: Request,
+  repository: UsersRepository = defaultUsersRepository,
+): Promise<AuthUser | null> {
+  const sessionCookie = getCookieValue(request.headers.get("cookie"), getSessionCookieName());
+  const session = await verifySessionToken(sessionCookie);
+
+  if (!session) return null;
+
+  try {
+    const user = await repository.findById(session.sub);
+    if (!user?.isActive) return null;
+
+    return toAuthUser(user);
+  } catch (error) {
+    console.error("[auth:findById]", error);
+    return null;
+  }
+}
+
+export async function requireAdminUserFromRequest(
+  request: Request,
+  repository: UsersRepository = defaultUsersRepository,
+): Promise<AuthUser | null> {
+  const user = await requireActiveUserFromRequest(request, repository);
+
+  return user?.role === "ADMIN" ? user : null;
 }
 
 export function getSessionCookieName() {

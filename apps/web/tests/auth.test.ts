@@ -8,35 +8,44 @@ import {
   getCookieValue,
   getSessionCookieName,
   hashPassword,
+  normalizeUserRole,
+  requireActiveUserFromRequest,
+  requireAdminUserFromRequest,
+  type AuthUser,
   type UsersRepository,
   verifyPasswordHash,
   verifySessionToken,
 } from "../lib/auth";
 
 function createUsersRepository(): UsersRepository & {
-  getByEmail(email: string): { id: string; email: string; passwordHash: string; isActive: boolean } | null;
+  getByEmail(email: string): AuthUser | null;
 } {
-  const users = new Map<string, { id: string; email: string; passwordHash: string; isActive: boolean }>();
+  const users = new Map<string, AuthUser>();
   let idSequence = 1;
 
   return {
     async findByEmail(email) {
       return users.get(email) ?? null;
     },
+    async findById(id) {
+      return Array.from(users.values()).find((user) => user.id === id) ?? null;
+    },
     async upsertBootstrapUser({ email, passwordHash }) {
       const existingUser = users.get(email);
 
       if (existingUser) {
-        const updatedUser = { ...existingUser, passwordHash, isActive: true };
+        const updatedUser: AuthUser = { ...existingUser, passwordHash, isActive: true, role: "ADMIN" };
         users.set(email, updatedUser);
         return updatedUser;
       }
 
-      const createdUser = {
+      const createdUser: AuthUser = {
         id: `user-${idSequence++}`,
         email,
         passwordHash,
         isActive: true,
+        fullName: null,
+        role: "ADMIN",
       };
 
       users.set(email, createdUser);
@@ -48,7 +57,9 @@ function createUsersRepository(): UsersRepository & {
   };
 }
 
-async function createPersistedUser(overrides?: Partial<{ id: string; email: string; password: string; isActive: boolean }>) {
+async function createPersistedUser(
+  overrides?: Partial<{ id: string; email: string; password: string; isActive: boolean; fullName: string | null; role: AuthUser["role"] }>,
+) {
   const password = overrides?.password ?? "secret123";
 
   return {
@@ -56,8 +67,16 @@ async function createPersistedUser(overrides?: Partial<{ id: string; email: stri
     email: overrides?.email ?? "admin@mediasswint.test",
     passwordHash: await hashPassword(password),
     isActive: overrides?.isActive ?? true,
+    fullName: overrides?.fullName ?? null,
+    role: overrides?.role ?? "STAFF",
     plainPassword: password,
   };
+}
+
+function requestWithSessionCookie(token: string) {
+  return new Request("http://localhost/protected", {
+    headers: { cookie: `${getSessionCookieName()}=${encodeURIComponent(token)}` },
+  });
 }
 
 describe("auth session token", () => {
@@ -89,6 +108,9 @@ describe("authenticateUser", () => {
       async findByEmail(email) {
         return email === persistedUser.email ? persistedUser : null;
       },
+      async findById() {
+        throw new Error("unused");
+      },
       async upsertBootstrapUser() {
         throw new Error("unused");
       },
@@ -101,6 +123,8 @@ describe("authenticateUser", () => {
       email: persistedUser.email,
       passwordHash: persistedUser.passwordHash,
       isActive: true,
+      fullName: null,
+      role: "STAFF",
     });
   });
 
@@ -109,6 +133,9 @@ describe("authenticateUser", () => {
     const repository: UsersRepository = {
       async findByEmail() {
         return persistedUser;
+      },
+      async findById() {
+        throw new Error("unused");
       },
       async upsertBootstrapUser() {
         throw new Error("unused");
@@ -125,6 +152,9 @@ describe("authenticateUser", () => {
     const repository: UsersRepository = {
       async findByEmail() {
         return persistedUser;
+      },
+      async findById() {
+        throw new Error("unused");
       },
       async upsertBootstrapUser() {
         throw new Error("unused");
@@ -165,8 +195,24 @@ describe("bootstrapAuthUser", () => {
     );
 
     assert.equal(user.email, "seed@mediasswint.test");
+    assert.equal(user.role, "ADMIN");
     assert.notEqual(user.passwordHash, "secret123");
     assert.equal(await verifyPasswordHash(user.passwordHash, "secret123"), true);
+  });
+
+  it("promotes the configured bootstrap user to ADMIN without requiring a specific email", async () => {
+    const repository = createUsersRepository();
+
+    const user = await bootstrapAuthUser(
+      {
+        email: "owner@custom-domain.test",
+        password: "secret123",
+      },
+      repository,
+    );
+
+    assert.equal(user.role, "ADMIN");
+    assert.equal(repository.getByEmail("owner@custom-domain.test")?.role, "ADMIN");
   });
 
   it("updates the same persisted identity when bootstrap runs again", async () => {
@@ -193,6 +239,128 @@ describe("bootstrapAuthUser", () => {
     assert.equal(updatedUser.id, firstUser.id);
     assert.equal(persistedUser?.id, firstUser.id);
     assert.equal(await verifyPasswordHash(updatedUser.passwordHash, "new-secret456"), true);
+  });
+
+  it("keeps the configured bootstrap user as ADMIN on repeated bootstrap runs", async () => {
+    const repository = createUsersRepository();
+
+    const firstUser = await bootstrapAuthUser(
+      { email: "owner@custom-domain.test", password: "secret123" },
+      repository,
+    );
+    const updatedUser = await bootstrapAuthUser(
+      { email: "owner@custom-domain.test", password: "new-secret456" },
+      repository,
+    );
+
+    assert.equal(updatedUser.id, firstUser.id);
+    assert.equal(updatedUser.role, "ADMIN");
+    assert.equal(repository.getByEmail("owner@custom-domain.test")?.role, "ADMIN");
+  });
+});
+
+describe("roles", () => {
+  it("defaults a missing persisted role to STAFF", () => {
+    assert.equal(normalizeUserRole(null), "STAFF");
+    assert.equal(normalizeUserRole(undefined), "STAFF");
+  });
+
+  it("accepts only ADMIN and STAFF as v1 roles", () => {
+    assert.equal(normalizeUserRole("ADMIN"), "ADMIN");
+    assert.equal(normalizeUserRole("STAFF"), "STAFF");
+    assert.equal(normalizeUserRole("OWNER"), "STAFF");
+  });
+});
+
+describe("DB-backed auth guards", () => {
+  it("resolves an active user from the session subject", async () => {
+    process.env.AUTH_SECRET = "guard-secret";
+    const activeUser = await createPersistedUser({ id: "active-1", role: "STAFF" });
+    const repository: UsersRepository = {
+      async findByEmail() {
+        throw new Error("unused");
+      },
+      async findById(id) {
+        return id === activeUser.id ? activeUser : null;
+      },
+      async upsertBootstrapUser() {
+        throw new Error("unused");
+      },
+    };
+
+    const token = await createSessionToken(activeUser.id);
+    const resolvedUser = await requireActiveUserFromRequest(requestWithSessionCookie(token), repository);
+
+    assert.equal(resolvedUser?.id, activeUser.id);
+    assert.equal(resolvedUser?.role, "STAFF");
+  });
+
+  it("rejects missing and inactive users on the current request", async () => {
+    process.env.AUTH_SECRET = "guard-secret";
+    const inactiveUser = await createPersistedUser({ id: "inactive-1", isActive: false });
+    const repository: UsersRepository = {
+      async findByEmail() {
+        throw new Error("unused");
+      },
+      async findById(id) {
+        return id === inactiveUser.id ? inactiveUser : null;
+      },
+      async upsertBootstrapUser() {
+        throw new Error("unused");
+      },
+    };
+
+    const inactiveToken = await createSessionToken(inactiveUser.id);
+
+    assert.equal(await requireActiveUserFromRequest(new Request("http://localhost/protected"), repository), null);
+    assert.equal(await requireActiveUserFromRequest(requestWithSessionCookie(inactiveToken), repository), null);
+  });
+
+  it("accepts ADMIN users for admin guard", async () => {
+    process.env.AUTH_SECRET = "admin-guard-secret";
+    const adminUser = await createPersistedUser({ id: "admin-1", role: "ADMIN" });
+    const repository: UsersRepository = {
+      async findByEmail() {
+        throw new Error("unused");
+      },
+      async findById(id) {
+        return id === adminUser.id ? adminUser : null;
+      },
+      async upsertBootstrapUser() {
+        throw new Error("unused");
+      },
+    };
+
+    const token = await createSessionToken(adminUser.id);
+    const resolvedUser = await requireAdminUserFromRequest(requestWithSessionCookie(token), repository);
+
+    assert.equal(resolvedUser?.id, adminUser.id);
+    assert.equal(resolvedUser?.role, "ADMIN");
+  });
+
+  it("rejects STAFF and unsupported roles for admin guard", async () => {
+    process.env.AUTH_SECRET = "admin-guard-secret";
+    const staffUser = await createPersistedUser({ id: "staff-1", role: "STAFF" });
+    const unsupportedRoleUser = { ...(await createPersistedUser({ id: "owner-1" })), role: "OWNER" as AuthUser["role"] };
+    const repository: UsersRepository = {
+      async findByEmail() {
+        throw new Error("unused");
+      },
+      async findById(id) {
+        if (id === staffUser.id) return staffUser;
+        if (id === unsupportedRoleUser.id) return unsupportedRoleUser;
+        return null;
+      },
+      async upsertBootstrapUser() {
+        throw new Error("unused");
+      },
+    };
+
+    const staffToken = await createSessionToken(staffUser.id);
+    const unsupportedToken = await createSessionToken(unsupportedRoleUser.id);
+
+    assert.equal(await requireAdminUserFromRequest(requestWithSessionCookie(staffToken), repository), null);
+    assert.equal(await requireAdminUserFromRequest(requestWithSessionCookie(unsupportedToken), repository), null);
   });
 });
 

@@ -1,17 +1,26 @@
 import { NextResponse } from "next/server";
 
-import { getCookieValue, getSessionCookieName, verifySessionToken } from "@/lib/auth";
+import { requireActiveUserFromRequest, type AuthUser } from "@/lib/auth";
 import { getPatient } from "@/lib/patients";
 
 type Params = {
   params: Promise<{ id: string }>;
 };
 
-export async function GET(_request: Request, { params }: Params) {
-  const sessionCookie = getCookieValue(_request.headers.get("cookie"), getSessionCookieName());
-  const session = await verifySessionToken(sessionCookie);
+export type PatientRouteDeps = {
+  requireActiveUser: (request: Request) => Promise<AuthUser | null>;
+  get: typeof getPatient;
+};
 
-  if (!session) {
+const defaultDeps: PatientRouteDeps = {
+  requireActiveUser: requireActiveUserFromRequest,
+  get: getPatient,
+};
+
+export async function handleGetPatientRequest(request: Request, { params }: Params, deps: PatientRouteDeps = defaultDeps) {
+  const user = await deps.requireActiveUser(request);
+
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -21,7 +30,7 @@ export async function GET(_request: Request, { params }: Params) {
     return NextResponse.json({ error: "Patient id is required" }, { status: 400 });
   }
 
-  const result = await getPatient(id);
+  const result = await deps.get(id);
   if (!result.ok) {
     if (result.error === "NOT_FOUND") {
       return NextResponse.json({ error: "Patient not found" }, { status: 404 });
@@ -31,4 +40,8 @@ export async function GET(_request: Request, { params }: Params) {
   }
 
   return NextResponse.json(result.value, { status: 200 });
+}
+
+export async function GET(request: Request, context: Params) {
+  return handleGetPatientRequest(request, context);
 }
