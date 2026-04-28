@@ -40,6 +40,25 @@ services:
       retries: 12
       start_period: 15s
 
+  auth-bootstrap:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: bootstrapper
+    image: mediasswint/auth-bootstrap:latest
+    container_name: mediasswint-auth-bootstrap
+    restart: "no"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-mediass}:${POSTGRES_PASSWORD:-mediass}@postgres:5432/${POSTGRES_DB:-mediass}
+      AUTH_USER: ${AUTH_USER:?AUTH_USER is required}
+      AUTH_PASSWORD: ${AUTH_PASSWORD:?AUTH_PASSWORD is required}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_healthy
+
   web:
     build:
       context: .
@@ -61,6 +80,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_healthy
+      auth-bootstrap:
+        condition: service_completed_successfully
     healthcheck:
       test:
         - CMD

@@ -33,22 +33,25 @@ FROM deps AS migrator
 WORKDIR /app/apps/web
 CMD ["sh", "-c", "pnpm exec prisma migrate deploy --schema prisma/schema.prisma && touch /tmp/migrated.ok && tail -f /dev/null"]
 
+# ---------- bootstrapper (oneshot: provisiona el usuario inicial) ----------
+# Hereda de deps para evitar depender del build de Next. Tiene Prisma generado,
+# devDependencies (tsx/dotenv) y el código mínimo de auth. Se corre a demanda
+# como tarea one-off (Coolify / docker run), NO forma parte del startup del stack.
+# Requiere AUTH_USER, AUTH_PASSWORD y DATABASE_URL apuntando a la DB destino.
+# Idempotente: bootstrapAuthUser hace upsert por email.
+FROM deps AS bootstrapper
+COPY apps/web/tsconfig.json ./apps/web/tsconfig.json
+COPY apps/web/lib ./apps/web/lib
+COPY apps/web/scripts ./apps/web/scripts
+WORKDIR /app/apps/web
+CMD ["pnpm", "auth:bootstrap"]
+
 # ---------- builder ----------
 FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
 COPY . .
 RUN pnpm --filter @mediasswint/web build
-
-# ---------- bootstrapper (oneshot: provisiona el usuario inicial) ----------
-# Hereda de builder: tiene source completo + devDependencies (pnpm, tsx, dotenv)
-# y el script apps/web/scripts/bootstrap-auth-user.ts. Se corre a demanda como
-# tarea one-off (Coolify / docker run), NO forma parte del startup del stack.
-# Requiere AUTH_USER, AUTH_PASSWORD y DATABASE_URL apuntando a la DB destino.
-# Idempotente: bootstrapAuthUser hace upsert por email.
-FROM builder AS bootstrapper
-WORKDIR /app/apps/web
-CMD ["pnpm", "auth:bootstrap"]
 
 # ---------- dev (bind mount + hot reload) ----------
 FROM base AS dev

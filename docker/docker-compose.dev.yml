@@ -37,6 +37,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      auth-bootstrap:
+        condition: service_completed_successfully
     healthcheck:
       test:
         - CMD
@@ -47,6 +49,23 @@ services:
       timeout: 5s
       retries: 5
       start_period: 60s
+
+  auth-bootstrap:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+      target: bootstrapper
+    image: mediasswint/auth-bootstrap:dev
+    container_name: mediasswint-auth-bootstrap-dev
+    restart: "no"
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://mediass:mediass@postgres:5432/mediass
+      AUTH_USER: ${AUTH_USER:?AUTH_USER is required}
+      AUTH_PASSWORD: ${AUTH_PASSWORD:?AUTH_PASSWORD is required}
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   postgres:
     image: postgres:18-alpine
