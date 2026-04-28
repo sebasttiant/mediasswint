@@ -15,6 +15,8 @@ export type CreatePatientInput = {
   notes: string | null;
 };
 
+export type UpdatePatientInput = CreatePatientInput;
+
 export type ListPatientsQuery = {
   q: string | null;
   limit: number;
@@ -25,6 +27,15 @@ const MAX_SHORT_TEXT = 60;
 const MAX_NOTES_LENGTH = 1000;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
+const EDITABLE_PATIENT_FIELDS = new Set([
+  "fullName",
+  "documentType",
+  "documentNumber",
+  "birthDate",
+  "phone",
+  "email",
+  "notes",
+]);
 
 function asTrimmedString(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -100,13 +111,24 @@ function parseLimit(rawLimit: string | null): ValidationResult<number> {
   return { ok: true, value: parsed };
 }
 
-export function parseCreatePatientInput(body: unknown): ValidationResult<CreatePatientInput> {
+function parsePatientFormInput(
+  body: unknown,
+  options: { rejectUnknownFields: boolean },
+): ValidationResult<CreatePatientInput> {
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
     return { ok: false, errors: [{ field: "body", message: "must be a JSON object" }] };
   }
 
   const source = body as Record<string, unknown>;
   const errors: ValidationError[] = [];
+
+  if (options.rejectUnknownFields) {
+    for (const field of Object.keys(source)) {
+      if (!EDITABLE_PATIENT_FIELDS.has(field)) {
+        errors.push({ field, message: "is not allowed" });
+      }
+    }
+  }
 
   const fullName = asTrimmedString(source.fullName);
   if (!fullName) {
@@ -151,6 +173,14 @@ export function parseCreatePatientInput(body: unknown): ValidationResult<CreateP
       notes,
     },
   };
+}
+
+export function parseCreatePatientInput(body: unknown): ValidationResult<CreatePatientInput> {
+  return parsePatientFormInput(body, { rejectUnknownFields: false });
+}
+
+export function parseUpdatePatientInput(body: unknown): ValidationResult<UpdatePatientInput> {
+  return parsePatientFormInput(body, { rejectUnknownFields: true });
 }
 
 export function parseListPatientsQuery(searchParams: URLSearchParams): ValidationResult<ListPatientsQuery> {

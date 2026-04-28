@@ -13,8 +13,13 @@
   display: grid;
   gap: 1rem;
   padding: clamp(0.75rem, 2.2vw, 1.25rem);
-  width: min(1200px, 100%);
+  width: 100%;
   margin: 0 auto;
+}
+
+.page > * {
+  width: min(1200px, 100%);
+  margin-inline: auto;
 }
 
 .header {
@@ -72,6 +77,19 @@
 }
 
 .logoutButton:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.detailLink {
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 7px;
+  color: white;
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 0.45rem 0.65rem;
+}
+
+.detailLink:hover {
   background: rgba(255, 255, 255, 0.12);
 }
 
@@ -175,6 +193,15 @@
 .tableWrap th {
   color: var(--text-muted);
   font-weight: 600;
+}
+
+.patientNameLink {
+  color: var(--brand);
+  font-weight: 600;
+}
+
+.patientNameLink:hover {
+  text-decoration: underline;
 }
 
 .muted {

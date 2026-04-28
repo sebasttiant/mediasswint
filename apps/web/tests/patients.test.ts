@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { Patient } from "@prisma/client";
 
-import { createPatient, getPatient, listPatients, type PatientsRepository } from "../lib/patients";
-import type { CreatePatientInput } from "../lib/patients-input";
+import { createPatient, getPatient, listPatients, updatePatient, type PatientsRepository } from "../lib/patients";
+import type { CreatePatientInput, UpdatePatientInput } from "../lib/patients-input";
 
 function createPatientFixture(overrides: Partial<Patient> = {}): Patient {
   return {
@@ -26,6 +26,7 @@ function createRepository(overrides: Partial<PatientsRepository> = {}): Patients
     create: async () => createPatientFixture(),
     list: async () => [createPatientFixture()],
     getById: async () => createPatientFixture(),
+    update: async () => createPatientFixture({ fullName: "Updated Patient" }),
     ...overrides,
   };
 }
@@ -34,6 +35,16 @@ const createInput: CreatePatientInput = {
   fullName: "Ada Lovelace",
   documentType: "DNI",
   documentNumber: "123",
+  birthDate: null,
+  phone: null,
+  email: null,
+  notes: null,
+};
+
+const updateInput: UpdatePatientInput = {
+  fullName: "Updated Patient",
+  documentType: "DNI",
+  documentNumber: "999",
   birthDate: null,
   phone: null,
   email: null,
@@ -86,5 +97,67 @@ describe("getPatient", () => {
 
     const result = await getPatient("pat_missing", repository);
     assert.deepEqual(result, { ok: false, error: "NOT_FOUND" });
+  });
+});
+
+describe("updatePatient", () => {
+  it("returns updated patient for active STAFF full-form data", async () => {
+    const repository = createRepository({
+      update: async (id, input) => createPatientFixture({ id, fullName: input.fullName }),
+    });
+
+    const result = await updatePatient("pat_1", updateInput, repository);
+
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+
+    assert.equal(result.value.id, "pat_1");
+    assert.equal(result.value.fullName, "Updated Patient");
+  });
+
+  it("maps a null repository update result to not found", async () => {
+    const repository = createRepository({
+      update: async () => null,
+    });
+
+    const result = await updatePatient("pat_missing", updateInput, repository);
+
+    assert.deepEqual(result, { ok: false, error: "NOT_FOUND" });
+  });
+
+  it("maps prisma P2025 to not found", async () => {
+    const repository = createRepository({
+      update: async () => {
+        throw { code: "P2025" };
+      },
+    });
+
+    const result = await updatePatient("pat_missing", updateInput, repository);
+
+    assert.deepEqual(result, { ok: false, error: "NOT_FOUND" });
+  });
+
+  it("maps prisma P2002 to conflict", async () => {
+    const repository = createRepository({
+      update: async () => {
+        throw { code: "P2002" };
+      },
+    });
+
+    const result = await updatePatient("pat_1", updateInput, repository);
+
+    assert.deepEqual(result, { ok: false, error: "CONFLICT" });
+  });
+
+  it("maps unknown repository failures to unknown", async () => {
+    const repository = createRepository({
+      update: async () => {
+        throw new Error("database unavailable");
+      },
+    });
+
+    const result = await updatePatient("pat_1", updateInput, repository);
+
+    assert.deepEqual(result, { ok: false, error: "UNKNOWN" });
   });
 });

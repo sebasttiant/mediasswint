@@ -1,6 +1,6 @@
 import type { Patient } from "@prisma/client";
 
-import type { CreatePatientInput, ListPatientsQuery } from "@/lib/patients-input";
+import type { CreatePatientInput, ListPatientsQuery, UpdatePatientInput } from "@/lib/patients-input";
 import { getPrisma } from "@/lib/prisma";
 
 type ServiceErrorCode = "CONFLICT" | "NOT_FOUND" | "UNKNOWN";
@@ -11,6 +11,7 @@ export type PatientsRepository = {
   create(input: CreatePatientInput): Promise<Patient>;
   list(query: ListPatientsQuery): Promise<Patient[]>;
   getById(id: string): Promise<Patient | null>;
+  update(id: string, input: UpdatePatientInput): Promise<Patient | null>;
 };
 
 function isUniqueViolation(error: unknown): boolean {
@@ -19,6 +20,18 @@ function isUniqueViolation(error: unknown): boolean {
   }
 
   return (error as { code?: unknown }).code === "P2002";
+}
+
+function isRecordWithCode(error: unknown, code: string): boolean {
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return false;
+  }
+
+  return (error as { code?: unknown }).code === code;
+}
+
+function isMissingRecord(error: unknown): boolean {
+  return isRecordWithCode(error, "P2025");
 }
 
 const defaultRepository: PatientsRepository = {
@@ -70,6 +83,23 @@ const defaultRepository: PatientsRepository = {
 
     return prisma.patient.findUnique({ where: { id } });
   },
+
+  async update(id, input) {
+    const prisma = getPrisma();
+
+    return prisma.patient.update({
+      where: { id },
+      data: {
+        fullName: input.fullName,
+        documentType: input.documentType,
+        documentNumber: input.documentNumber,
+        birthDate: input.birthDate,
+        phone: input.phone,
+        email: input.email,
+        notes: input.notes,
+      },
+    });
+  },
 };
 
 export async function createPatient(
@@ -114,6 +144,32 @@ export async function getPatient(
     return { ok: true, value: patient };
   } catch (error) {
     console.error("[patients:get]", error);
+    return { ok: false, error: "UNKNOWN" };
+  }
+}
+
+export async function updatePatient(
+  id: string,
+  input: UpdatePatientInput,
+  repository: PatientsRepository = defaultRepository,
+): Promise<ServiceResult<Patient>> {
+  try {
+    const patient = await repository.update(id, input);
+    if (!patient) {
+      return { ok: false, error: "NOT_FOUND" };
+    }
+
+    return { ok: true, value: patient };
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return { ok: false, error: "CONFLICT" };
+    }
+
+    if (isMissingRecord(error)) {
+      return { ok: false, error: "NOT_FOUND" };
+    }
+
+    console.error("[patients:update]", error);
     return { ok: false, error: "UNKNOWN" };
   }
 }

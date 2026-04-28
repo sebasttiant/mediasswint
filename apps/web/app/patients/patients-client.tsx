@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import styles from "./page.module.css";
+import { buildPatientDetailHref } from "./[id]/patient-detail-helpers";
 
 type Patient = {
   id: string;
@@ -247,7 +248,11 @@ export default function PatientsClient() {
               <tbody>
                 {patients.map((patient) => (
                   <tr key={patient.id}>
-                    <td data-label="Nombre">{patient.fullName}</td>
+                    <td data-label="Nombre">
+                      <a className={styles.patientNameLink} href={buildPatientDetailHref(patient.id)}>
+                        {patient.fullName}
+                      </a>
+                    </td>
                     <td data-label="Documento">{formatDocument(patient)}</td>
                     <td data-label="Alta">{new Date(patient.createdAt).toLocaleDateString()}</td>
                   </tr>
