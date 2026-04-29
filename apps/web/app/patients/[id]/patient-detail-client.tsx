@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import styles from "../page.module.css";
@@ -65,9 +66,9 @@ export default function PatientDetailClient({ initialPatient }: { initialPatient
           <h1>Editar paciente</h1>
           <p className={styles.subtitle}>{initialPatient.fullName}</p>
         </div>
-        <a className={styles.detailLink} href="/patients">
+        <Link className={styles.detailLink} href="/patients">
           Volver al listado
-        </a>
+        </Link>
       </header>
 
       <section className={styles.card}>
