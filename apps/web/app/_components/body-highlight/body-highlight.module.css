@@ -1,0 +1,24 @@
+.svg {
+  width: 100%;
+  max-width: 320px;
+  height: auto;
+  display: block;
+}
+
+.outline {
+  fill: none;
+  stroke: #c4c8d4;
+  stroke-width: 1.5;
+}
+
+.zone {
+  fill: #e7eaf2;
+  stroke: #c4c8d4;
+  stroke-width: 0.5;
+  transition: fill 120ms ease;
+}
+
+.zone[data-active="true"] {
+  fill: #2563eb;
+  stroke: #1e40af;
+}
