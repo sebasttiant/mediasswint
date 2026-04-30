@@ -7,7 +7,7 @@
     "node": ">=24.15.0 <25",
     "pnpm": ">=10.0.0"
   },
-  "packageManager": "pnpm@10.33.1",
+  "packageManager": "pnpm@10.33.2",
   "scripts": {
     "lint": "pnpm --filter @mediasswint/web lint",
     "typecheck": "pnpm --filter @mediasswint/web typecheck",
@@ -23,6 +23,10 @@
     "infra:dev:ps": "docker compose -f docker/docker-compose.dev.yml ps"
   },
   "pnpm": {
+    "overrides": {
+      "@hono/node-server": ">=1.19.13",
+      "postcss": ">=8.5.10"
+    },
     "onlyBuiltDependencies": [
       "@prisma/engines",
       "prisma",
