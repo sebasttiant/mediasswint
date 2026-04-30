@@ -11,6 +11,24 @@ export type PatientDetail = {
   updatedAt: string | Date;
 };
 
+export type PatientMeasurementSummary = {
+  id: string;
+  status: string;
+  measuredAt: string;
+  garmentType: string | null;
+  compressionClass: string | null;
+  diagnosis: string | null;
+};
+
+export type PatientTimelineItem = {
+  id: string;
+  type: string;
+  occurredAt: string;
+  title: string;
+  description: string | null;
+  measurementId: string | null;
+};
+
 export type PatientFormState = {
   fullName: string;
   documentType: string;
@@ -28,6 +46,14 @@ type NavigationRouter = {
 
 export function buildPatientDetailHref(id: string): string {
   return `/patients/${encodeURIComponent(id)}`;
+}
+
+export function buildNewMeasurementHref(patientId: string): string {
+  return `/patients/${encodeURIComponent(patientId)}/measurements/new`;
+}
+
+export function buildMeasurementDetailHref(patientId: string, sessionId: string): string {
+  return `/patients/${encodeURIComponent(patientId)}/measurements/${encodeURIComponent(sessionId)}`;
 }
 
 export function executePatientSaveNavigation(router: NavigationRouter): void {

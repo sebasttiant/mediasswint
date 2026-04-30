@@ -4,15 +4,37 @@ import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import { PATIENT_TIMELINE_EVENT_TYPE } from "@/lib/patient-timeline";
+
 import styles from "../page.module.css";
 import {
+  buildMeasurementDetailHref,
+  buildNewMeasurementHref,
   executePatientSaveNavigation,
   patientToFormState,
   type PatientDetail,
   type PatientFormState,
+  type PatientMeasurementSummary,
+  type PatientTimelineItem,
 } from "./patient-detail-helpers";
 
-export default function PatientDetailClient({ initialPatient }: { initialPatient: PatientDetail }) {
+function getTimelineBadgeLabel(type: string): string {
+  if (type === PATIENT_TIMELINE_EVENT_TYPE.MEASUREMENT_CREATED) return "Medición creada";
+  if (type === PATIENT_TIMELINE_EVENT_TYPE.MEASUREMENT_COMPLETED) return "Medición finalizada";
+  if (type === PATIENT_TIMELINE_EVENT_TYPE.PATIENT_CREATED) return "Paciente creado";
+  if (type === PATIENT_TIMELINE_EVENT_TYPE.PATIENT_UPDATED) return "Paciente actualizado";
+  return "Evento clínico";
+}
+
+export default function PatientDetailClient({
+  initialPatient,
+  recentMeasurements,
+  timeline,
+}: {
+  initialPatient: PatientDetail;
+  recentMeasurements: PatientMeasurementSummary[];
+  timeline: PatientTimelineItem[];
+}) {
   const router = useRouter();
   const [form, setForm] = useState<PatientFormState>(() => patientToFormState(initialPatient));
   const [saving, setSaving] = useState(false);
@@ -131,6 +153,96 @@ export default function PatientDetailClient({ initialPatient }: { initialPatient
             {saving ? "Guardando..." : "Guardar cambios"}
           </button>
         </form>
+      </section>
+
+      <section className={styles.card}>
+        <div className={styles.tableHeader}>
+          <div>
+            <h2>Historia clínica</h2>
+            <p className={styles.muted}>Timeline cronológico de eventos del paciente</p>
+          </div>
+        </div>
+
+        {timeline.length > 0 ? (
+          <ol className={styles.timelineList}>
+            {timeline.map((event) => (
+              <li key={event.id} className={styles.timelineItem}>
+                <div className={styles.timelineMarker} aria-hidden="true" />
+                <div className={styles.timelineContent}>
+                  <div className={styles.timelineHeader}>
+                    <span className={styles.timelineBadge}>{getTimelineBadgeLabel(event.type)}</span>
+                    <time dateTime={event.occurredAt} className={styles.muted}>
+                      {new Date(event.occurredAt).toLocaleString("es-AR")}
+                    </time>
+                  </div>
+                  <h3>{event.title}</h3>
+                  {event.description ? <p className={styles.muted}>{event.description}</p> : null}
+                  {event.measurementId ? (
+                    <Link
+                      className={styles.patientNameLink}
+                      href={buildMeasurementDetailHref(initialPatient.id, event.measurementId)}
+                    >
+                      Ver detalle de medición
+                    </Link>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className={styles.muted}>Todavía no hay eventos clínicos para mostrar.</p>
+        )}
+      </section>
+
+      <section className={styles.card}>
+        <div className={styles.tableHeader}>
+          <div>
+            <h2>Medidas</h2>
+            <p className={styles.muted}>Mediciones digitales recientes del paciente</p>
+          </div>
+          <Link className={styles.primaryButton} href={buildNewMeasurementHref(initialPatient.id)}>
+            Nueva medición
+          </Link>
+        </div>
+        <div className={styles.tableWrap}>
+          <table>
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Estado</th>
+                <th>Prenda</th>
+                <th>Clase</th>
+                <th>Diagnóstico</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recentMeasurements.length > 0 ? (
+                recentMeasurements.map((measurement) => (
+                  <tr key={measurement.id}>
+                    <td data-label="Fecha">
+                      <Link
+                        className={styles.patientNameLink}
+                        href={buildMeasurementDetailHref(initialPatient.id, measurement.id)}
+                      >
+                        {new Date(measurement.measuredAt).toLocaleString("es-AR")}
+                      </Link>
+                    </td>
+                    <td data-label="Estado">{measurement.status}</td>
+                    <td data-label="Prenda">{measurement.garmentType ?? "—"}</td>
+                    <td data-label="Clase">{measurement.compressionClass ?? "—"}</td>
+                    <td data-label="Diagnóstico">{measurement.diagnosis ?? "—"}</td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={5} className={styles.muted}>
+                    Todavía no hay mediciones cargadas.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>
     </main>
   );

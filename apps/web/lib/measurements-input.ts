@@ -10,14 +10,20 @@ type ValidationError = {
 
 type ValidationResult<T> = { ok: true; value: T } | { ok: false; errors: ValidationError[] };
 
-export type CompressionMeasurementsInput = Record<CompressionMeasurementKey, number | null>;
+export type ProductFlags = Record<string, boolean>;
 
 export type CreateMeasurementInput = {
   measuredAt: Date;
   notes: string | null;
   garmentType: string | null;
   compressionClass: string | null;
-  measurements: CompressionMeasurementsInput;
+  diagnosis: string | null;
+  productFlags: ProductFlags | null;
+};
+
+export type UpdateMeasurementValuesInput = {
+  valuesByKey: Partial<Record<CompressionMeasurementKey, number | null>>;
+  complete: boolean;
 };
 
 export type ListMeasurementsQuery = {
@@ -26,19 +32,18 @@ export type ListMeasurementsQuery = {
 
 const MAX_NOTES_LENGTH = 1000;
 const MAX_SHORT_TEXT_LENGTH = 100;
+const MAX_DIAGNOSIS_LENGTH = 500;
+const MAX_PRODUCT_FLAG_KEY_LENGTH = 80;
+const MAX_PRODUCT_FLAG_KEYS = 64;
 const FUTURE_TOLERANCE_MS = 5 * 60 * 1000;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 const ISO_INSTANT_REGEX = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
 
-const MEASUREMENT_KEYS = COMPRESSION_MEASUREMENTS.map((measurement) => measurement.key);
-const MEASUREMENT_RANGES = new Map(
-  COMPRESSION_MEASUREMENTS.map((measurement) => [measurement.key, { min: measurement.min, max: measurement.max }]),
+const KNOWN_KEYS = new Set<string>(COMPRESSION_MEASUREMENTS.map((m) => m.key));
+const KEY_RANGES = new Map(
+  COMPRESSION_MEASUREMENTS.map((m) => [m.key, { min: m.min, max: m.max }] as const),
 );
-
-function createEmptyMeasurements(): CompressionMeasurementsInput {
-  return Object.fromEntries(MEASUREMENT_KEYS.map((key) => [key, null])) as CompressionMeasurementsInput;
-}
 
 function parseStrictIsoInstant(value: unknown, errors: ValidationError[]): Date | null {
   if (typeof value !== "string" || value.trim() === "") {
@@ -98,47 +103,33 @@ function parseNullableText(
   return trimmed;
 }
 
-function parseMeasurementNumber(
-  raw: unknown,
-  key: CompressionMeasurementKey,
-  errors: ValidationError[],
-): number | null {
-  if (raw === undefined || raw === null) return null;
-
-  if (typeof raw !== "number" || !Number.isFinite(raw)) {
-    errors.push({ field: `measurements.${key}`, message: "must be a finite number" });
-    return null;
-  }
-
-  const range = MEASUREMENT_RANGES.get(key);
-  if (range && (raw < range.min || raw > range.max)) {
-    errors.push({
-      field: `measurements.${key}`,
-      message: `must be between ${range.min} and ${range.max}`,
-    });
-    return null;
-  }
-
-  return raw;
-}
-
-function parseMeasurements(value: unknown, errors: ValidationError[]): CompressionMeasurementsInput {
-  const empty = createEmptyMeasurements();
-
-  if (value === undefined || value === null) return empty;
+function parseProductFlags(value: unknown, errors: ValidationError[]): ProductFlags | null {
+  if (value === undefined || value === null) return null;
 
   if (typeof value !== "object" || Array.isArray(value)) {
-    errors.push({ field: "measurements", message: "must be an object" });
-    return empty;
+    errors.push({ field: "productFlags", message: "must be an object" });
+    return null;
   }
 
   const source = value as Record<string, unknown>;
-  const result = { ...empty };
-
-  for (const key of MEASUREMENT_KEYS) {
-    result[key] = parseMeasurementNumber(source[key], key, errors);
+  const entries = Object.entries(source);
+  if (entries.length > MAX_PRODUCT_FLAG_KEYS) {
+    errors.push({ field: "productFlags", message: `must have at most ${MAX_PRODUCT_FLAG_KEYS} keys` });
+    return null;
   }
 
+  const result: ProductFlags = {};
+  for (const [key, raw] of entries) {
+    if (key.length === 0 || key.length > MAX_PRODUCT_FLAG_KEY_LENGTH) {
+      errors.push({ field: `productFlags.${key}`, message: "key length out of range" });
+      return null;
+    }
+    if (typeof raw !== "boolean") {
+      errors.push({ field: `productFlags.${key}`, message: "must be a boolean" });
+      return null;
+    }
+    result[key] = raw;
+  }
   return result;
 }
 
@@ -154,7 +145,8 @@ export function parseCreateMeasurementInput(body: unknown): ValidationResult<Cre
   const notes = parseNullableText(source.notes, "notes", MAX_NOTES_LENGTH, errors);
   const garmentType = parseNullableText(source.garmentType, "garmentType", MAX_SHORT_TEXT_LENGTH, errors);
   const compressionClass = parseNullableText(source.compressionClass, "compressionClass", MAX_SHORT_TEXT_LENGTH, errors);
-  const measurements = parseMeasurements(source.measurements, errors);
+  const diagnosis = parseNullableText(source.diagnosis, "diagnosis", MAX_DIAGNOSIS_LENGTH, errors);
+  const productFlags = parseProductFlags(source.productFlags, errors);
 
   if (errors.length > 0 || !measuredAt) {
     return { ok: false, errors };
@@ -167,7 +159,69 @@ export function parseCreateMeasurementInput(body: unknown): ValidationResult<Cre
       notes,
       garmentType,
       compressionClass,
-      measurements,
+      diagnosis,
+      productFlags,
+    },
+  };
+}
+
+export function parseUpdateMeasurementValuesInput(
+  body: unknown,
+): ValidationResult<UpdateMeasurementValuesInput> {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return { ok: false, errors: [{ field: "body", message: "must be a JSON object" }] };
+  }
+
+  const source = body as Record<string, unknown>;
+  const errors: ValidationError[] = [];
+
+  const rawValues = source.valuesByKey;
+  if (rawValues === undefined || rawValues === null) {
+    errors.push({ field: "valuesByKey", message: "is required" });
+  } else if (typeof rawValues !== "object" || Array.isArray(rawValues)) {
+    errors.push({ field: "valuesByKey", message: "must be an object" });
+  }
+
+  const complete = source.complete;
+  if (complete !== undefined && typeof complete !== "boolean") {
+    errors.push({ field: "complete", message: "must be a boolean" });
+  }
+
+  const result: Partial<Record<CompressionMeasurementKey, number | null>> = {};
+
+  if (rawValues && typeof rawValues === "object" && !Array.isArray(rawValues)) {
+    for (const [key, raw] of Object.entries(rawValues as Record<string, unknown>)) {
+      if (!KNOWN_KEYS.has(key)) {
+        errors.push({ field: `valuesByKey.${key}`, message: "unknown measurement key" });
+        continue;
+      }
+      if (raw === null) {
+        result[key as CompressionMeasurementKey] = null;
+        continue;
+      }
+      if (typeof raw !== "number" || !Number.isFinite(raw)) {
+        errors.push({ field: `valuesByKey.${key}`, message: "must be a finite number or null" });
+        continue;
+      }
+      const range = KEY_RANGES.get(key as CompressionMeasurementKey);
+      if (range && (raw < range.min || raw > range.max)) {
+        errors.push({
+          field: `valuesByKey.${key}`,
+          message: `must be between ${range.min} and ${range.max}`,
+        });
+        continue;
+      }
+      result[key as CompressionMeasurementKey] = raw;
+    }
+  }
+
+  if (errors.length > 0) return { ok: false, errors };
+
+  return {
+    ok: true,
+    value: {
+      valuesByKey: result,
+      complete: complete === true,
     },
   };
 }

@@ -15,7 +15,8 @@
     "prisma:format": "prisma format --schema prisma/schema.prisma",
     "prisma:generate": "prisma generate --schema prisma/schema.prisma",
     "prisma:migrate:dev": "prisma migrate dev --schema prisma/schema.prisma",
-    "auth:bootstrap": "tsx scripts/bootstrap-auth-user.ts"
+    "auth:bootstrap": "tsx scripts/bootstrap-auth-user.ts",
+    "templates:seed": "tsx scripts/seed-compression-template.ts"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.0.2",

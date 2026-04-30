@@ -2,6 +2,8 @@ import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 
 import { getSessionCookieName, requireActiveUserFromRequest } from "@/lib/auth";
+import { getDefaultMeasurementsRepository, listPatientMeasurements } from "@/lib/measurements";
+import { buildPatientTimeline } from "@/lib/patient-timeline";
 import { getPatient } from "@/lib/patients";
 
 import PatientDetailClient from "./patient-detail-client";
@@ -33,5 +35,38 @@ export default async function PatientDetailPage({ params }: Params) {
     throw new Error("Unable to load patient detail");
   }
 
-  return <PatientDetailClient initialPatient={decision.patient} />;
+  const measurementsResult = await listPatientMeasurements(
+    id,
+    { limit: 5 },
+    getDefaultMeasurementsRepository(),
+  );
+  const recentMeasurements = measurementsResult.ok
+    ? measurementsResult.value.map((measurement) => ({
+        id: measurement.id,
+        status: measurement.status,
+        measuredAt: measurement.measuredAt.toISOString(),
+        garmentType: measurement.garmentType,
+        compressionClass: measurement.compressionClass,
+        diagnosis: measurement.diagnosis,
+      }))
+    : [];
+  const timeline = buildPatientTimeline(
+    decision.patient,
+    measurementsResult.ok ? measurementsResult.value : [],
+  ).map((event) => ({
+    id: event.id,
+    type: event.type,
+    occurredAt: event.occurredAt.toISOString(),
+    title: event.title,
+    description: event.description,
+    measurementId: event.measurementId,
+  }));
+
+  return (
+    <PatientDetailClient
+      initialPatient={decision.patient}
+      recentMeasurements={recentMeasurements}
+      timeline={timeline}
+    />
+  );
 }
