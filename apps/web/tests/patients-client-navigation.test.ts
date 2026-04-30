@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  buildMeasurementDetailHref,
+  buildNewMeasurementHref,
   buildPatientDetailHref,
   executePatientSaveNavigation,
   patientToFormState,
@@ -36,6 +38,14 @@ describe("patient detail client helpers", () => {
   it("builds list row/name navigation hrefs to patient detail", () => {
     assert.equal(buildPatientDetailHref("pat-123"), "/patients/pat-123");
     assert.equal(buildPatientDetailHref("pat with space"), "/patients/pat%20with%20space");
+  });
+
+  it("builds measurement navigation hrefs under the patient detail", () => {
+    assert.equal(buildNewMeasurementHref("pat-123"), "/patients/pat-123/measurements/new");
+    assert.equal(
+      buildMeasurementDetailHref("pat with space", "sess/1"),
+      "/patients/pat%20with%20space/measurements/sess%2F1",
+    );
   });
 
   it("refreshes the route cache before pushing back to patients after save", () => {

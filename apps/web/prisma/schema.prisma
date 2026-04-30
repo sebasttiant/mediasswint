@@ -96,6 +96,9 @@ model TemplateField {
   unit       String?
   isRequired Boolean            @default(false)
   sortOrder  Int                @default(0)
+  minValue   Decimal?           @db.Decimal(10, 2)
+  maxValue   Decimal?           @db.Decimal(10, 2)
+  metadata   Json?
   section    TemplateSection    @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   values     MeasurementValue[]
   createdAt  DateTime           @default(now())
@@ -106,17 +109,23 @@ model TemplateField {
 }
 
 model MeasurementSession {
-  id         String                   @id @default(cuid())
-  patientId  String
-  templateId String?
-  status     MeasurementSessionStatus @default(DRAFT)
-  measuredAt DateTime                 @default(now())
-  notes      String?
-  patient    Patient                  @relation(fields: [patientId], references: [id], onDelete: Restrict)
-  template   MeasurementTemplate?     @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  values     MeasurementValue[]
-  createdAt  DateTime                 @default(now())
-  updatedAt  DateTime                 @updatedAt
+  id               String                   @id @default(cuid())
+  patientId        String
+  templateId       String?
+  status           MeasurementSessionStatus @default(DRAFT)
+  measuredAt       DateTime                 @default(now())
+  notes            String?
+  diagnosis        String?
+  garmentType      String?
+  compressionClass String?
+  templateSnapshot Json?
+  productFlags     Json?
+  metadata         Json?
+  patient          Patient                  @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  template         MeasurementTemplate?     @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  values           MeasurementValue[]
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
 
   @@index([patientId, measuredAt])
   @@index([templateId])
