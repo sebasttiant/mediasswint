@@ -40,7 +40,7 @@ enum MeasurementSessionStatus {
 }
 
 model Patient {
-  id             String               @id @default(cuid())
+  id             String                 @id @default(cuid())
   documentType   String?
   documentNumber String?
   fullName       String
@@ -49,8 +49,9 @@ model Patient {
   email          String?
   notes          String?
   sessions       MeasurementSession[]
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
+  operations     CommercialOperation[]
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
 
   @@unique([documentType, documentNumber])
   @@index([fullName])
@@ -146,4 +147,29 @@ model MeasurementValue {
 
   @@unique([sessionId, fieldId])
   @@index([fieldId])
+}
+
+// Etapa D: Operaciones Comerciales
+
+enum CommercialOperationStatus {
+  PRESUPUESTO
+  CONFIRMADO
+  EN_PRODUCCION
+  ENTREGADO
+  CANCELADO
+}
+
+model CommercialOperation {
+  id           String                   @id @default(cuid())
+  patientId    String
+  status       CommercialOperationStatus @default(PRESUPUESTO)
+  totalAmount  Decimal?                 @db.Decimal(10, 2)
+  depositPaid  Decimal                  @default(0) @db.Decimal(10, 2)
+  garmentType  String?
+  notes        String?
+  patient      Patient                  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
+
+  @@index([patientId, createdAt(sort: Desc)])
 }
