@@ -62,11 +62,28 @@ export default async function PatientDetailPage({ params }: Params) {
     measurementId: event.measurementId,
   }));
 
+  // Dynamic import to avoid build-time DB connection
+  const { listOperations } = await import("@/lib/operations");
+  const operationsResult = await listOperations(id);
+  const operations = operationsResult.ok
+    ? operationsResult.value.map((op) => ({
+        id: op.id,
+        status: op.status,
+        totalAmount: op.totalAmount?.toString() ?? null,
+        depositPaid: op.depositPaid.toString(),
+        garmentType: op.garmentType,
+        notes: op.notes,
+        createdAt: op.createdAt.toISOString(),
+        updatedAt: op.updatedAt.toISOString(),
+      }))
+    : [];
+
   return (
     <PatientDetailClient
       initialPatient={decision.patient}
       recentMeasurements={recentMeasurements}
       timeline={timeline}
+      operations={operations}
     />
   );
 }
