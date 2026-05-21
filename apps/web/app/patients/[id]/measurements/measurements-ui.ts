@@ -20,6 +20,8 @@ export type MeasurementTableRow = {
   left: MeasurementUiField | null;
 };
 
+type MeasurementValue = string | number | null | undefined;
+
 function getStringMetadata(field: TemplateSnapshotField | MeasurementUiField, key: string): string | null {
   const value = field.metadata[key];
   return typeof value === "string" ? value : null;
@@ -42,10 +44,47 @@ function toUiField(field: TemplateSnapshotField, valuesByKey: Record<string, num
   };
 }
 
+function isFilledMeasurementValue(value: MeasurementValue): boolean {
+  if (typeof value === "string") return value.trim().length > 0;
+  if (typeof value === "number") return Number.isFinite(value);
+  return false;
+}
+
 export function getActiveZoneIdForField(field: MeasurementUiField | null): AnatomyZoneId | null {
   if (!field) return null;
   const anatomyZone = getStringMetadata(field, "anatomyZone");
   return anatomyZone as AnatomyZoneId | null;
+}
+
+export function getActiveZoneLabel(field: MeasurementUiField | null): string | null {
+  if (!field) return null;
+  const anatomyZone = getActiveZoneIdForField(field);
+  if (!anatomyZone) return field.label;
+  const group = getStringMetadata(field, "group");
+  const side = getStringMetadata(field, "side");
+  const point = field.metadata.point;
+  if (!group || !side || typeof point !== "number") return field.label;
+  const sideLabel = side === "right" ? "Derecho/a" : "Izquierdo/a";
+  const groupLabel = group === "legs" ? "Pierna" : "Brazo";
+  return `${groupLabel} ${sideLabel} · Punto ${point}`;
+}
+
+export function getFilledZoneIdsFromValues(
+  snapshot: TemplateSnapshot,
+  valuesByKey: Record<string, MeasurementValue>,
+): ReadonlySet<AnatomyZoneId> {
+  const zoneIds = new Set<AnatomyZoneId>();
+
+  for (const section of snapshot.sections) {
+    for (const field of section.fields) {
+      if (!isFilledMeasurementValue(valuesByKey[field.key])) continue;
+
+      const anatomyZone = getStringMetadata(field, "anatomyZone");
+      if (anatomyZone) zoneIds.add(anatomyZone as AnatomyZoneId);
+    }
+  }
+
+  return zoneIds;
 }
 
 export function buildMeasurementTableRows(

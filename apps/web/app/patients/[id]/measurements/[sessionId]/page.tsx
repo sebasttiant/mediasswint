@@ -9,7 +9,7 @@ import { getPatient } from "@/lib/patients";
 
 import styles from "../../../page.module.css";
 import { resolvePatientDetailLoad } from "../../patient-detail-loading";
-import { buildMeasurementTableRows, type MeasurementUiGroup } from "../measurements-ui";
+import { buildMeasurementTableRows, getFilledZoneIdsFromValues, type MeasurementUiGroup } from "../measurements-ui";
 
 type Params = {
   params: Promise<{ id: string; sessionId: string }>;
@@ -83,6 +83,7 @@ export default async function MeasurementDetailPage({ params }: Params) {
 
   const measurement = measurementResult.value;
   const snapshot = measurement.templateSnapshot;
+  const filledZoneIds = snapshot ? getFilledZoneIdsFromValues(snapshot, measurement.values) : undefined;
 
   return (
     <main className={styles.page}>
@@ -112,8 +113,8 @@ export default async function MeasurementDetailPage({ params }: Params) {
         <section className={styles.card}>
           <div className={styles.measurementWorkspace}>
             <aside className={styles.bodyHighlightRail} aria-label="Zonas anatómicas">
-              <BodyHighlight view="legs" activeZoneId={null} />
-              <BodyHighlight view="arms" activeZoneId={null} />
+              <BodyHighlight view="legs" activeZoneId={null} filledZoneIds={filledZoneIds} />
+              <BodyHighlight view="arms" activeZoneId={null} filledZoneIds={filledZoneIds} />
             </aside>
             <div className={styles.measurementTables}>
               <ReadOnlyMeasurementTable group="legs" snapshot={snapshot} values={measurement.values} />

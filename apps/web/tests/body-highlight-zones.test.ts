@@ -5,7 +5,9 @@ import {
   BODY_HIGHLIGHT_OUTLINES,
   BODY_HIGHLIGHT_VIEWBOX,
   BODY_HIGHLIGHT_ZONES,
+  findMeasurementKeyForZone,
   findViewForZone,
+  getZoneLabel,
   getZonesForView,
   hasZone,
 } from "../app/_components/body-highlight/body-highlight-zones";
@@ -107,6 +109,40 @@ describe("findViewForZone", () => {
   it("returns null for an unknown zoneId", () => {
     assert.equal(findViewForZone("not-a-zone"), null);
     assert.equal(findViewForZone(""), null);
+  });
+});
+
+describe("getZoneLabel", () => {
+  it("returns the label for a known leg zone", () => {
+    const label = getZoneLabel("legs.right.7");
+    assert.equal(label, "Pierna derecha punto 7");
+  });
+
+  it("returns the label for a known arm zone", () => {
+    const label = getZoneLabel("arms.left.19");
+    assert.equal(label, "Brazo izquierdo punto 19");
+  });
+
+  it("returns empty string for an unknown zoneId", () => {
+    assert.equal(getZoneLabel("torso.center.1" as never), "");
+    assert.equal(getZoneLabel("" as never), "");
+  });
+});
+
+describe("findMeasurementKeyForZone", () => {
+  it("maps a known leg zoneId to its measurement key", () => {
+    assert.equal(findMeasurementKeyForZone("legs.right.7"), "legRight7");
+    assert.equal(findMeasurementKeyForZone("legs.left.28"), "legLeft28");
+  });
+
+  it("maps a known arm zoneId to its measurement key", () => {
+    assert.equal(findMeasurementKeyForZone("arms.right.1"), "armRight1");
+    assert.equal(findMeasurementKeyForZone("arms.left.19"), "armLeft19");
+  });
+
+  it("returns null for an unknown zoneId", () => {
+    assert.equal(findMeasurementKeyForZone("torso.center.1" as never), null);
+    assert.equal(findMeasurementKeyForZone("" as never), null);
   });
 });
 
