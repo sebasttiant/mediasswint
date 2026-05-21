@@ -5,7 +5,7 @@
 # ------------------------------------------------------------
 
 ARG NODE_IMAGE=node:24.15.0-trixie-slim
-ARG PNPM_VERSION=10.33.2
+ARG PNPM_VERSION=11.1.3
 
 # ---------- base ----------
 FROM ${NODE_IMAGE} AS base
