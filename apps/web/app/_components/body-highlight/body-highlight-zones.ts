@@ -79,3 +79,11 @@ export function hasZone(zoneId: string): boolean {
 export function findViewForZone(zoneId: string): BodyView | null {
   return BODY_HIGHLIGHT_ZONES.find((zone) => zone.zoneId === zoneId)?.view ?? null;
 }
+
+export function getZoneLabel(zoneId: AnatomyZoneId): string {
+  return COMPRESSION_MEASUREMENTS.find((m) => m.anatomyZone === zoneId)?.label ?? "";
+}
+
+export function findMeasurementKeyForZone(zoneId: AnatomyZoneId): string | null {
+  return COMPRESSION_MEASUREMENTS.find((m) => m.anatomyZone === zoneId)?.key ?? null;
+}

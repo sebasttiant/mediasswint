@@ -15,7 +15,14 @@
   fill: #e7eaf2;
   stroke: #c4c8d4;
   stroke-width: 0.5;
-  transition: fill 120ms ease;
+  transition:
+    fill 120ms ease,
+    stroke 120ms ease;
+}
+
+.zone[data-filled="true"] {
+  fill: #bfdbfe;
+  stroke: #60a5fa;
 }
 
 .zone[data-active="true"] {

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -12,6 +12,8 @@ import styles from "../../../page.module.css";
 import {
   buildMeasurementTableRows,
   getActiveZoneIdForField,
+  getActiveZoneLabel,
+  getFilledZoneIdsFromValues,
   type MeasurementUiField,
   type MeasurementUiGroup,
 } from "../measurements-ui";
@@ -134,6 +136,9 @@ function MeasurementInputCell({
             onValueChange(field.key, event.target.value);
           }}
           aria-label={`${field.label} (${field.unit})`}
+          data-anatomy-zone={
+            getActiveZoneIdForField(field) ?? undefined
+          }
         />
       </label>
     </td>
@@ -149,8 +154,12 @@ export default function NewMeasurementClient({ patientId, patientName }: NewMeas
   const [notes, setNotes] = useState("");
   const [draft, setDraft] = useState<DraftState | null>(null);
   const [activeZoneId, setActiveZoneId] = useState<AnatomyZoneId | null>(null);
+  const [activeField, setActiveField] = useState<MeasurementUiField | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const filledZoneIds = draft
+    ? getFilledZoneIdsFromValues(draft.templateSnapshot, draft.valuesByKey)
+    : undefined;
 
   async function createDraft(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -270,21 +279,48 @@ export default function NewMeasurementClient({ patientId, patientName }: NewMeas
         ) : (
           <div className={styles.measurementWorkspace}>
             <aside className={styles.bodyHighlightRail} aria-label="Zonas anatómicas">
-              <BodyHighlight view="legs" activeZoneId={activeZoneId} />
-              <BodyHighlight view="arms" activeZoneId={activeZoneId} />
+              <p className={styles.zoneLabel}>
+                {activeField
+                  ? getActiveZoneLabel(activeField) ?? activeField.label
+                  : "Seleccioná un punto para empezar"}
+              </p>
+              <BodyHighlight
+                view="legs"
+                activeZoneId={activeZoneId}
+                filledZoneIds={filledZoneIds}
+                onZoneClick={(zoneId) => {
+                  const input = document.querySelector<HTMLElement>(`[data-anatomy-zone="${zoneId}"]`);
+                  input?.focus();
+                }}
+              />
+              <BodyHighlight
+                view="arms"
+                activeZoneId={activeZoneId}
+                filledZoneIds={filledZoneIds}
+                onZoneClick={(zoneId) => {
+                  const input = document.querySelector<HTMLElement>(`[data-anatomy-zone="${zoneId}"]`);
+                  input?.focus();
+                }}
+              />
             </aside>
             <div className={styles.measurementTables}>
               <GroupTable
                 group="legs"
                 draft={draft}
                 onValueChange={updateValue}
-                onActiveFieldChange={(field) => setActiveZoneId(getActiveZoneIdForField(field))}
+                onActiveFieldChange={(field) => {
+                  setActiveField(field);
+                  setActiveZoneId(getActiveZoneIdForField(field));
+                }}
               />
               <GroupTable
                 group="arms"
                 draft={draft}
                 onValueChange={updateValue}
-                onActiveFieldChange={(field) => setActiveZoneId(getActiveZoneIdForField(field))}
+                onActiveFieldChange={(field) => {
+                  setActiveField(field);
+                  setActiveZoneId(getActiveZoneIdForField(field));
+                }}
               />
               <div className={styles.actionsRow}>
                 <button type="button" disabled={saving} className={styles.ghostButton} onClick={() => saveValues(false)}>

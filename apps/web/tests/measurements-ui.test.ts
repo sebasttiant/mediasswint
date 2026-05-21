@@ -6,6 +6,8 @@ import type { TemplateSnapshot } from "../lib/measurements";
 import {
   buildMeasurementTableRows,
   getActiveZoneIdForField,
+  getActiveZoneLabel,
+  getFilledZoneIdsFromValues,
   type MeasurementUiField,
 } from "../app/patients/[id]/measurements/measurements-ui";
 
@@ -84,5 +86,83 @@ describe("measurement UI helpers", () => {
     assert.equal(getActiveZoneIdForField(field), "legs.right.7");
     assert.equal(getActiveZoneIdForField(null), null);
     assert.equal(getActiveZoneIdForField({ ...field, metadata: {} }), null);
+  });
+
+  it("getActiveZoneLabel returns a human label from field metadata", () => {
+    const legField: MeasurementUiField = {
+      key: "legRight7",
+      label: "Pierna derecha punto 7",
+      unit: "cm",
+      minValue: 0.1,
+      maxValue: 300,
+      metadata: { anatomyZone: "legs.right.7", group: "legs", side: "right", point: 7 },
+      value: null,
+    };
+
+    assert.equal(getActiveZoneLabel(legField), "Pierna Derecho/a · Punto 7");
+
+    const armField: MeasurementUiField = {
+      key: "armLeft19",
+      label: "Brazo izquierdo punto 19",
+      unit: "cm",
+      minValue: 0.1,
+      maxValue: 300,
+      metadata: { anatomyZone: "arms.left.19", group: "arms", side: "left", point: 19 },
+      value: null,
+    };
+
+    assert.equal(getActiveZoneLabel(armField), "Brazo Izquierdo/a · Punto 19");
+  });
+
+  it("getActiveZoneLabel returns null for null field", () => {
+    assert.equal(getActiveZoneLabel(null), null);
+  });
+
+  it("getActiveZoneLabel falls back to field.label when metadata is incomplete", () => {
+    const field: MeasurementUiField = {
+      key: "legRight7",
+      label: "Pierna derecha punto 7",
+      unit: "cm",
+      minValue: 0.1,
+      maxValue: 300,
+      metadata: {},
+      value: null,
+    };
+
+    assert.equal(getActiveZoneLabel(field), "Pierna derecha punto 7");
+  });
+
+  it("maps entered draft values to filled anatomy zones", () => {
+    const filledZoneIds = getFilledZoneIdsFromValues(buildSnapshot(), {
+      legRight1: "24.5",
+      legLeft1: "   ",
+      armLeft19: "31",
+    });
+
+    assert.equal(filledZoneIds.has("legs.right.1"), true);
+    assert.equal(filledZoneIds.has("arms.left.19"), true);
+    assert.equal(filledZoneIds.has("legs.left.1"), false);
+    assert.equal(filledZoneIds.size, 2);
+  });
+
+  it("maps saved numeric values to filled anatomy zones", () => {
+    const filledZoneIds = getFilledZoneIdsFromValues(buildSnapshot(), {
+      legRight2: 25,
+      legLeft2: null,
+      armRight3: 0,
+    });
+
+    assert.equal(filledZoneIds.has("legs.right.2"), true);
+    assert.equal(filledZoneIds.has("arms.right.3"), true);
+    assert.equal(filledZoneIds.has("legs.left.2"), false);
+    assert.equal(filledZoneIds.size, 2);
+  });
+
+  it("ignores values for unknown keys", () => {
+    const filledZoneIds = getFilledZoneIdsFromValues(buildSnapshot(), {
+      unknown: "123",
+    });
+
+    assert.equal(filledZoneIds.size, 0);
   });
 });
