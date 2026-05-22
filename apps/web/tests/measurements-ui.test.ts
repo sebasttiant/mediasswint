@@ -8,6 +8,7 @@ import {
   getActiveZoneIdForField,
   getActiveZoneLabel,
   getFilledZoneIdsFromValues,
+  measurementSnapshotRequiresFaceGuide,
   type MeasurementUiField,
 } from "../app/patients/[id]/measurements/measurements-ui";
 
@@ -164,5 +165,35 @@ describe("measurement UI helpers", () => {
     });
 
     assert.equal(filledZoneIds.size, 0);
+  });
+
+  it("does not require a face guide for the default limb template", () => {
+    assert.equal(measurementSnapshotRequiresFaceGuide(buildSnapshot()), false);
+  });
+
+  it("requires a face guide when section, field, or metadata references head/face", () => {
+    const snapshot = buildSnapshot();
+    const firstSection = snapshot.sections[0]!;
+    const firstField = firstSection.fields[0]!;
+
+    const faceSnapshot: TemplateSnapshot = {
+      ...snapshot,
+      sections: [
+        {
+          ...firstSection,
+          title: "Rostro",
+          fields: [
+            {
+              ...firstField,
+              key: "headFaceWidth",
+              label: "Ancho de cara",
+              metadata: { ...firstField.metadata, placeholder: "head-face" },
+            },
+          ],
+        },
+      ],
+    };
+
+    assert.equal(measurementSnapshotRequiresFaceGuide(faceSnapshot), true);
   });
 });
