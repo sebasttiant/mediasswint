@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { getSessionCookieName, requireActiveUserFromRequest } from "@/lib/auth";
 
+import { AppShell } from "../_components/app-shell/app-shell";
 import { resolveAdminAccess } from "./admin-access";
 
 function requestFromSessionCookie(sessionCookie: string | undefined) {
@@ -21,9 +22,14 @@ export default async function AdminPage() {
   }
 
   return (
-    <main>
-      <h1>Administración</h1>
+    <AppShell
+      currentPath="/admin"
+      description="Panel administrativo disponible para usuarios ADMIN."
+      kicker="MEDIASSWINT · Administración"
+      title="Administración"
+      userLabel={user?.fullName ?? undefined}
+    >
       <p>Panel administrativo disponible para usuarios ADMIN.</p>
-    </main>
+    </AppShell>
   );
 }

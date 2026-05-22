@@ -40,6 +40,7 @@
   margin-top: 0.2rem;
   color: #d1d5db;
   max-width: 48ch;
+  line-height: 1.5;
 }
 
 .bullets {
@@ -109,6 +110,7 @@
   gap: 0.35rem;
   color: #374151;
   font-size: 0.9rem;
+  font-weight: 600;
 }
 
 .form input {
@@ -116,6 +118,14 @@
   border-radius: 8px;
   padding: 0.75rem 0.8rem;
   font: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  min-height: 44px;
+}
+
+.form input:focus {
+  outline: none;
+  border-color: #b30303;
+  box-shadow: 0 0 0 3px rgba(179, 3, 3, 0.1);
 }
 
 .form button {
@@ -128,10 +138,13 @@
   font: inherit;
   font-weight: 600;
   cursor: pointer;
+  transition: all 0.15s ease;
+  min-height: 44px;
 }
 
 .form button:hover:not(:disabled) {
   filter: brightness(1.05);
+  box-shadow: 0 4px 12px rgba(179, 3, 3, 0.25);
 }
 
 .form button:disabled {

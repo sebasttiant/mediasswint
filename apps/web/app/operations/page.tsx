@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { getSessionCookieName, requireActiveUserFromRequest } from "@/lib/auth";
 import { fetchOperationalPendingQueue, type OperationalQueueItem } from "@/lib/operations";
 
+import { AppShell } from "../_components/app-shell/app-shell";
 import styles from "../dashboard.module.css";
 
 const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
@@ -98,20 +99,13 @@ export default async function OperationsQueuePage() {
   const queue = await fetchOperationalPendingQueue();
 
   return (
-    <main className={styles.page}>
-      <header className={styles.header}>
-        <div className={styles.headerContent}>
-          <p className={styles.kicker}>MEDIASSWINT · Operación</p>
-          <h1 className={styles.title}>Cola de operaciones pendientes</h1>
-          <p className={styles.subtitle}>Saldos, producción y entrega para trabajar desde la ficha del paciente.</p>
-        </div>
-        <div className={styles.headerActions}>
-          <Link className={styles.logoutBtn} href="/">
-            Volver al panel
-          </Link>
-        </div>
-      </header>
-
+    <AppShell
+      currentPath="/operations"
+      description="Saldos, producción y entrega para trabajar desde la ficha del paciente."
+      kicker="MEDIASSWINT · Operación"
+      title="Cola de operaciones pendientes"
+      userLabel={user.fullName ?? undefined}
+    >
       <div className={styles.content}>
         <div className={styles.pendingSummary}>
           <div className={styles.pendingSummaryItem}>
@@ -142,6 +136,6 @@ export default async function OperationsQueuePage() {
           </div>
         </section>
       </div>
-    </main>
+    </AppShell>
   );
 }
