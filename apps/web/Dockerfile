@@ -1,11 +1,11 @@
 # syntax=docker/dockerfile:1.7
 # ------------------------------------------------------------
 # mediasswint - web (Next.js 16.2.4) - multi-stage
-# Base: Debian 13 (trixie) slim + Node 24.15.0 LTS
+# Base: Debian 13 (trixie) slim + Node 24.16.0 LTS
 # ------------------------------------------------------------
 
-ARG NODE_IMAGE=node:24.15.0-trixie-slim
-ARG PNPM_VERSION=11.1.3
+ARG NODE_IMAGE=node:24.16.0-trixie-slim
+ARG PNPM_VERSION=11.2.2
 
 # ---------- base ----------
 FROM ${NODE_IMAGE} AS base
@@ -35,7 +35,7 @@ CMD ["sh", "-c", "pnpm exec prisma migrate deploy --schema prisma/schema.prisma 
 
 # ---------- bootstrapper (oneshot: provisiona el usuario inicial) ----------
 # Hereda de deps para evitar depender del build de Next. Tiene Prisma generado,
-# devDependencies (tsx/dotenv) y el código mínimo de auth. Se corre a demanda
+# devDependencies (tsx) y el código mínimo de auth. Se corre a demanda
 # como tarea one-off (Coolify / docker run), NO forma parte del startup del stack.
 # Requiere AUTH_USER, AUTH_PASSWORD y DATABASE_URL apuntando a la DB destino.
 # Idempotente: bootstrapAuthUser hace upsert por email.
