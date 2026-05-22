@@ -39,6 +39,7 @@ function createPatientRouteDeps(overrides: Partial<PatientRouteDeps> = {}): Pati
       value: {
         id: "pat-1",
         fullName: "Ada Lovelace",
+        sex: null,
         documentType: "DNI",
         documentNumber: "123",
         birthDate: null,
@@ -54,6 +55,7 @@ function createPatientRouteDeps(overrides: Partial<PatientRouteDeps> = {}): Pati
       value: {
         id,
         fullName: input.fullName,
+        sex: input.sex,
         documentType: input.documentType,
         documentNumber: input.documentNumber,
         birthDate: input.birthDate,
@@ -111,6 +113,7 @@ describe("patients route auth", () => {
           {
             id: "pat-1",
             fullName: "Ada Lovelace",
+            sex: null,
             documentType: "DNI",
             documentNumber: "123",
             birthDate: null,
@@ -146,6 +149,7 @@ describe("patients route auth", () => {
         value: {
           id: "pat-1",
           fullName: "Ada Lovelace",
+          sex: null,
           documentType: "DNI",
           documentNumber: "123",
           birthDate: null,

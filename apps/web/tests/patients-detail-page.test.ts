@@ -8,6 +8,7 @@ function patientFixture(overrides: Partial<Patient> = {}): Patient {
   return {
     id: "pat-1",
     fullName: "Ada Lovelace",
+    sex: null,
     documentType: "DNI",
     documentNumber: "123",
     birthDate: null,

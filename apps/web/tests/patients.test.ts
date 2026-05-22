@@ -9,6 +9,7 @@ function createPatientFixture(overrides: Partial<Patient> = {}): Patient {
   return {
     id: "pat_1",
     fullName: "Ada Lovelace",
+    sex: null,
     documentType: "DNI",
     documentNumber: "123",
     birthDate: null,
@@ -33,6 +34,7 @@ function createRepository(overrides: Partial<PatientsRepository> = {}): Patients
 
 const createInput: CreatePatientInput = {
   fullName: "Ada Lovelace",
+  sex: "FEMALE",
   documentType: "DNI",
   documentNumber: "123",
   birthDate: null,
@@ -43,6 +45,7 @@ const createInput: CreatePatientInput = {
 
 const updateInput: UpdatePatientInput = {
   fullName: "Updated Patient",
+  sex: "MALE",
   documentType: "DNI",
   documentNumber: "999",
   birthDate: null,

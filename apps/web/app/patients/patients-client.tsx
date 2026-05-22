@@ -1,9 +1,8 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import styles from "./page.module.css";
-import { buildPatientDetailHref } from "./[id]/patient-detail-helpers";
+import { buildPatientDetailHref, DOCUMENT_TYPE_OPTIONS, PATIENT_SEX_OPTIONS } from "./[id]/patient-detail-helpers";
 
 type Patient = {
   id: string;
@@ -15,6 +14,7 @@ type Patient = {
 
 type FormState = {
   fullName: string;
+  sex: string;
   documentType: string;
   documentNumber: string;
   birthDate: string;
@@ -25,6 +25,7 @@ type FormState = {
 
 const INITIAL_FORM_STATE: FormState = {
   fullName: "",
+  sex: "",
   documentType: "",
   documentNumber: "",
   birthDate: "",
@@ -34,7 +35,6 @@ const INITIAL_FORM_STATE: FormState = {
 };
 
 export default function PatientsClient() {
-  const router = useRouter();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [form, setForm] = useState<FormState>(INITIAL_FORM_STATE);
   const [query, setQuery] = useState("");
@@ -122,28 +122,19 @@ export default function PatientsClient() {
     return [patient.documentType, patient.documentNumber].filter(Boolean).join(" ") || "-";
   }
 
-  async function onLogout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    router.replace("/login");
-    router.refresh();
-  }
-
   return (
-    <main className={styles.page}>
-      <header className={styles.header}>
-        <div>
-          <p className={styles.kicker}>MEDIASSWINT · Gestión Clínica</p>
-          <h1>Pacientes</h1>
-          <p className={styles.subtitle}>Alta y consulta rápida de pacientes para soporte operativo diario.</p>
+    <div className={styles.page}>
+      <section className={styles.orientationGrid} aria-label="Orientación de pacientes">
+        <div className={styles.orientationCard}>
+          <span>Ruta actual</span>
+          <strong>Dashboard → Pacientes</strong>
+          <p>Creá, buscá o abrí una ficha para continuar con mediciones y operaciones.</p>
         </div>
         <div className={styles.metricCard}>
           <span>Registros visibles</span>
           <strong>{patients.length}</strong>
-          <button type="button" className={styles.logoutButton} onClick={onLogout}>
-            Cerrar sesión
-          </button>
         </div>
-      </header>
+      </section>
 
       <section className={styles.card}>
         <h2>Nuevo paciente</h2>
@@ -158,14 +149,28 @@ export default function PatientsClient() {
             />
           </label>
           <label>
+            Sexo
+            <select
+              value={form.sex}
+              onChange={(event) => setForm((current) => ({ ...current, sex: event.target.value }))}
+            >
+              <option value="">Seleccionar…</option>
+              {PATIENT_SEX_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
             Tipo de documento
-            <input
-              placeholder="CC, DNI, CE..."
+            <select
               value={form.documentType}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, documentType: event.target.value }))
-              }
-            />
+              onChange={(event) => setForm((current) => ({ ...current, documentType: event.target.value }))}
+            >
+              <option value="">Seleccionar…</option>
+              {DOCUMENT_TYPE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
           </label>
           <label>
             Número de documento
@@ -182,8 +187,10 @@ export default function PatientsClient() {
             <input
               type="date"
               value={form.birthDate}
+              className={styles.dateInput}
               onChange={(event) => setForm((current) => ({ ...current, birthDate: event.target.value }))}
             />
+            <span className={styles.fieldHint}>Formato: AAAA-MM-DD</span>
           </label>
           <label>
             Teléfono
@@ -269,6 +276,6 @@ export default function PatientsClient() {
           </div>
         )}
       </section>
-    </main>
+    </div>
   );
 }

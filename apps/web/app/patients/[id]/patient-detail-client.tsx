@@ -10,7 +10,9 @@ import styles from "../page.module.css";
 import {
   buildMeasurementDetailHref,
   buildNewMeasurementHref,
+  DOCUMENT_TYPE_OPTIONS,
   executePatientSaveNavigation,
+  PATIENT_SEX_OPTIONS,
   patientToFormState,
   type PatientDetail,
   type PatientFormState,
@@ -279,17 +281,14 @@ export default function PatientDetailClient({
   }
 
   return (
-    <main className={styles.page}>
-      <header className={styles.header}>
-        <div>
-          <p className={styles.kicker}>MEDIASSWINT · Gestión Clínica</p>
-          <h1>Editar paciente</h1>
-          <p className={styles.subtitle}>{initialPatient.fullName}</p>
+    <div className={styles.page}>
+      <section className={styles.orientationGrid} aria-label="Orientación de ficha del paciente">
+        <div className={styles.orientationCard}>
+          <span>Ruta actual</span>
+          <strong>Dashboard → Pacientes → Ficha</strong>
+          <p>Desde esta ficha podés actualizar datos, iniciar mediciones y avanzar operaciones.</p>
         </div>
-        <Link className={styles.detailLink} href="/patients">
-          Volver al listado
-        </Link>
-      </header>
+      </section>
 
       <section className={styles.card}>
         <h2>Datos demográficos</h2>
@@ -304,11 +303,28 @@ export default function PatientDetailClient({
             />
           </label>
           <label>
+            Sexo
+            <select
+              value={form.sex}
+              onChange={(event) => setForm((current) => ({ ...current, sex: event.target.value }))}
+            >
+              <option value="">Seleccionar…</option>
+              {PATIENT_SEX_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
             Tipo de documento
-            <input
+            <select
               value={form.documentType}
               onChange={(event) => setForm((current) => ({ ...current, documentType: event.target.value }))}
-            />
+            >
+              <option value="">Seleccionar…</option>
+              {DOCUMENT_TYPE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
           </label>
           <label>
             Número de documento
@@ -322,8 +338,10 @@ export default function PatientDetailClient({
             <input
               type="date"
               value={form.birthDate}
+              className={styles.dateInput}
               onChange={(event) => setForm((current) => ({ ...current, birthDate: event.target.value }))}
             />
+            <span className={styles.fieldHint}>Formato: AAAA-MM-DD</span>
           </label>
           <label>
             Teléfono
@@ -736,6 +754,6 @@ export default function PatientDetailClient({
           </table>
         </div>
       </section>
-    </main>
+    </div>
   );
 }

@@ -39,11 +39,17 @@ enum MeasurementSessionStatus {
   VOID
 }
 
+enum PatientSex {
+  FEMALE
+  MALE
+}
+
 model Patient {
   id             String                 @id @default(cuid())
   documentType   String?
   documentNumber String?
   fullName       String
+  sex            PatientSex?
   birthDate      DateTime?
   phone          String?
   email          String?

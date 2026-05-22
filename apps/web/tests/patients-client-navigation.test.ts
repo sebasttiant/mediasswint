@@ -14,6 +14,7 @@ describe("patient detail client helpers", () => {
     const formState = patientToFormState({
       id: "pat-1",
       fullName: "Ada Lovelace",
+      sex: "FEMALE",
       documentType: "DNI",
       documentNumber: "123",
       birthDate: "1815-12-10T00:00:00.000Z",
@@ -26,6 +27,7 @@ describe("patient detail client helpers", () => {
 
     assert.deepEqual(formState, {
       fullName: "Ada Lovelace",
+      sex: "FEMALE",
       documentType: "DNI",
       documentNumber: "123",
       birthDate: "1815-12-10",
