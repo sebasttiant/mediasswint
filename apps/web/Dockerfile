@@ -46,6 +46,14 @@ COPY apps/web/scripts ./apps/web/scripts
 WORKDIR /app/apps/web
 CMD ["pnpm", "auth:bootstrap"]
 
+# ---------- template-seeder (oneshot: seed measurement templates in DB) ----------
+FROM deps AS template-seeder
+COPY apps/web/tsconfig.json ./apps/web/tsconfig.json
+COPY apps/web/lib ./apps/web/lib
+COPY apps/web/scripts ./apps/web/scripts
+WORKDIR /app/apps/web
+CMD ["pnpm", "templates:seed"]
+
 # ---------- builder ----------
 FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules

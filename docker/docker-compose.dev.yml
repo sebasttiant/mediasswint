@@ -13,6 +13,43 @@ name: mediasswint-dev
 # -----------------------------------------------------------------
 
 services:
+  migrate:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+      target: migrator
+    image: mediasswint/migrate:dev
+    container_name: mediasswint-migrate-dev
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://mediass:mediass@postgres:5432/mediass
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/migrated.ok"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 15s
+
+  template-seeder:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+      target: template-seeder
+    image: mediasswint/template-seeder:dev
+    container_name: mediasswint-template-seeder-dev
+    restart: "no"
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://mediass:mediass@postgres:5432/mediass
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_healthy
+
   web:
     build:
       context: ..
@@ -35,9 +72,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_healthy
       redis:
         condition: service_healthy
       auth-bootstrap:
+        condition: service_completed_successfully
+      template-seeder:
         condition: service_completed_successfully
     healthcheck:
       test:
@@ -65,6 +106,8 @@ services:
       AUTH_PASSWORD: ${AUTH_PASSWORD:?AUTH_PASSWORD is required}
     depends_on:
       postgres:
+        condition: service_healthy
+      migrate:
         condition: service_healthy
 
   postgres:
