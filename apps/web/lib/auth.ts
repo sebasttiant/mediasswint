@@ -27,8 +27,12 @@ export type UsersRepository = {
   upsertBootstrapUser(input: { email: string; passwordHash: string }): Promise<AuthUser>;
 };
 
-function getAuthSecret() {
-  return process.env.AUTH_SECRET?.trim() || "mediasswint-dev-secret";
+export function getAuthSecret(): string {
+  const secret = process.env.AUTH_SECRET?.trim();
+  if (!secret) {
+    throw new Error("AUTH_SECRET environment variable is required but not set");
+  }
+  return secret;
 }
 
 function normalizeEmail(email: string) {
