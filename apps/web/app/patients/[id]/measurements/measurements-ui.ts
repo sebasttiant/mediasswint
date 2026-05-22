@@ -22,6 +22,8 @@ export type MeasurementTableRow = {
 
 type MeasurementValue = string | number | null | undefined;
 
+const FACE_GUIDE_TERMS = ["head-face", "rostro", "cara", "face", "head", "cabeza"] as const;
+
 function getStringMetadata(field: TemplateSnapshotField | MeasurementUiField, key: string): string | null {
   const value = field.metadata[key];
   return typeof value === "string" ? value : null;
@@ -48,6 +50,25 @@ function isFilledMeasurementValue(value: MeasurementValue): boolean {
   if (typeof value === "string") return value.trim().length > 0;
   if (typeof value === "number") return Number.isFinite(value);
   return false;
+}
+
+function textRequiresFaceGuide(value: string): boolean {
+  const normalized = value.toLocaleLowerCase("es-AR");
+  return FACE_GUIDE_TERMS.some((term) => normalized.includes(term));
+}
+
+function fieldRequiresFaceGuide(field: TemplateSnapshotField): boolean {
+  if (textRequiresFaceGuide(field.key) || textRequiresFaceGuide(field.label)) return true;
+
+  return Object.values(field.metadata).some((value) => {
+    return typeof value === "string" && textRequiresFaceGuide(value);
+  });
+}
+
+export function measurementSnapshotRequiresFaceGuide(snapshot: TemplateSnapshot): boolean {
+  return snapshot.sections.some((section) => {
+    return textRequiresFaceGuide(section.title) || section.fields.some(fieldRequiresFaceGuide);
+  });
 }
 
 export function getActiveZoneIdForField(field: MeasurementUiField | null): AnatomyZoneId | null {
