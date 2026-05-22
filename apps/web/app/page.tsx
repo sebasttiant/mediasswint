@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { getSessionCookieName, requireActiveUserFromRequest } from "@/lib/auth";
 import { fetchDashboardData } from "@/lib/dashboard";
 
+import { AppShell } from "./_components/app-shell/app-shell";
 import { LogoutButton } from "./_components/logout-button";
 import styles from "./dashboard.module.css";
 
@@ -41,20 +42,14 @@ export default async function DashboardPage() {
   const data = await fetchDashboardData();
 
   return (
-    <main className={styles.page}>
-      <header className={styles.header}>
-        <div className={styles.headerContent}>
-          <p className={styles.kicker}>MEDIASSWINT · Gestión Interna</p>
-          <h1 className={styles.title}>Panel de gestión</h1>
-          <p className={styles.subtitle}>
-            Bienvenido{user.fullName ? `, ${user.fullName}` : ""}. Resumen operativo del día.
-          </p>
-        </div>
-        <div className={styles.headerActions}>
-          <LogoutButton />
-        </div>
-      </header>
-
+    <AppShell
+      actions={<LogoutButton />}
+      currentPath="/"
+      description="Resumen operativo del día."
+      kicker="MEDIASSWINT · Gestión Interna"
+      title="Panel de gestión"
+      userLabel={user.fullName ? `Bienvenido, ${user.fullName}` : "Bienvenido"}
+    >
       <div className={styles.content}>
         {/* KPI metrics */}
         <div className={styles.metricsGrid}>
@@ -339,6 +334,6 @@ export default async function DashboardPage() {
           </div>
         </div>
       </div>
-    </main>
+    </AppShell>
   );
 }
