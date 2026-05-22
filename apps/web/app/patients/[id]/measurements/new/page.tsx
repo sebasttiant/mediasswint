@@ -25,5 +25,11 @@ export default async function NewMeasurementPage({ params }: Params) {
   if (decision.action === "notFound") notFound();
   if (decision.action === "throw") throw new Error("Unable to load patient detail");
 
-  return <NewMeasurementClient patientId={decision.patient.id} patientName={decision.patient.fullName} />;
+  return (
+    <NewMeasurementClient
+      patientId={decision.patient.id}
+      patientName={decision.patient.fullName}
+      patientSex={decision.patient.sex}
+    />
+  );
 }

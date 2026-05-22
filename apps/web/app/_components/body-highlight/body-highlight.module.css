@@ -3,29 +3,160 @@
   max-width: 320px;
   height: auto;
   display: block;
+  overflow: visible;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.08));
+}
+
+.bodyFill {
+  fill: #f1f5f9;
+  stroke: none;
 }
 
 .outline {
   fill: none;
-  stroke: #c4c8d4;
-  stroke-width: 1.5;
+  stroke: #cbd5e1;
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.zoneGroup {
+  transition: opacity 120ms ease;
 }
 
 .zone {
-  fill: #e7eaf2;
-  stroke: #c4c8d4;
-  stroke-width: 0.5;
+  fill: #e2e8f0;
+  stroke: none;
   transition:
-    fill 120ms ease,
-    stroke 120ms ease;
+    fill 150ms ease,
+    opacity 150ms ease,
+    stroke 150ms ease;
+  opacity: 0.55;
+  cursor: pointer;
+}
+
+.zone:hover {
+  opacity: 0.7;
+  fill: #cbd5e1;
 }
 
 .zone[data-filled="true"] {
   fill: #bfdbfe;
-  stroke: #60a5fa;
+  opacity: 0.75;
 }
 
 .zone[data-active="true"] {
   fill: #2563eb;
+  opacity: 0.85;
   stroke: #1e40af;
+  stroke-width: 0.8;
+}
+
+.zone:focus-visible {
+  outline: none;
+  fill: #1d4ed8;
+  opacity: 0.9;
+  stroke: #7dd3fc;
+  stroke-width: 1.5;
+}
+
+.sideLabels text {
+  fill: #64748b;
+  font-size: 14px;
+  font-weight: 800;
+  text-anchor: middle;
+  letter-spacing: 0.02em;
+}
+
+.sideLabels text[data-active="true"] {
+  fill: #1d4ed8;
+}
+
+.pointLabels text {
+  fill: #334155;
+  font-size: 9px;
+  font-weight: 800;
+  pointer-events: none;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: white;
+  stroke-width: 2px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.pointLabels text[data-active="true"] {
+  fill: white;
+  font-size: 12px;
+  stroke: #1e40af;
+  stroke-width: 3px;
+}
+
+.faceGuideSvg {
+  width: 100%;
+  max-width: 220px;
+  height: auto;
+  display: block;
+  overflow: visible;
+  filter: drop-shadow(0 2px 8px rgba(15, 23, 42, 0.08));
+}
+
+.faceShape {
+  fill: #f8fafc;
+  stroke: #cbd5e1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.faceHair {
+  fill: #e2e8f0;
+  stroke: #94a3b8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+}
+
+.faceJaw,
+.faceFeature,
+.faceGuideLines path {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.faceJaw {
+  stroke: #94a3b8;
+  stroke-width: 1.4;
+}
+
+.faceFeature {
+  stroke: #475569;
+  stroke-width: 2;
+}
+
+circle.faceFeature {
+  fill: #475569;
+  stroke: none;
+}
+
+.faceGuideLines path {
+  stroke: #2563eb;
+  stroke-dasharray: 4 5;
+  stroke-width: 1;
+  opacity: 0.45;
+}
+
+@media (max-width: 640px) {
+  .pointLabels text:not([data-active="true"]) {
+    display: none;
+  }
+
+  .svg {
+    max-width: 260px;
+  }
+
+  .faceGuideSvg {
+    max-width: 190px;
+  }
 }

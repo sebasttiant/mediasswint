@@ -4,7 +4,8 @@ import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { BodyHighlight } from "@/app/_components/body-highlight/body-highlight";
+import { BodyHighlight, BODY_FIGURE_SEX, type BodyFigureSex } from "@/app/_components/body-highlight/body-highlight";
+import { FaceGuide } from "@/app/_components/body-highlight/face-guide";
 import type { AnatomyZoneId } from "@/lib/compression-measurements";
 import type { TemplateSnapshot } from "@/lib/measurements";
 
@@ -14,6 +15,7 @@ import {
   getActiveZoneIdForField,
   getActiveZoneLabel,
   getFilledZoneIdsFromValues,
+  measurementSnapshotRequiresFaceGuide,
   type MeasurementUiField,
   type MeasurementUiGroup,
 } from "../measurements-ui";
@@ -30,7 +32,12 @@ type DraftState = DraftResponse & {
 type NewMeasurementClientProps = {
   patientId: string;
   patientName: string;
+  patientSex: string | null;
 };
+
+function toBodyFigureSex(patientSex: string | null): BodyFigureSex {
+  return patientSex === "MALE" ? BODY_FIGURE_SEX.MALE : BODY_FIGURE_SEX.FEMALE;
+}
 
 function toDatetimeLocalValue(date: Date): string {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
@@ -145,7 +152,7 @@ function MeasurementInputCell({
   );
 }
 
-export default function NewMeasurementClient({ patientId, patientName }: NewMeasurementClientProps) {
+export default function NewMeasurementClient({ patientId, patientName, patientSex }: NewMeasurementClientProps) {
   const router = useRouter();
   const [measuredAt, setMeasuredAt] = useState(() => toDatetimeLocalValue(new Date()));
   const [garmentType, setGarmentType] = useState("");
@@ -160,6 +167,8 @@ export default function NewMeasurementClient({ patientId, patientName }: NewMeas
   const filledZoneIds = draft
     ? getFilledZoneIdsFromValues(draft.templateSnapshot, draft.valuesByKey)
     : undefined;
+  const bodyFigureSex = toBodyFigureSex(patientSex);
+  const shouldRenderFaceGuide = draft ? measurementSnapshotRequiresFaceGuide(draft.templateSnapshot) : false;
 
   async function createDraft(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -285,23 +294,17 @@ export default function NewMeasurementClient({ patientId, patientName }: NewMeas
                   : "Seleccioná un punto para empezar"}
               </p>
               <BodyHighlight
-                view="legs"
+                view="full"
+                sex={bodyFigureSex}
                 activeZoneId={activeZoneId}
                 filledZoneIds={filledZoneIds}
+                ariaLabel={`Figura humana ${patientSex === "MALE" ? "masculina" : "femenina"} con zonas de brazos y piernas`}
                 onZoneClick={(zoneId) => {
                   const input = document.querySelector<HTMLElement>(`[data-anatomy-zone="${zoneId}"]`);
                   input?.focus();
                 }}
               />
-              <BodyHighlight
-                view="arms"
-                activeZoneId={activeZoneId}
-                filledZoneIds={filledZoneIds}
-                onZoneClick={(zoneId) => {
-                  const input = document.querySelector<HTMLElement>(`[data-anatomy-zone="${zoneId}"]`);
-                  input?.focus();
-                }}
-              />
+              {shouldRenderFaceGuide ? <FaceGuide sex={bodyFigureSex} /> : null}
             </aside>
             <div className={styles.measurementTables}>
               <GroupTable

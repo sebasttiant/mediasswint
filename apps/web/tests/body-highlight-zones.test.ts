@@ -6,8 +6,13 @@ import {
   BODY_HIGHLIGHT_VIEWBOX,
   BODY_HIGHLIGHT_ZONES,
   findMeasurementKeyForZone,
+  findZoneShape,
   findViewForZone,
+  getSideSummaryForView,
+  getZoneA11yLabel,
   getZoneLabel,
+  getZonePoint,
+  getZoneSide,
   getZonesForView,
   hasZone,
 } from "../app/_components/body-highlight/body-highlight-zones";
@@ -33,9 +38,13 @@ describe("BODY_HIGHLIGHT_ZONES — derived from the catalog", () => {
   it("each shape has a non-empty SVG path d", () => {
     for (const zone of BODY_HIGHLIGHT_ZONES) {
       assert.equal(typeof zone.d, "string", `d type for ${zone.zoneId}`);
+      assert.equal(typeof zone.fullD, "string", `fullD type for ${zone.zoneId}`);
       assert.ok(zone.d.length > 0, `d non-empty for ${zone.zoneId}`);
+      assert.ok(zone.fullD.length > 0, `fullD non-empty for ${zone.zoneId}`);
       assert.ok(zone.d.startsWith("M "), `d starts with move for ${zone.zoneId}`);
+      assert.ok(zone.fullD.startsWith("M "), `fullD starts with move for ${zone.zoneId}`);
       assert.ok(zone.d.trimEnd().endsWith("Z"), `d closed path for ${zone.zoneId}`);
+      assert.ok(zone.fullD.trimEnd().endsWith("Z"), `fullD closed path for ${zone.zoneId}`);
     }
   });
 });
@@ -55,6 +64,14 @@ describe("getZonesForView", () => {
     for (const zone of zones) {
       assert.equal(zone.view, "arms");
     }
+  });
+
+  it("returns every arm and leg zone for 'full'", () => {
+    const zones = getZonesForView("full");
+
+    assert.equal(zones.length, COMPRESSION_MEASUREMENTS.length);
+    assert.ok(zones.some((zone) => zone.zoneId === "legs.right.1"));
+    assert.ok(zones.some((zone) => zone.zoneId === "arms.left.19"));
   });
 
   it("returned zones include both sides for legs", () => {
@@ -143,6 +160,53 @@ describe("findMeasurementKeyForZone", () => {
   it("returns null for an unknown zoneId", () => {
     assert.equal(findMeasurementKeyForZone("torso.center.1" as never), null);
     assert.equal(findMeasurementKeyForZone("" as never), null);
+  });
+});
+
+describe("zone visual metadata", () => {
+  it("findZoneShape returns path metadata for known zones", () => {
+    const shape = findZoneShape("legs.right.7");
+
+    assert.equal(shape?.zoneId, "legs.right.7");
+    assert.equal(shape?.view, "legs");
+    assert.equal(shape?.point, 7);
+    assert.equal(shape?.side, "right");
+  });
+
+  it("findZoneShape returns null for unknown zones", () => {
+    assert.equal(findZoneShape("legs.right.999" as never), null);
+  });
+
+  it("derives side and point metadata for active labels", () => {
+    assert.equal(getZoneSide("arms.left.19"), "left");
+    assert.equal(getZonePoint("arms.left.19"), 19);
+    assert.equal(getZoneSide("torso.center.1" as never), null);
+    assert.equal(getZonePoint("torso.center.1" as never), null);
+  });
+
+  it("builds accessible labels with filled and active state", () => {
+    assert.equal(
+      getZoneA11yLabel("legs.right.7", { active: true, filled: false }),
+      "Pierna derecha punto 7, zona activa",
+    );
+    assert.equal(
+      getZoneA11yLabel("arms.left.19", { active: false, filled: true }),
+      "Brazo izquierdo punto 19, medida cargada",
+    );
+  });
+
+  it("summarizes right and left piece coverage for each visual sheet", () => {
+    const legsSummary = getSideSummaryForView("legs");
+    const armsSummary = getSideSummaryForView("arms");
+
+    assert.deepEqual(legsSummary, [
+      { side: "right", label: "Pierna derecha", points: 28 },
+      { side: "left", label: "Pierna izquierda", points: 28 },
+    ]);
+    assert.deepEqual(armsSummary, [
+      { side: "right", label: "Brazo derecho", points: 19 },
+      { side: "left", label: "Brazo izquierdo", points: 19 },
+    ]);
   });
 });
 
