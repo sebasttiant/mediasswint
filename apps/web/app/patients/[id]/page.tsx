@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { getSessionCookieName, requireActiveUserFromRequest } from "@/lib/auth";
@@ -6,6 +7,8 @@ import { getDefaultMeasurementsRepository, listPatientMeasurements } from "@/lib
 import { buildPatientTimeline } from "@/lib/patient-timeline";
 import { getPatient } from "@/lib/patients";
 
+import { AppShell } from "../../_components/app-shell/app-shell";
+import shellStyles from "../../_components/app-shell/app-shell.module.css";
 import PatientDetailClient from "./patient-detail-client";
 import { resolvePatientDetailLoad } from "./patient-detail-loading";
 
@@ -79,11 +82,24 @@ export default async function PatientDetailPage({ params }: Params) {
     : [];
 
   return (
-    <PatientDetailClient
-      initialPatient={decision.patient}
-      recentMeasurements={recentMeasurements}
-      timeline={timeline}
-      operations={operations}
-    />
+    <AppShell
+      actions={
+        <Link className={shellStyles.actionLink} href="/patients">
+          Volver al listado
+        </Link>
+      }
+      currentPath={`/patients/${encodeURIComponent(id)}`}
+      description="Ficha clínica, mediciones recientes y operaciones del paciente."
+      kicker="MEDIASSWINT · Paciente"
+      title={decision.patient.fullName}
+      userLabel={user?.fullName ?? undefined}
+    >
+      <PatientDetailClient
+        initialPatient={decision.patient}
+        recentMeasurements={recentMeasurements}
+        timeline={timeline}
+        operations={operations}
+      />
+    </AppShell>
   );
 }

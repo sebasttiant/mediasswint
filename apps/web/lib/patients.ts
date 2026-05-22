@@ -41,6 +41,7 @@ const defaultRepository: PatientsRepository = {
     return prisma.patient.create({
       data: {
         fullName: input.fullName,
+        sex: input.sex,
         documentType: input.documentType,
         documentNumber: input.documentNumber,
         birthDate: input.birthDate,
@@ -91,6 +92,7 @@ const defaultRepository: PatientsRepository = {
       where: { id },
       data: {
         fullName: input.fullName,
+        sex: input.sex,
         documentType: input.documentType,
         documentNumber: input.documentNumber,
         birthDate: input.birthDate,

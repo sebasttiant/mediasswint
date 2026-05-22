@@ -7,6 +7,7 @@ describe("parseCreatePatientInput", () => {
   it("returns parsed payload for valid body", () => {
     const result = parseCreatePatientInput({
       fullName: " Ada Lovelace ",
+      sex: "FEMALE",
       documentType: " DNI ",
       documentNumber: " 123 ",
       birthDate: "1815-12-10",
@@ -19,6 +20,7 @@ describe("parseCreatePatientInput", () => {
     if (!result.ok) return;
 
     assert.equal(result.value.fullName, "Ada Lovelace");
+    assert.equal(result.value.sex, "FEMALE");
     assert.equal(result.value.documentType, "DNI");
     assert.equal(result.value.documentNumber, "123");
     assert.equal(result.value.birthDate?.toISOString(), "1815-12-10T00:00:00.000Z");
@@ -64,6 +66,7 @@ describe("parseUpdatePatientInput", () => {
 
     assert.deepEqual(result.value, {
       fullName: "Grace Hopper",
+      sex: null,
       documentType: null,
       documentNumber: null,
       birthDate: null,
@@ -76,6 +79,7 @@ describe("parseUpdatePatientInput", () => {
   it("normalizes blank optional fields to null and parses birthDate", () => {
     const result = parseUpdatePatientInput({
       fullName: " Alan Turing ",
+      sex: "MALE",
       documentType: " ",
       documentNumber: null,
       birthDate: "1912-06-23",
@@ -88,6 +92,7 @@ describe("parseUpdatePatientInput", () => {
     if (!result.ok) return;
 
     assert.equal(result.value.fullName, "Alan Turing");
+    assert.equal(result.value.sex, "MALE");
     assert.equal(result.value.documentType, null);
     assert.equal(result.value.documentNumber, null);
     assert.equal(result.value.birthDate?.toISOString(), "1912-06-23T00:00:00.000Z");
@@ -119,6 +124,15 @@ describe("parseUpdatePatientInput", () => {
     assert.equal(result.errors.some((error) => error.field === "fullName"), true);
     assert.equal(result.errors.some((error) => error.field === "documentType"), true);
     assert.equal(result.errors.some((error) => error.field === "notes"), true);
+  });
+
+  it("returns validation errors for unsupported sex values", () => {
+    const result = parseUpdatePatientInput({ fullName: "Ada Lovelace", sex: "OTHER" });
+
+    assert.equal(result.ok, false);
+    if (result.ok) return;
+
+    assert.deepEqual(result.errors, [{ field: "sex", message: "must be FEMALE or MALE" }]);
   });
 
   it("rejects fields outside the editable patient shape", () => {

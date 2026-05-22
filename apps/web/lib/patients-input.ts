@@ -5,8 +5,16 @@ type ValidationError = {
 
 type ValidationResult<T> = { ok: true; value: T } | { ok: false; errors: ValidationError[] };
 
+export const PATIENT_SEX = {
+  FEMALE: "FEMALE",
+  MALE: "MALE",
+} as const;
+
+export type PatientSex = (typeof PATIENT_SEX)[keyof typeof PATIENT_SEX];
+
 export type CreatePatientInput = {
   fullName: string;
+  sex: PatientSex | null;
   documentType: string | null;
   documentNumber: string | null;
   birthDate: Date | null;
@@ -29,6 +37,7 @@ const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 const EDITABLE_PATIENT_FIELDS = new Set([
   "fullName",
+  "sex",
   "documentType",
   "documentNumber",
   "birthDate",
@@ -42,6 +51,21 @@ function asTrimmedString(value: unknown): string | null {
 
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function parsePatientSex(value: unknown, errors: ValidationError[]): PatientSex | null {
+  if (value === undefined || value === null || value === "") return null;
+
+  if (typeof value !== "string") {
+    errors.push({ field: "sex", message: "must be FEMALE or MALE" });
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (trimmed === PATIENT_SEX.FEMALE || trimmed === PATIENT_SEX.MALE) return trimmed;
+
+  errors.push({ field: "sex", message: "must be FEMALE or MALE" });
+  return null;
 }
 
 function parseNullableString(
@@ -140,6 +164,7 @@ function parsePatientFormInput(
     });
   }
 
+  const sex = parsePatientSex(source.sex, errors);
   const documentType = parseNullableString(
     source.documentType,
     "documentType",
@@ -165,6 +190,7 @@ function parsePatientFormInput(
     ok: true,
     value: {
       fullName,
+      sex,
       documentType,
       documentNumber,
       birthDate,

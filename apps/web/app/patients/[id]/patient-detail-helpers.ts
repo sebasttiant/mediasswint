@@ -1,6 +1,7 @@
 export type PatientDetail = {
   id: string;
   fullName: string;
+  sex: string | null;
   documentType: string | null;
   documentNumber: string | null;
   birthDate: string | Date | null;
@@ -31,6 +32,7 @@ export type PatientTimelineItem = {
 
 export type PatientFormState = {
   fullName: string;
+  sex: string;
   documentType: string;
   documentNumber: string;
   birthDate: string;
@@ -61,11 +63,26 @@ export function executePatientSaveNavigation(router: NavigationRouter): void {
   router.push("/patients");
 }
 
+export const DOCUMENT_TYPE_OPTIONS = [
+  { value: "CC", label: "CC - Cédula de Ciudadanía" },
+  { value: "CE", label: "CE - Cédula de Extranjería" },
+  { value: "TI", label: "TI - Tarjeta de Identidad" },
+  { value: "Pasaporte", label: "Pasaporte" },
+  { value: "NIT", label: "NIT" },
+  { value: "Otro", label: "Otro" },
+] as const;
+
+export const PATIENT_SEX_OPTIONS = [
+  { value: "FEMALE", label: "Femenino" },
+  { value: "MALE", label: "Masculino" },
+] as const;
+
 export function patientToFormState(patient: PatientDetail): PatientFormState {
   const birthDate = patient.birthDate ? new Date(patient.birthDate).toISOString().slice(0, 10) : "";
 
   return {
     fullName: patient.fullName,
+    sex: patient.sex ?? "",
     documentType: patient.documentType ?? "",
     documentNumber: patient.documentNumber ?? "",
     birthDate,
