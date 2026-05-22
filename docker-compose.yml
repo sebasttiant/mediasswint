@@ -59,6 +59,23 @@ services:
       migrate:
         condition: service_healthy
 
+  template-seeder:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: template-seeder
+    image: mediasswint/template-seeder:latest
+    container_name: mediasswint-template-seeder
+    restart: "no"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-mediass}:${POSTGRES_PASSWORD:-mediass}@postgres:5432/${POSTGRES_DB:-mediass}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_healthy
+
   web:
     build:
       context: .
@@ -81,6 +98,8 @@ services:
       migrate:
         condition: service_healthy
       auth-bootstrap:
+        condition: service_completed_successfully
+      template-seeder:
         condition: service_completed_successfully
     healthcheck:
       test:
