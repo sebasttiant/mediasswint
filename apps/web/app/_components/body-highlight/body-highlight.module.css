@@ -1,63 +1,31 @@
-.svg {
+.wrapper {
+  position: relative;
+  display: inline-block;
   width: 100%;
   max-width: 320px;
+}
+
+.svg {
+  width: 100%;
   height: auto;
   display: block;
   overflow: visible;
-  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.08));
-}
-
-.bodyFill {
-  fill: #f1f5f9;
-  stroke: none;
-}
-
-.outline {
-  fill: none;
-  stroke: #cbd5e1;
-  stroke-width: 1.8;
-  stroke-linejoin: round;
-  stroke-linecap: round;
-}
-
-.zoneGroup {
-  transition: opacity 120ms ease;
+  filter: drop-shadow(0 4px 16px rgba(0, 0, 0, 0.10));
 }
 
 .zone {
-  fill: #e2e8f0;
-  stroke: none;
-  transition:
-    fill 150ms ease,
-    opacity 150ms ease,
-    stroke 150ms ease;
-  opacity: 0.55;
   cursor: pointer;
-}
-
-.zone:hover {
-  opacity: 0.7;
-  fill: #cbd5e1;
-}
-
-.zone[data-filled="true"] {
-  fill: #bfdbfe;
-  opacity: 0.75;
-}
-
-.zone[data-active="true"] {
-  fill: #2563eb;
-  opacity: 0.85;
-  stroke: #1e40af;
-  stroke-width: 0.8;
 }
 
 .zone:focus-visible {
   outline: none;
-  fill: #1d4ed8;
-  opacity: 0.9;
   stroke: #7dd3fc;
-  stroke-width: 1.5;
+  stroke-width: 2;
+}
+
+.zoneReadonly {
+  cursor: default;
+  pointer-events: none;
 }
 
 .sideLabels text {
@@ -69,7 +37,7 @@
 }
 
 .sideLabels text[data-active="true"] {
-  fill: #1d4ed8;
+  fill: #0284c7;
 }
 
 .pointLabels text {
@@ -79,7 +47,7 @@
   pointer-events: none;
   text-anchor: middle;
   paint-order: stroke;
-  stroke: white;
+  stroke: rgba(255, 255, 255, 0.85);
   stroke-width: 2px;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -88,10 +56,57 @@
 .pointLabels text[data-active="true"] {
   fill: white;
   font-size: 12px;
-  stroke: #1e40af;
+  stroke: #075985;
   stroke-width: 3px;
 }
 
+/* Floating tooltip */
+.tooltip {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 8px));
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(6px);
+  color: #f8fafc;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.tooltipLabel {
+  color: #e2e8f0;
+}
+
+.tooltipBadge {
+  background: #10b981;
+  color: white;
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tooltipBadgeActive {
+  background: #0284c7;
+  color: white;
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Face guide styles (kept from original) */
 .faceGuideSvg {
   width: 100%;
   max-width: 220px;
@@ -152,7 +167,7 @@ circle.faceFeature {
     display: none;
   }
 
-  .svg {
+  .wrapper {
     max-width: 260px;
   }
 
