@@ -1,24 +1,17 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { BodyHighlight, BODY_FIGURE_SEX, type BodyFigureSex } from "@/app/_components/body-highlight/body-highlight";
-import { FaceGuide } from "@/app/_components/body-highlight/face-guide";
-import type { AnatomyZoneId } from "@/lib/compression-measurements";
+import { BODY_FIGURE_SEX, type BodyFigureSex } from "@/app/_components/body-highlight/body-highlight";
 import type { TemplateSnapshot } from "@/lib/measurements";
 
-import styles from "../../../page.module.css";
 import {
-  buildMeasurementTableRows,
-  getActiveZoneIdForField,
-  getActiveZoneLabel,
   getFilledZoneIdsFromValues,
-  measurementSnapshotRequiresFaceGuide,
-  type MeasurementUiField,
-  type MeasurementUiGroup,
 } from "../measurements-ui";
+import { PatientHeaderStrip } from "./_components/patient-header-strip";
+import { MeasurementShell } from "./_components/measurement-shell";
+import { ProgressFooter } from "./_components/progress-footer";
 
 type DraftResponse = {
   id: string;
@@ -28,6 +21,8 @@ type DraftResponse = {
 type DraftState = DraftResponse & {
   valuesByKey: Record<string, string>;
 };
+
+type SaveStatus = "idle" | "saving" | "saved" | "error";
 
 type NewMeasurementClientProps = {
   patientId: string;
@@ -58,98 +53,12 @@ function valuesPayload(valuesByKey: Record<string, string>): Record<string, numb
   return payload;
 }
 
-function GroupTable({
-  group,
-  draft,
-  onValueChange,
-  onActiveFieldChange,
-}: {
-  group: MeasurementUiGroup;
-  draft: DraftState;
-  onValueChange: (key: string, value: string) => void;
-  onActiveFieldChange: (field: MeasurementUiField | null) => void;
-}) {
-  const rows = buildMeasurementTableRows(draft.templateSnapshot, group, {});
-  const title = group === "legs" ? "Piernas" : "Brazos";
-
-  return (
-    <section className={styles.measurementPanel}>
-      <h3>{title}</h3>
-      <div className={styles.tableWrap}>
-        <table>
-          <thead>
-            <tr>
-              <th>Punto</th>
-              <th>Derecha</th>
-              <th>Izquierda</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={`${group}-${row.point}`}>
-                <td data-label="Punto">{row.point}</td>
-                <MeasurementInputCell
-                  label="Derecha"
-                  field={row.right}
-                  value={row.right ? draft.valuesByKey[row.right.key] ?? "" : ""}
-                  onValueChange={onValueChange}
-                  onActiveFieldChange={onActiveFieldChange}
-                />
-                <MeasurementInputCell
-                  label="Izquierda"
-                  field={row.left}
-                  value={row.left ? draft.valuesByKey[row.left.key] ?? "" : ""}
-                  onValueChange={onValueChange}
-                  onActiveFieldChange={onActiveFieldChange}
-                />
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-}
-
-function MeasurementInputCell({
-  label,
-  field,
-  value,
-  onValueChange,
-  onActiveFieldChange,
-}: {
-  label: string;
-  field: MeasurementUiField | null;
-  value: string;
-  onValueChange: (key: string, value: string) => void;
-  onActiveFieldChange: (field: MeasurementUiField | null) => void;
-}) {
-  if (!field) return <td data-label={label}>—</td>;
-
-  return (
-    <td data-label={label}>
-      <label className={styles.measurementCellLabel}>
-        <span>{field.label}</span>
-        <input
-          type="number"
-          inputMode="decimal"
-          min={field.minValue}
-          max={field.maxValue}
-          step="0.1"
-          value={value}
-          onFocus={() => onActiveFieldChange(field)}
-          onChange={(event) => {
-            onActiveFieldChange(field);
-            onValueChange(field.key, event.target.value);
-          }}
-          aria-label={`${field.label} (${field.unit})`}
-          data-anatomy-zone={
-            getActiveZoneIdForField(field) ?? undefined
-          }
-        />
-      </label>
-    </td>
-  );
+function countTotalZones(templateSnapshot: TemplateSnapshot): number {
+  let total = 0;
+  for (const section of templateSnapshot.sections) {
+    total += section.fields.length;
+  }
+  return total;
 }
 
 export default function NewMeasurementClient({ patientId, patientName, patientSex }: NewMeasurementClientProps) {
@@ -160,19 +69,20 @@ export default function NewMeasurementClient({ patientId, patientName, patientSe
   const [diagnosis, setDiagnosis] = useState("");
   const [notes, setNotes] = useState("");
   const [draft, setDraft] = useState<DraftState | null>(null);
-  const [activeZoneId, setActiveZoneId] = useState<AnatomyZoneId | null>(null);
-  const [activeField, setActiveField] = useState<MeasurementUiField | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [error, setError] = useState<string | null>(null);
-  const filledZoneIds = draft
-    ? getFilledZoneIdsFromValues(draft.templateSnapshot, draft.valuesByKey)
-    : undefined;
+
   const bodyFigureSex = toBodyFigureSex(patientSex);
-  const shouldRenderFaceGuide = draft ? measurementSnapshotRequiresFaceGuide(draft.templateSnapshot) : false;
+
+  const filledCount = draft
+    ? getFilledZoneIdsFromValues(draft.templateSnapshot, draft.valuesByKey).size
+    : 0;
+
+  const totalCount = draft ? countTotalZones(draft.templateSnapshot) : 0;
 
   async function createDraft(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setSaving(true);
+    setSaveStatus("saving");
     setError(null);
 
     try {
@@ -191,21 +101,22 @@ export default function NewMeasurementClient({ patientId, patientName, patientSe
 
       if (!response.ok) {
         setError("No se pudo crear la medición. Revisá los datos iniciales.");
+        setSaveStatus("error");
         return;
       }
 
       const created = (await response.json()) as DraftResponse;
       setDraft({ ...created, valuesByKey: {} });
+      setSaveStatus("idle");
     } catch {
       setError("No se pudo crear la medición");
-    } finally {
-      setSaving(false);
+      setSaveStatus("error");
     }
   }
 
   async function saveValues(complete: boolean) {
     if (!draft) return;
-    setSaving(true);
+    setSaveStatus("saving");
     setError(null);
 
     try {
@@ -220,15 +131,16 @@ export default function NewMeasurementClient({ patientId, patientName, patientSe
 
       if (!response.ok) {
         setError("No se pudieron guardar las medidas. Revisá rangos y campos.");
+        setSaveStatus("error");
         return;
       }
 
+      setSaveStatus("saved");
       router.push(`/patients/${encodeURIComponent(patientId)}/measurements/${encodeURIComponent(draft.id)}`);
       router.refresh();
     } catch {
       setError("No se pudieron guardar las medidas");
-    } finally {
-      setSaving(false);
+      setSaveStatus("error");
     }
   }
 
@@ -238,105 +150,137 @@ export default function NewMeasurementClient({ patientId, patientName, patientSe
     );
   }
 
-  return (
-    <main className={styles.page}>
-      <header className={styles.header}>
-        <div>
-          <p className={styles.kicker}>MEDIASSWINT · Medición Digital</p>
-          <h1>Nueva medición</h1>
-          <p className={styles.subtitle}>{patientName}</p>
-        </div>
-        <Link className={styles.detailLink} href={`/patients/${encodeURIComponent(patientId)}`}>
-          Volver al paciente
-        </Link>
-      </header>
+  if (!draft) {
+    return (
+      <div className="min-h-dvh bg-slate-50 flex flex-col">
+        <PatientHeaderStrip
+          patientId={patientId}
+          patientName={patientName}
+          measuredAt={measuredAt}
+          saveStatus={saveStatus}
+        />
 
-      <section className={styles.card}>
-        <h2>Contexto de medición</h2>
-        {error ? <p className={styles.error}>{error}</p> : null}
-        {!draft ? (
-          <form onSubmit={createDraft} className={styles.formGrid}>
-            <label>
-              Fecha y hora*
-              <input
-                type="datetime-local"
-                required
-                value={measuredAt}
-                onChange={(event) => setMeasuredAt(event.target.value)}
-              />
-            </label>
-            <label>
-              Tipo de prenda
-              <input value={garmentType} onChange={(event) => setGarmentType(event.target.value)} />
-            </label>
-            <label>
-              Clase de compresión
-              <input value={compressionClass} onChange={(event) => setCompressionClass(event.target.value)} />
-            </label>
-            <label>
-              Diagnóstico
-              <input value={diagnosis} onChange={(event) => setDiagnosis(event.target.value)} />
-            </label>
-            <label className={styles.fullWidthField}>
-              Notas
-              <textarea value={notes} onChange={(event) => setNotes(event.target.value)} />
-            </label>
-            <button type="submit" disabled={saving} className={styles.primaryButton}>
-              {saving ? "Creando..." : "Crear borrador"}
-            </button>
-          </form>
-        ) : (
-          <div className={styles.measurementWorkspace}>
-            <aside className={styles.bodyHighlightRail} aria-label="Zonas anatómicas">
-              <p className={styles.zoneLabel}>
-                {activeField
-                  ? getActiveZoneLabel(activeField) ?? activeField.label
-                  : "Seleccioná un punto para empezar"}
-              </p>
-              <BodyHighlight
-                view="full"
-                sex={bodyFigureSex}
-                activeZoneId={activeZoneId}
-                filledZoneIds={filledZoneIds}
-                ariaLabel={`Figura humana ${patientSex === "MALE" ? "masculina" : "femenina"} con zonas de brazos y piernas`}
-                onZoneClick={(zoneId) => {
-                  const input = document.querySelector<HTMLElement>(`[data-anatomy-zone="${zoneId}"]`);
-                  input?.focus();
-                }}
-              />
-              {shouldRenderFaceGuide ? <FaceGuide sex={bodyFigureSex} /> : null}
-            </aside>
-            <div className={styles.measurementTables}>
-              <GroupTable
-                group="legs"
-                draft={draft}
-                onValueChange={updateValue}
-                onActiveFieldChange={(field) => {
-                  setActiveField(field);
-                  setActiveZoneId(getActiveZoneIdForField(field));
-                }}
-              />
-              <GroupTable
-                group="arms"
-                draft={draft}
-                onValueChange={updateValue}
-                onActiveFieldChange={(field) => {
-                  setActiveField(field);
-                  setActiveZoneId(getActiveZoneIdForField(field));
-                }}
-              />
-              <div className={styles.actionsRow}>
-                <button type="button" disabled={saving} className={styles.ghostButton} onClick={() => saveValues(false)}>
-                  Guardar borrador
-                </button>
-                <button type="button" disabled={saving} className={styles.primaryButton} onClick={() => saveValues(true)}>
-                  Finalizar medición
+        <main className="flex-1 flex items-start justify-center p-6">
+          <div className="w-full max-w-2xl bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+            <h2 className="text-lg font-semibold text-slate-900 mb-1">Contexto de medición</h2>
+            <p className="text-sm text-slate-500 mb-5">
+              Completá los datos generales para iniciar la sesión de toma de medidas.
+            </p>
+
+            {error ? (
+              <div className="mb-4 px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+                {error}
+              </div>
+            ) : null}
+
+            <form onSubmit={createDraft} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                  Fecha y hora *
+                </span>
+                <input
+                  type="datetime-local"
+                  required
+                  value={measuredAt}
+                  onChange={(event) => setMeasuredAt(event.target.value)}
+                  className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-200 transition"
+                />
+              </label>
+
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                  Tipo de prenda
+                </span>
+                <input
+                  value={garmentType}
+                  onChange={(event) => setGarmentType(event.target.value)}
+                  placeholder="Ej: Media hasta rodilla"
+                  className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-200 transition"
+                />
+              </label>
+
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                  Clase de compresión
+                </span>
+                <input
+                  value={compressionClass}
+                  onChange={(event) => setCompressionClass(event.target.value)}
+                  placeholder="Ej: Clase II"
+                  className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-200 transition"
+                />
+              </label>
+
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                  Diagnóstico
+                </span>
+                <input
+                  value={diagnosis}
+                  onChange={(event) => setDiagnosis(event.target.value)}
+                  placeholder="Ej: Insuficiencia venosa"
+                  className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-200 transition"
+                />
+              </label>
+
+              <label className="flex flex-col gap-1.5 sm:col-span-2">
+                <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                  Notas
+                </span>
+                <textarea
+                  value={notes}
+                  onChange={(event) => setNotes(event.target.value)}
+                  rows={3}
+                  className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-200 transition resize-none"
+                />
+              </label>
+
+              <div className="sm:col-span-2 flex justify-end">
+                <button
+                  type="submit"
+                  disabled={saveStatus === "saving"}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-red-700 hover:bg-red-800 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {saveStatus === "saving" ? "Creando..." : "Iniciar toma de medidas →"}
                 </button>
               </div>
-            </div>
+            </form>
           </div>
-        )}
-      </section>
-    </main>
+        </main>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-dvh flex flex-col overflow-hidden bg-white">
+      <PatientHeaderStrip
+        patientId={patientId}
+        patientName={patientName}
+        measuredAt={measuredAt}
+        saveStatus={saveStatus}
+      />
+
+      {error ? (
+        <div className="px-4 py-2 bg-red-50 border-b border-red-200 text-red-700 text-sm text-center">
+          {error}
+        </div>
+      ) : null}
+
+      <MeasurementShell
+        templateSnapshot={draft.templateSnapshot}
+        valuesByKey={draft.valuesByKey}
+        sex={bodyFigureSex}
+        onValueChange={updateValue}
+        footer={
+          <ProgressFooter
+            filledCount={filledCount}
+            totalCount={totalCount}
+            saving={saveStatus === "saving"}
+            onSaveDraft={() => saveValues(false)}
+            onComplete={() => saveValues(true)}
+          />
+        }
+      />
+    </div>
   );
 }
