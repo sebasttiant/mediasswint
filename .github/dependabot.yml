@@ -1,0 +1,53 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/Argentina/Buenos_Aires"
+    open-pull-requests-limit: 5
+    versioning-strategy: "increase"
+    labels:
+      - "dependencies"
+    groups:
+      production-dependencies:
+        dependency-type: "production"
+        update-types:
+          - "patch"
+          - "minor"
+      development-dependencies:
+        dependency-type: "development"
+        update-types:
+          - "patch"
+          - "minor"
+    # Security-only major updates land as individual PRs (not grouped) so each
+    # one is reviewed deliberately.
+    allow:
+      - dependency-type: "production"
+      - dependency-type: "development"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/Argentina/Buenos_Aires"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+
+  - package-ecosystem: "docker"
+    directory: "/apps/web"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/Argentina/Buenos_Aires"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "docker"
