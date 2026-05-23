@@ -9,6 +9,7 @@
   },
   "packageManager": "pnpm@11.2.2",
   "scripts": {
+    "prepare": "husky",
     "lint": "pnpm --filter @mediasswint/web lint",
     "typecheck": "pnpm --filter @mediasswint/web typecheck",
     "build": "pnpm --filter @mediasswint/web build",
@@ -21,5 +22,8 @@
     "infra:dev:down": "docker compose -f docker/docker-compose.dev.yml down",
     "infra:dev:logs": "docker compose -f docker/docker-compose.dev.yml logs -f",
     "infra:dev:ps": "docker compose -f docker/docker-compose.dev.yml ps"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7"
   }
 }

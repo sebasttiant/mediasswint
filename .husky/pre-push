@@ -1,0 +1,25 @@
+#!/usr/bin/env sh
+# Mandatory pre-push gates. Mirrors the required CI checks so a push can never
+# create a red PR. Order is fail-fast: cheapest checks run first.
+#
+# To skip in an emergency (rare): `git push --no-verify`. Doing so puts the
+# burden of fixing CI on whoever notices the failure.
+
+set -e
+
+echo "→ pnpm audit (moderate+) — block known CVEs"
+pnpm audit --audit-level moderate
+
+echo "→ pnpm lint"
+pnpm lint
+
+echo "→ pnpm typecheck"
+pnpm typecheck
+
+echo "→ pnpm --filter @mediasswint/web test:unit"
+pnpm --filter @mediasswint/web test:unit
+
+echo "→ pnpm build (next build — catches Edge bundle errors)"
+pnpm build
+
+echo "✓ pre-push gates passed"
