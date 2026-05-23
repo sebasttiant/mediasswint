@@ -182,7 +182,6 @@ function collectionDeps(
   overrides: Partial<MeasurementsCollectionDeps> = {},
 ): MeasurementsCollectionDeps {
   return {
-    requireActiveUser: async () => staffUser,
     repository: buildInMemoryRepository().repository,
     templateCode: "compression-v1",
     ...overrides,
@@ -191,23 +190,12 @@ function collectionDeps(
 
 function sessionDeps(overrides: Partial<MeasurementSessionDeps> = {}): MeasurementSessionDeps {
   return {
-    requireActiveUser: async () => staffUser,
     repository: buildInMemoryRepository().repository,
     ...overrides,
   };
 }
 
 describe("POST /api/patients/[id]/measurements", () => {
-  it("returns 401 when no active user", async () => {
-    const deps = collectionDeps({ requireActiveUser: async () => null });
-    const response = await handlePostMeasurementRequest(
-      postRequest({ measuredAt: "2026-04-28T10:00:00Z" }),
-      { params: Promise.resolve({ id: "pat-1" }) },
-      deps,
-    );
-    assert.equal(response.status, 401);
-  });
-
   it("returns 400 on invalid JSON", async () => {
     const repo = buildInMemoryRepository();
     const deps = collectionDeps({ repository: repo.repository });
@@ -221,6 +209,7 @@ describe("POST /api/patients/[id]/measurements", () => {
         body: "{not-json",
       }),
       { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
       deps,
     );
     assert.equal(response.status, 400);
@@ -232,6 +221,7 @@ describe("POST /api/patients/[id]/measurements", () => {
     const response = await handlePostMeasurementRequest(
       postRequest({ measuredAt: "2026-04-28T10:00:00Z" }),
       { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
       deps,
     );
     assert.equal(response.status, 404);
@@ -243,6 +233,7 @@ describe("POST /api/patients/[id]/measurements", () => {
     const response = await handlePostMeasurementRequest(
       postRequest({ measuredAt: "2026-04-28T10:00:00Z" }),
       { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
       deps,
     );
     assert.equal(response.status, 503);
@@ -260,6 +251,7 @@ describe("POST /api/patients/[id]/measurements", () => {
         diagnosis: "Insuficiencia venosa",
       }),
       { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
       deps,
     );
     assert.equal(response.status, 201);
@@ -273,16 +265,6 @@ describe("POST /api/patients/[id]/measurements", () => {
 });
 
 describe("GET /api/patients/[id]/measurements", () => {
-  it("returns 401 when no active user", async () => {
-    const deps = collectionDeps({ requireActiveUser: async () => null });
-    const response = await handleListMeasurementsRequest(
-      getRequest(),
-      { params: Promise.resolve({ id: "pat-1" }) },
-      deps,
-    );
-    assert.equal(response.status, 401);
-  });
-
   it("lists patient sessions with default limit", async () => {
     const repo = buildInMemoryRepository();
     await repo.repository.createDraft({
@@ -301,6 +283,7 @@ describe("GET /api/patients/[id]/measurements", () => {
     const response = await handleListMeasurementsRequest(
       getRequest(),
       { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
       deps,
     );
     assert.equal(response.status, 200);
@@ -328,6 +311,7 @@ describe("GET /api/patients/[id]/measurements/[sessionId]", () => {
     const response = await handleGetMeasurementRequest(
       getRequest(`/api/patients/pat-2/measurements/${created.id}`),
       { params: Promise.resolve({ id: "pat-2", sessionId: created.id }) },
+      staffUser,
       deps,
     );
     assert.equal(response.status, 404);
@@ -351,6 +335,7 @@ describe("GET /api/patients/[id]/measurements/[sessionId]", () => {
     const response = await handleGetMeasurementRequest(
       getRequest(`/api/patients/pat-1/measurements/${created.id}`),
       { params: Promise.resolve({ id: "pat-1", sessionId: created.id }) },
+      staffUser,
       deps,
     );
     assert.equal(response.status, 200);
@@ -382,6 +367,7 @@ describe("PATCH /api/patients/[id]/measurements/[sessionId]", () => {
         valuesByKey: { legRight1: 24.5 },
       }),
       { params: Promise.resolve({ id: "pat-2", sessionId: created.id }) },
+      staffUser,
       deps,
     );
 
@@ -409,6 +395,7 @@ describe("PATCH /api/patients/[id]/measurements/[sessionId]", () => {
         valuesByKey: { legRight1: 24.5, legLeft1: 25 },
       }),
       { params: Promise.resolve({ id: "pat-1", sessionId: created.id }) },
+      staffUser,
       deps,
     );
     assert.equal(response.status, 200);
@@ -438,6 +425,7 @@ describe("PATCH /api/patients/[id]/measurements/[sessionId]", () => {
         complete: true,
       }),
       { params: Promise.resolve({ id: "pat-1", sessionId: created.id }) },
+      staffUser,
       deps,
     );
     assert.equal(response.status, 200);
@@ -467,6 +455,7 @@ describe("PATCH /api/patients/[id]/measurements/[sessionId]", () => {
         valuesByKey: { legRight1: 24.5 },
       }),
       { params: Promise.resolve({ id: "pat-1", sessionId: created.id }) },
+      staffUser,
       deps,
     );
     assert.equal(response.status, 409);
@@ -492,6 +481,7 @@ describe("PATCH /api/patients/[id]/measurements/[sessionId]", () => {
         valuesByKey: { legRight1: 0 },
       }),
       { params: Promise.resolve({ id: "pat-1", sessionId: created.id }) },
+      staffUser,
       deps,
     );
     assert.equal(response.status, 400);

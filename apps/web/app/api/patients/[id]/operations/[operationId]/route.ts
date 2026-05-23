@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { Prisma, type CommercialOperationStatus } from "@prisma/client";
 
-import { requireActiveUserFromRequest, type AuthUser } from "@/lib/auth";
+import { type AuthUser } from "@/lib/auth";
+import { withAuth } from "@/lib/with-auth";
 import {
   getOperation,
   updateOperation,
@@ -23,13 +24,11 @@ const VALID_STATUSES: CommercialOperationStatus[] = [
 ];
 
 export type OperationDeps = {
-  requireActiveUser: (request: Request) => Promise<AuthUser | null>;
   getOperation: (patientId: string, operationId: string) => Promise<ServiceResult<OperationWithPatient>>;
   updateOperation: (patientId: string, operationId: string, input: UpdateOperationInput) => Promise<ServiceResult<OperationWithPatient>>;
 };
 
 const defaultDeps: OperationDeps = {
-  requireActiveUser: requireActiveUserFromRequest,
   getOperation,
   updateOperation,
 };
@@ -37,13 +36,9 @@ const defaultDeps: OperationDeps = {
 export async function handleGetOperationRequest(
   request: Request,
   { params }: Params,
+  _user: AuthUser,
   deps: OperationDeps = defaultDeps,
 ) {
-  const user = await deps.requireActiveUser(request);
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const { id: patientId, operationId } = await params;
   if (!patientId?.trim() || !operationId?.trim()) {
     return NextResponse.json({ error: "Patient id and operation id are required" }, { status: 400 });
@@ -64,13 +59,9 @@ export async function handleGetOperationRequest(
 export async function handleUpdateOperationRequest(
   request: Request,
   { params }: Params,
+  _user: AuthUser,
   deps: OperationDeps = defaultDeps,
 ) {
-  const user = await deps.requireActiveUser(request);
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const { id: patientId, operationId } = await params;
   if (!patientId?.trim() || !operationId?.trim()) {
     return NextResponse.json({ error: "Patient id and operation id are required" }, { status: 400 });
@@ -175,10 +166,10 @@ export async function handleUpdateOperationRequest(
   return NextResponse.json(result.value);
 }
 
-export async function GET(request: Request, context: Params) {
-  return handleGetOperationRequest(request, context);
-}
+export const GET = withAuth<Params>(async (request, ctx, { user }) =>
+  handleGetOperationRequest(request, ctx, user),
+);
 
-export async function PATCH(request: Request, context: Params) {
-  return handleUpdateOperationRequest(request, context);
-}
+export const PATCH = withAuth<Params>(async (request, ctx, { user }) =>
+  handleUpdateOperationRequest(request, ctx, user),
+);

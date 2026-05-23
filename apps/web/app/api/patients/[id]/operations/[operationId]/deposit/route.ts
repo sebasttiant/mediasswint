@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 
-import { requireActiveUserFromRequest, type AuthUser } from "@/lib/auth";
+import { type AuthUser } from "@/lib/auth";
+import { withAuth } from "@/lib/with-auth";
 import {
   addDeposit,
   type OperationWithPatient,
@@ -13,25 +14,19 @@ type Params = {
 };
 
 export type DepositDeps = {
-  requireActiveUser: (request: Request) => Promise<AuthUser | null>;
   addDeposit: (patientId: string, operationId: string, amount: Prisma.Decimal) => Promise<ServiceResult<OperationWithPatient>>;
 };
 
 const defaultDeps: DepositDeps = {
-  requireActiveUser: requireActiveUserFromRequest,
   addDeposit,
 };
 
 export async function handleAddDepositRequest(
   request: Request,
   { params }: Params,
+  _user: AuthUser,
   deps: DepositDeps = defaultDeps,
 ) {
-  const user = await deps.requireActiveUser(request);
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const { id: patientId, operationId } = await params;
   if (!patientId?.trim() || !operationId?.trim()) {
     return NextResponse.json({ error: "Patient id and operation id are required" }, { status: 400 });
@@ -96,6 +91,6 @@ export async function handleAddDepositRequest(
   return NextResponse.json(result.value);
 }
 
-export async function POST(request: Request, context: Params) {
-  return handleAddDepositRequest(request, context);
-}
+export const POST = withAuth<Params>(async (request, ctx, { user }) =>
+  handleAddDepositRequest(request, ctx, user),
+);

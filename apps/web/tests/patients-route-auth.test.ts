@@ -33,7 +33,6 @@ function jsonRequest(path: string, body: unknown) {
 
 function createPatientRouteDeps(overrides: Partial<PatientRouteDeps> = {}): PatientRouteDeps {
   return {
-    requireActiveUser: async () => staffUser,
     get: async () => ({
       ok: true,
       value: {
@@ -70,43 +69,9 @@ function createPatientRouteDeps(overrides: Partial<PatientRouteDeps> = {}): Pati
   };
 }
 
-describe("patients route auth", () => {
-  it("returns 401 when the request has no active authenticated user", async () => {
-    const deps: PatientsRouteDeps = {
-      requireActiveUser: async () => null,
-      list: async () => {
-        throw new Error("must not list patients without auth");
-      },
-      create: async () => {
-        throw new Error("unused");
-      },
-    };
-
-    const response = await handleGetPatientsRequest(new Request("http://localhost/api/patients"), deps);
-
-    assert.equal(response.status, 401);
-    assert.deepEqual(await response.json(), { error: "Unauthorized" });
-  });
-
-  it("returns 401 for an inactive user resolved by the active-user guard", async () => {
-    const deps: PatientsRouteDeps = {
-      requireActiveUser: async () => null,
-      list: async () => {
-        throw new Error("must not list patients for inactive users");
-      },
-      create: async () => {
-        throw new Error("unused");
-      },
-    };
-
-    const response = await handleGetPatientsRequest(request(), deps);
-
-    assert.equal(response.status, 401);
-  });
-
+describe("patients route handlers", () => {
   it("allows an active STAFF user to list patients", async () => {
     const deps: PatientsRouteDeps = {
-      requireActiveUser: async () => staffUser,
       list: async () => ({
         ok: true,
         value: [
@@ -130,7 +95,7 @@ describe("patients route auth", () => {
       },
     };
 
-    const response = await handleGetPatientsRequest(request("/api/patients?limit=20"), deps);
+    const response = await handleGetPatientsRequest(request("/api/patients?limit=20"), staffUser, deps);
     const payload = (await response.json()) as Array<{ id: string; fullName: string }>;
 
     assert.equal(response.status, 200);
@@ -138,9 +103,8 @@ describe("patients route auth", () => {
     assert.equal(payload[0]?.fullName, "Ada Lovelace");
   });
 
-  it("applies the same active-user guard to patient detail", async () => {
+  it("returns patient detail for an active user", async () => {
     const deps: PatientRouteDeps = {
-      requireActiveUser: async () => staffUser,
       update: async () => {
         throw new Error("unused");
       },
@@ -162,29 +126,16 @@ describe("patients route auth", () => {
       }),
     };
 
-    const response = await handleGetPatientRequest(request("/api/patients/pat-1"), { params: Promise.resolve({ id: "pat-1" }) }, deps);
+    const response = await handleGetPatientRequest(
+      request("/api/patients/pat-1"),
+      { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
+      deps,
+    );
     const payload = (await response.json()) as { id: string; fullName: string };
 
     assert.equal(response.status, 200);
     assert.equal(payload.id, "pat-1");
-  });
-
-  it("returns 401 for PATCH without an active user", async () => {
-    const deps = createPatientRouteDeps({
-      requireActiveUser: async () => null,
-      update: async () => {
-        throw new Error("must not update without auth");
-      },
-    });
-
-    const response = await handlePatchPatientRequest(
-      jsonRequest("/api/patients/pat-1", { fullName: "Updated" }),
-      { params: Promise.resolve({ id: "pat-1" }) },
-      deps,
-    );
-
-    assert.equal(response.status, 401);
-    assert.deepEqual(await response.json(), { error: "Unauthorized" });
   });
 
   it("returns 400 for PATCH invalid JSON", async () => {
@@ -196,6 +147,7 @@ describe("patients route auth", () => {
         body: "{not-json",
       }),
       { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
       deps,
     );
 
@@ -209,6 +161,7 @@ describe("patients route auth", () => {
     const response = await handlePatchPatientRequest(
       jsonRequest("/api/patients/pat-1", { fullName: "" }),
       { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
       createPatientRouteDeps(),
     );
 
@@ -221,6 +174,7 @@ describe("patients route auth", () => {
     const response = await handlePatchPatientRequest(
       jsonRequest("/api/patients/pat-missing", { fullName: "Updated" }),
       { params: Promise.resolve({ id: "pat-missing" }) },
+      staffUser,
       createPatientRouteDeps({ update: async () => ({ ok: false, error: "NOT_FOUND" }) }),
     );
 
@@ -232,6 +186,7 @@ describe("patients route auth", () => {
     const response = await handlePatchPatientRequest(
       jsonRequest("/api/patients/pat-1", { fullName: "Updated", documentType: "DNI", documentNumber: "123" }),
       { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
       createPatientRouteDeps({ update: async () => ({ ok: false, error: "CONFLICT" }) }),
     );
 
@@ -243,6 +198,7 @@ describe("patients route auth", () => {
     const response = await handlePatchPatientRequest(
       jsonRequest("/api/patients/pat-1", { fullName: "Updated" }),
       { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
       createPatientRouteDeps({ update: async () => ({ ok: false, error: "UNKNOWN" }) }),
     );
 
@@ -254,6 +210,7 @@ describe("patients route auth", () => {
     const response = await handlePatchPatientRequest(
       jsonRequest("/api/patients/pat-1", { fullName: "Updated Patient" }),
       { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
       createPatientRouteDeps(),
     );
     const payload = (await response.json()) as { id: string; fullName: string; documentType: string | null };

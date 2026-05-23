@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 
-import { requireActiveUserFromRequest, type AuthUser } from "@/lib/auth";
+import { type AuthUser } from "@/lib/auth";
+import { withAuth } from "@/lib/with-auth";
 import {
   createOperation,
   listOperations,
@@ -15,13 +16,11 @@ type Params = {
 };
 
 export type OperationsCollectionDeps = {
-  requireActiveUser: (request: Request) => Promise<AuthUser | null>;
   listOperations: (patientId: string) => Promise<ServiceResult<OperationWithPatient[]>>;
   createOperation: (patientId: string, input: CreateOperationInput) => Promise<ServiceResult<OperationWithPatient>>;
 };
 
 const defaultDeps: OperationsCollectionDeps = {
-  requireActiveUser: requireActiveUserFromRequest,
   listOperations,
   createOperation,
 };
@@ -29,13 +28,9 @@ const defaultDeps: OperationsCollectionDeps = {
 export async function handleListOperationsRequest(
   request: Request,
   { params }: Params,
+  _user: AuthUser,
   deps: OperationsCollectionDeps = defaultDeps,
 ) {
-  const user = await deps.requireActiveUser(request);
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const { id: patientId } = await params;
   if (!patientId?.trim()) {
     return NextResponse.json({ error: "Patient id is required" }, { status: 400 });
@@ -56,13 +51,9 @@ export async function handleListOperationsRequest(
 export async function handleCreateOperationRequest(
   request: Request,
   { params }: Params,
+  _user: AuthUser,
   deps: OperationsCollectionDeps = defaultDeps,
 ) {
-  const user = await deps.requireActiveUser(request);
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const { id: patientId } = await params;
   if (!patientId?.trim()) {
     return NextResponse.json({ error: "Patient id is required" }, { status: 400 });
@@ -140,10 +131,10 @@ export async function handleCreateOperationRequest(
   return NextResponse.json(result.value, { status: 201 });
 }
 
-export async function GET(request: Request, context: Params) {
-  return handleListOperationsRequest(request, context);
-}
+export const GET = withAuth<Params>(async (request, ctx, { user }) =>
+  handleListOperationsRequest(request, ctx, user),
+);
 
-export async function POST(request: Request, context: Params) {
-  return handleCreateOperationRequest(request, context);
-}
+export const POST = withAuth<Params>(async (request, ctx, { user }) =>
+  handleCreateOperationRequest(request, ctx, user),
+);
