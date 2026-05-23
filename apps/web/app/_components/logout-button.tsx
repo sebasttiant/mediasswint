@@ -1,7 +1,6 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import styles from "../dashboard.module.css";
 
 export function LogoutButton() {
   const router = useRouter();
@@ -13,7 +12,11 @@ export function LogoutButton() {
   }
 
   return (
-    <button type="button" onClick={handleLogout} className={styles.logoutBtn}>
+    <button
+      type="button"
+      onClick={handleLogout}
+      className="rounded-lg border border-white/30 bg-transparent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-white/10 hover:border-white/50"
+    >
       Cerrar sesión
     </button>
   );
