@@ -1,5 +1,3 @@
-import "dotenv/config";
-
 import { syncCompressionTemplate } from "@/lib/measurement-templates";
 
 async function main() {
