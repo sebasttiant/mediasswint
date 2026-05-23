@@ -46,9 +46,9 @@
   --shadow-elevated: 0 8px 24px rgba(15, 23, 42, 0.1);
   --shadow-clinical: 0 0 0 1px rgba(2, 132, 199, 0.1), 0 4px 16px rgba(2, 132, 199, 0.08);
 
-  --font-sans: "Inter", "SF Pro Text", "Segoe UI", system-ui, -apple-system, sans-serif;
-  --font-display: "Inter Tight", "Inter", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", "SF Mono", "Fira Code", monospace;
+  --font-sans: var(--font-inter), "SF Pro Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-inter-tight), var(--font-inter), system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), "SF Mono", "Fira Code", monospace;
 
   --ease-clinical: cubic-bezier(0.32, 0.72, 0.32, 1);
 }
@@ -88,8 +88,8 @@
   --shadow-lg: 0 8px 24px rgba(15, 23, 42, 0.1);
   --shadow-xl: 0 12px 40px rgba(15, 23, 42, 0.12);
 
-  --font-sans: "Inter", "SF Pro Text", "Segoe UI", system-ui, -apple-system, sans-serif;
-  --font-mono: "JetBrains Mono", "SF Mono", "Fira Code", monospace;
+  --font-sans: var(--font-inter), "Inter", "SF Pro Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), "JetBrains Mono", "SF Mono", "Fira Code", monospace;
 }
 
 html {
