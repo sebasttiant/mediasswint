@@ -1,5 +1,3 @@
-import "dotenv/config";
-
 import { bootstrapAuthUser } from "@/lib/auth";
 
 async function main() {
