@@ -1,5 +1,6 @@
 import { Prisma, type CommercialOperation, type CommercialOperationStatus } from "@prisma/client";
 
+import { recordAudit, toAuditPayload } from "@/lib/audit-log";
 import { getPrisma } from "@/lib/prisma";
 
 export type ServiceErrorCode = "NOT_FOUND" | "INVALID_OPERATION" | "FORBIDDEN" | "UNKNOWN";
@@ -210,6 +211,13 @@ export async function createOperation(
       },
     });
 
+    await recordAudit({
+      action: "CREATE",
+      entityType: "CommercialOperation",
+      entityId: operation.id,
+      diff: { after: toAuditPayload(operation) },
+    });
+
     return { ok: true, value: operation };
   } catch (error) {
     console.error("createOperation error:", error);
@@ -267,6 +275,13 @@ export async function updateOperation(
           select: { id: true, fullName: true },
         },
       },
+    });
+
+    await recordAudit({
+      action: "UPDATE",
+      entityType: "CommercialOperation",
+      entityId: operation.id,
+      diff: { before: toAuditPayload(existing), after: toAuditPayload(operation) },
     });
 
     return { ok: true, value: operation };
@@ -329,11 +344,20 @@ export async function addDeposit(
           },
         });
 
-        return { ok: true as const, value: updated };
+        return { ok: true as const, value: updated, before: existing };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
 
+    if (result.ok) {
+      await recordAudit({
+        action: "UPDATE",
+        entityType: "CommercialOperation",
+        entityId: result.value.id,
+        diff: { before: toAuditPayload(result.before), after: toAuditPayload(result.value) },
+      });
+      return { ok: true, value: result.value };
+    }
     return result;
   } catch (error) {
     console.error("addDeposit error:", error);

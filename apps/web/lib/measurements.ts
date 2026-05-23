@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 
 import { getPrisma } from "./prisma";
+import { recordAudit, toAuditPayload } from "@/lib/audit-log";
 
 export type MeasurementSessionStatus = "DRAFT" | "COMPLETED" | "VOID";
 
@@ -159,6 +160,25 @@ export async function createDraftMeasurement(
       templateSnapshot: snapshot,
     });
 
+    await recordAudit({
+      action: "CREATE",
+      entityType: "MeasurementSession",
+      entityId: created.id,
+      diff: { after: toAuditPayload({
+        id: created.id,
+        patientId: input.patientId,
+        templateId: snapshot.templateId,
+        status: "DRAFT",
+        measuredAt: input.measuredAt,
+        notes: input.notes,
+        diagnosis: input.diagnosis,
+        garmentType: input.garmentType,
+        compressionClass: input.compressionClass,
+        productFlags: input.productFlags,
+        metadata: input.metadata,
+      }) },
+    });
+
     return { ok: true, value: { id: created.id, templateSnapshot: snapshot } };
   } catch (error) {
     console.error("[measurements:createDraft]", error);
@@ -188,12 +208,52 @@ export async function updateMeasurementValues(
       resolved.push({ fieldId: field.id, valueNumber: value });
     }
 
+    // Capture before state for audit
+    const beforeValues: Record<string, number | null> = {};
+    for (const [key, value] of Object.entries(detail.values)) {
+      beforeValues[key] = value;
+    }
+
     const result = await repository.replaceValues({ sessionId, values: resolved });
     if (!result.ok) {
       if (result.status === null) return { ok: false, error: "NOT_FOUND" };
       if (result.status !== "DRAFT") return { ok: false, error: "INVALID_STATE" };
       return { ok: false, error: "UNKNOWN" };
     }
+
+    // Capture after state for audit
+    const afterValues: Record<string, number | null> = {};
+    for (const [key, value] of Object.entries(input.valuesByKey)) {
+      afterValues[key] = value;
+    }
+
+    await recordAudit({
+      action: "UPDATE",
+      entityType: "MeasurementSession",
+      entityId: sessionId,
+      diff: { 
+        before: toAuditPayload({
+          id: sessionId,
+          valuesByKey: beforeValues,
+          status: detail.status,
+          measuredAt: detail.measuredAt,
+          notes: detail.notes,
+          diagnosis: detail.diagnosis,
+          garmentType: detail.garmentType,
+          compressionClass: detail.compressionClass,
+        }),
+        after: toAuditPayload({
+          id: sessionId,
+          valuesByKey: afterValues,
+          status: detail.status, // status doesn't change in this operation
+          measuredAt: detail.measuredAt,
+          notes: detail.notes,
+          diagnosis: detail.diagnosis,
+          garmentType: detail.garmentType,
+          compressionClass: detail.compressionClass,
+        })
+      },
+    });
 
     return { ok: true, value: { updated: resolved.length } };
   } catch (error) {
@@ -207,8 +267,50 @@ export async function completeMeasurement(
   repository: MeasurementsRepository,
 ): Promise<ServiceResult<{ id: string; status: "COMPLETED" }>> {
   try {
+    // Get current state before completion
+    const detailBefore = await repository.getDetail(sessionId);
+    if (!detailBefore) return { ok: false, error: "NOT_FOUND" };
+    if (detailBefore.status !== "DRAFT") return { ok: false, error: "INVALID_STATE" };
+
     const result = await repository.markCompleted(sessionId);
     if (result.status === "COMPLETED") {
+      // Get state after completion
+      const detailAfter = await repository.getDetail(sessionId);
+      
+      await recordAudit({
+        action: "UPDATE", // Using UPDATE since we're changing status from DRAFT to COMPLETED
+        entityType: "MeasurementSession",
+        entityId: sessionId,
+        diff: { 
+          before: toAuditPayload({
+            id: detailBefore.id,
+            patientId: detailBefore.patientId,
+            templateId: detailBefore.templateId,
+            status: detailBefore.status,
+            measuredAt: detailBefore.measuredAt,
+            notes: detailBefore.notes,
+            diagnosis: detailBefore.diagnosis,
+            garmentType: detailBefore.garmentType,
+            compressionClass: detailBefore.compressionClass,
+            productFlags: detailBefore.productFlags,
+            metadata: detailBefore.metadata,
+          }),
+          after: toAuditPayload({
+            id: detailAfter?.id || sessionId,
+            patientId: detailAfter?.patientId || "",
+            templateId: detailAfter?.templateId || null,
+            status: "COMPLETED",
+            measuredAt: detailAfter?.measuredAt || new Date(),
+            notes: detailAfter?.notes,
+            diagnosis: detailAfter?.diagnosis,
+            garmentType: detailAfter?.garmentType,
+            compressionClass: detailAfter?.compressionClass,
+            productFlags: detailAfter?.productFlags,
+            metadata: detailAfter?.metadata,
+          })
+        },
+      });
+
       return { ok: true, value: { id: sessionId, status: "COMPLETED" } };
     }
     if (result.status === "NOT_FOUND") return { ok: false, error: "NOT_FOUND" };
