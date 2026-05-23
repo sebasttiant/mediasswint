@@ -6,15 +6,7 @@ import { getSessionCookieName, requireActiveUserFromRequest } from "@/lib/auth";
 import { fetchOperationalPendingQueue, type OperationalQueueItem } from "@/lib/operations";
 
 import { AppShell } from "../_components/app-shell/app-shell";
-import styles from "../dashboard.module.css";
-
-const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
-  PRESUPUESTO: { bg: "#fef5ec", color: "#b8733f", label: "Presupuesto" },
-  CONFIRMADO: { bg: "#ecfdf5", color: "#10b981", label: "Confirmado" },
-  EN_PRODUCCION: { bg: "#eff6ff", color: "#3b82f6", label: "En producción" },
-  ENTREGADO: { bg: "#f5f3ff", color: "#8b5cf6", label: "Entregado" },
-  CANCELADO: { bg: "#fef2f2", color: "#ef4444", label: "Cancelado" },
-};
+import { StatusBadge } from "../_components/dashboard/status-badge";
 
 function formatCurrency(value: string | number | null): string {
   if (value === null) return "-";
@@ -24,61 +16,54 @@ function formatCurrency(value: string | number | null): string {
 
 function QueueTable({ emptyMessage, items }: { emptyMessage: string; items: OperationalQueueItem[] }) {
   if (items.length === 0) {
-    return <p className={styles.muted}>{emptyMessage}</p>;
+    return <p className="text-sm text-slate-400">{emptyMessage}</p>;
   }
 
   return (
-    <div className={styles.tableResponsive}>
-      <table className={styles.table}>
+    <div className="overflow-x-auto rounded-lg border border-slate-200">
+      <table className="w-full border-collapse text-sm">
         <thead>
-          <tr>
-            <th>Paciente</th>
-            <th>Prenda</th>
-            <th>Estado</th>
-            <th>Total</th>
-            <th>Seña</th>
-            <th>Saldo</th>
-            <th>Actualizada</th>
-            <th>Acción</th>
+          <tr className="bg-slate-50">
+            {["Paciente", "Prenda", "Estado", "Total", "Seña", "Saldo", "Actualizada", "Acción"].map((h) => (
+              <th
+                key={h}
+                className="border-b border-slate-200 px-4 py-2.5 text-left text-xs font-bold uppercase tracking-widest text-slate-400"
+              >
+                {h}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
-          {items.map((item) => {
-            const statusStyle = STATUS_STYLES[item.status] ?? {
-              bg: "#f3f4f6",
-              color: "#6b7280",
-              label: item.status,
-            };
-
-            return (
-              <tr key={item.id}>
-                <td>
-                  {item.patientId ? (
-                    <Link className={styles.link} href={item.actionHref}>
-                      {item.patientName ?? "Paciente sin nombre"}
-                    </Link>
-                  ) : (
-                    <span className={styles.muted}>{item.patientName ?? "Paciente sin nombre"}</span>
-                  )}
-                </td>
-                <td className={styles.muted}>{item.garmentType ?? "-"}</td>
-                <td>
-                  <span className={styles.statusBadge} style={{ background: statusStyle.bg, color: statusStyle.color }}>
-                    {statusStyle.label}
-                  </span>
-                </td>
-                <td>{formatCurrency(item.totalAmount)}</td>
-                <td className={styles.muted}>{formatCurrency(item.depositPaid)}</td>
-                <td>{formatCurrency(item.pendingBalance)}</td>
-                <td className={styles.muted}>{item.updatedAt.toLocaleDateString("es-AR")}</td>
-                <td>
-                  <Link className={styles.link} href={item.actionHref}>
-                    Abrir paciente
+          {items.map((item, idx) => (
+            <tr
+              key={item.id}
+              className={`transition-colors hover:bg-slate-50 ${idx !== items.length - 1 ? "border-b border-slate-100" : ""}`}
+            >
+              <td className="px-4 py-3">
+                {item.patientId ? (
+                  <Link className="font-medium text-brand hover:underline" href={item.actionHref}>
+                    {item.patientName ?? "Paciente sin nombre"}
                   </Link>
-                </td>
-              </tr>
-            );
-          })}
+                ) : (
+                  <span className="text-slate-400">{item.patientName ?? "Paciente sin nombre"}</span>
+                )}
+              </td>
+              <td className="px-4 py-3 text-slate-400">{item.garmentType ?? "-"}</td>
+              <td className="px-4 py-3">
+                <StatusBadge status={item.status} variant="operation" />
+              </td>
+              <td className="px-4 py-3 font-medium text-slate-700">{formatCurrency(item.totalAmount)}</td>
+              <td className="px-4 py-3 text-slate-400">{formatCurrency(item.depositPaid)}</td>
+              <td className="px-4 py-3 font-medium text-slate-700">{formatCurrency(item.pendingBalance)}</td>
+              <td className="px-4 py-3 text-slate-400">{item.updatedAt.toLocaleDateString("es-AR")}</td>
+              <td className="px-4 py-3">
+                <Link className="font-semibold text-brand hover:underline" href={item.actionHref}>
+                  Abrir paciente
+                </Link>
+              </td>
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>
@@ -106,32 +91,33 @@ export default async function OperationsQueuePage() {
       title="Cola de operaciones pendientes"
       userLabel={user.fullName ?? undefined}
     >
-      <div className={styles.content}>
-        <div className={styles.pendingSummary}>
-          <div className={styles.pendingSummaryItem}>
-            <span className={styles.metricLabel}>Saldos por cobrar</span>
-            <strong className={styles.pendingSummaryValue}>{queue.paymentCount}</strong>
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Summary counters */}
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-2">
+          <div className="rounded-lg border border-slate-100 bg-white px-5 py-4 shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Saldos por cobrar</p>
+            <strong className="font-display text-3xl font-bold text-brand">{queue.paymentCount}</strong>
           </div>
-          <div className={styles.pendingSummaryItem}>
-            <span className={styles.metricLabel}>Producción / entrega</span>
-            <strong className={styles.pendingSummaryValue}>{queue.productionCount}</strong>
+          <div className="rounded-lg border border-slate-100 bg-white px-5 py-4 shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Producción / entrega</p>
+            <strong className="font-display text-3xl font-bold text-brand">{queue.productionCount}</strong>
           </div>
         </div>
 
-        <section className={styles.section}>
-          <div className={styles.sectionHeader}>
-            <h2 className={styles.sectionTitle}>Saldos pendientes</h2>
+        <section className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <div className="border-b border-slate-100 bg-slate-50 px-5 py-3.5">
+            <h2 className="text-sm font-semibold text-slate-700">Saldos pendientes</h2>
           </div>
-          <div className={styles.sectionBody}>
+          <div className="p-5">
             <QueueTable emptyMessage="No hay operaciones con saldo pendiente." items={queue.paymentItems} />
           </div>
         </section>
 
-        <section className={styles.section}>
-          <div className={styles.sectionHeader}>
-            <h2 className={styles.sectionTitle}>Producción y entrega</h2>
+        <section className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <div className="border-b border-slate-100 bg-slate-50 px-5 py-3.5">
+            <h2 className="text-sm font-semibold text-slate-700">Producción y entrega</h2>
           </div>
-          <div className={styles.sectionBody}>
+          <div className="p-5">
             <QueueTable emptyMessage="No hay operaciones confirmadas o en producción." items={queue.productionItems} />
           </div>
         </section>
