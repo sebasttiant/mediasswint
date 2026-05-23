@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
 
 import { type AuthUser } from "@/lib/auth";
 import { withAuth } from "@/lib/with-auth";
@@ -10,6 +9,7 @@ import {
   type OperationWithPatient,
   type ServiceResult,
 } from "@/lib/operations";
+import { parseCreateOperationBody } from "@/lib/operations-input";
 
 type Params = {
   params: Promise<{ id: string }>;
@@ -69,56 +69,15 @@ export async function handleCreateOperationRequest(
     );
   }
 
-  if (typeof body !== "object" || body === null) {
-    return NextResponse.json(
-      { errors: [{ field: "body", message: "invalid body shape" }] },
-      { status: 400 },
-    );
-  }
-
-  const input = body as {
-    garmentType?: string;
-    totalAmount?: string;
-    notes?: string;
-  };
-
-  if (!input.garmentType?.trim()) {
-    return NextResponse.json(
-      { errors: [{ field: "garmentType", message: "garmentType is required" }] },
-      { status: 400 },
-    );
-  }
-
-  if (input.garmentType.length > 200) {
-    return NextResponse.json(
-      { errors: [{ field: "garmentType", message: "must be at most 200 characters" }] },
-      { status: 400 },
-    );
-  }
-
-  if (input.notes && input.notes.length > 2000) {
-    return NextResponse.json(
-      { errors: [{ field: "notes", message: "must be at most 2000 characters" }] },
-      { status: 400 },
-    );
-  }
-
-  let totalAmount: Prisma.Decimal | undefined;
-
-  if (input.totalAmount !== undefined) {
-    if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(input.totalAmount)) {
-      return NextResponse.json(
-        { errors: [{ field: "totalAmount", message: "must be a positive number" }] },
-        { status: 400 },
-      );
-    }
-    totalAmount = new Prisma.Decimal(input.totalAmount);
+  const parsed = parseCreateOperationBody(body);
+  if (!parsed.ok) {
+    return NextResponse.json({ errors: parsed.errors }, { status: 400 });
   }
 
   const result = await deps.createOperation(patientId, {
-    garmentType: input.garmentType.trim(),
-    totalAmount,
-    notes: input.notes?.trim() || undefined,
+    garmentType: parsed.value.garmentType,
+    totalAmount: parsed.value.totalAmount,
+    notes: parsed.value.notes,
   });
 
   if (!result.ok) {

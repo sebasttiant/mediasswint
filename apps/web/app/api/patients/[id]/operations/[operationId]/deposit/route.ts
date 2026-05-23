@@ -8,6 +8,7 @@ import {
   type OperationWithPatient,
   type ServiceResult,
 } from "@/lib/operations";
+import { parseDepositBody } from "@/lib/operations-input";
 
 type Params = {
   params: Promise<{ id: string; operationId: string }>;
@@ -42,38 +43,12 @@ export async function handleAddDepositRequest(
     );
   }
 
-  if (typeof body !== "object" || body === null) {
-    return NextResponse.json(
-      { errors: [{ field: "body", message: "invalid body shape" }] },
-      { status: 400 },
-    );
+  const parsed = parseDepositBody(body);
+  if (!parsed.ok) {
+    return NextResponse.json({ errors: parsed.errors }, { status: 400 });
   }
 
-  const input = body as { amount?: string };
-
-  if (input.amount === undefined) {
-    return NextResponse.json(
-      { errors: [{ field: "amount", message: "amount is required" }] },
-      { status: 400 },
-    );
-  }
-
-  if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(input.amount)) {
-    return NextResponse.json(
-      { errors: [{ field: "amount", message: "must be a positive number" }] },
-      { status: 400 },
-    );
-  }
-
-  const amount = new Prisma.Decimal(input.amount);
-  if (amount.lte(0)) {
-    return NextResponse.json(
-      { errors: [{ field: "amount", message: "must be a positive number" }] },
-      { status: 400 },
-    );
-  }
-
-  const result = await deps.addDeposit(patientId, operationId, amount);
+  const result = await deps.addDeposit(patientId, operationId, parsed.value.amount);
 
   if (!result.ok) {
     if (result.error === "NOT_FOUND") {
