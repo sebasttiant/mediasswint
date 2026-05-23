@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { getCookieValue, getSessionCookieName, verifySessionToken } from "@/lib/auth";
+import { getCookieValue, getSessionCookieName, verifySessionToken } from "@/lib/auth-edge";
 
 /**
  * Edge-compatible auth middleware.

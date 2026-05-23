@@ -1,27 +1,25 @@
 import { NextResponse } from "next/server";
 
-import { requireActiveUserFromRequest, type AuthUser } from "@/lib/auth";
+import { type AuthUser } from "@/lib/auth";
+import { withAuth } from "@/lib/with-auth";
 import { parseCreatePatientInput, parseListPatientsQuery } from "@/lib/patients-input";
 import { createPatient, listPatients } from "@/lib/patients";
 
 export type PatientsRouteDeps = {
-  requireActiveUser: (request: Request) => Promise<AuthUser | null>;
   create: typeof createPatient;
   list: typeof listPatients;
 };
 
 const defaultDeps: PatientsRouteDeps = {
-  requireActiveUser: requireActiveUserFromRequest,
   create: createPatient,
   list: listPatients,
 };
 
-export async function handlePostPatientRequest(request: Request, deps: PatientsRouteDeps = defaultDeps) {
-  const user = await deps.requireActiveUser(request);
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
+export async function handlePostPatientRequest(
+  request: Request,
+  _user: AuthUser,
+  deps: PatientsRouteDeps = defaultDeps,
+) {
   let body: unknown;
 
   try {
@@ -53,12 +51,11 @@ export async function handlePostPatientRequest(request: Request, deps: PatientsR
   return NextResponse.json(result.value, { status: 201 });
 }
 
-export async function handleGetPatientsRequest(request: Request, deps: PatientsRouteDeps = defaultDeps) {
-  const user = await deps.requireActiveUser(request);
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
+export async function handleGetPatientsRequest(
+  request: Request,
+  _user: AuthUser,
+  deps: PatientsRouteDeps = defaultDeps,
+) {
   const searchParams = new URL(request.url).searchParams;
   const parsedQuery = parseListPatientsQuery(searchParams);
 
@@ -74,10 +71,10 @@ export async function handleGetPatientsRequest(request: Request, deps: PatientsR
   return NextResponse.json(result.value, { status: 200 });
 }
 
-export async function POST(request: Request) {
-  return handlePostPatientRequest(request);
-}
+export const POST = withAuth(async (request, _ctx, { user }) =>
+  handlePostPatientRequest(request, user),
+);
 
-export async function GET(request: Request) {
-  return handleGetPatientsRequest(request);
-}
+export const GET = withAuth(async (request, _ctx, { user }) =>
+  handleGetPatientsRequest(request, user),
+);

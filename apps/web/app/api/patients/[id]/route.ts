@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
-import { requireActiveUserFromRequest, type AuthUser } from "@/lib/auth";
+import { type AuthUser } from "@/lib/auth";
+import { withAuth } from "@/lib/with-auth";
 import { parseUpdatePatientInput } from "@/lib/patients-input";
 import { getPatient, updatePatient } from "@/lib/patients";
 
@@ -9,24 +10,21 @@ type Params = {
 };
 
 export type PatientRouteDeps = {
-  requireActiveUser: (request: Request) => Promise<AuthUser | null>;
   get: typeof getPatient;
   update: typeof updatePatient;
 };
 
 const defaultDeps: PatientRouteDeps = {
-  requireActiveUser: requireActiveUserFromRequest,
   get: getPatient,
   update: updatePatient,
 };
 
-export async function handleGetPatientRequest(request: Request, { params }: Params, deps: PatientRouteDeps = defaultDeps) {
-  const user = await deps.requireActiveUser(request);
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
+export async function handleGetPatientRequest(
+  request: Request,
+  { params }: Params,
+  _user: AuthUser,
+  deps: PatientRouteDeps = defaultDeps,
+) {
   const { id } = await params;
 
   if (!id.trim()) {
@@ -45,17 +43,12 @@ export async function handleGetPatientRequest(request: Request, { params }: Para
   return NextResponse.json(result.value, { status: 200 });
 }
 
-export async function GET(request: Request, context: Params) {
-  return handleGetPatientRequest(request, context);
-}
-
-export async function handlePatchPatientRequest(request: Request, { params }: Params, deps: PatientRouteDeps = defaultDeps) {
-  const user = await deps.requireActiveUser(request);
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
+export async function handlePatchPatientRequest(
+  request: Request,
+  { params }: Params,
+  _user: AuthUser,
+  deps: PatientRouteDeps = defaultDeps,
+) {
   const { id } = await params;
 
   if (!id.trim()) {
@@ -94,6 +87,10 @@ export async function handlePatchPatientRequest(request: Request, { params }: Pa
   return NextResponse.json(result.value, { status: 200 });
 }
 
-export async function PATCH(request: Request, context: Params) {
-  return handlePatchPatientRequest(request, context);
-}
+export const GET = withAuth<Params>(async (request, ctx, { user }) =>
+  handleGetPatientRequest(request, ctx, user),
+);
+
+export const PATCH = withAuth<Params>(async (request, ctx, { user }) =>
+  handlePatchPatientRequest(request, ctx, user),
+);

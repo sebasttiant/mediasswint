@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
-import { requireActiveUserFromRequest, type AuthUser } from "@/lib/auth";
+import { type AuthUser } from "@/lib/auth";
+import { withAuth } from "@/lib/with-auth";
 import {
   parseCreateMeasurementInput,
   parseListMeasurementsQuery,
@@ -19,13 +20,11 @@ type Params = {
 };
 
 export type MeasurementsCollectionDeps = {
-  requireActiveUser: (request: Request) => Promise<AuthUser | null>;
   repository: MeasurementsRepository;
   templateCode: string;
 };
 
 const defaultDeps: MeasurementsCollectionDeps = {
-  requireActiveUser: requireActiveUserFromRequest,
   repository: getDefaultMeasurementsRepository(),
   templateCode: DEFAULT_TEMPLATE_CODE,
 };
@@ -33,13 +32,9 @@ const defaultDeps: MeasurementsCollectionDeps = {
 export async function handlePostMeasurementRequest(
   request: Request,
   { params }: Params,
+  _user: AuthUser,
   deps: MeasurementsCollectionDeps = defaultDeps,
 ) {
-  const user = await deps.requireActiveUser(request);
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const { id } = await params;
   if (!id.trim()) {
     return NextResponse.json({ error: "Patient id is required" }, { status: 400 });
@@ -97,13 +92,9 @@ export async function handlePostMeasurementRequest(
 export async function handleListMeasurementsRequest(
   request: Request,
   { params }: Params,
+  _user: AuthUser,
   deps: MeasurementsCollectionDeps = defaultDeps,
 ) {
-  const user = await deps.requireActiveUser(request);
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const { id } = await params;
   if (!id.trim()) {
     return NextResponse.json({ error: "Patient id is required" }, { status: 400 });
@@ -123,10 +114,10 @@ export async function handleListMeasurementsRequest(
   return NextResponse.json({ items: result.value }, { status: 200 });
 }
 
-export async function POST(request: Request, context: Params) {
-  return handlePostMeasurementRequest(request, context);
-}
+export const POST = withAuth<Params>(async (request, ctx, { user }) =>
+  handlePostMeasurementRequest(request, ctx, user),
+);
 
-export async function GET(request: Request, context: Params) {
-  return handleListMeasurementsRequest(request, context);
-}
+export const GET = withAuth<Params>(async (request, ctx, { user }) =>
+  handleListMeasurementsRequest(request, ctx, user),
+);

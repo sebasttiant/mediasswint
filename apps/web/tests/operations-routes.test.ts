@@ -64,7 +64,6 @@ function buildCollectionDeps(store: {
   knownPatientIds: string[];
 }): OperationsCollectionDeps {
   return {
-    requireActiveUser: async () => staffUser,
     listOperations: async (patientId) => {
       if (!store.knownPatientIds.includes(patientId)) {
         return { ok: false, error: "NOT_FOUND" as const };
@@ -100,7 +99,6 @@ function buildOperationDeps(store: {
   knownPatientIds: string[];
 }): OperationDeps {
   return {
-    requireActiveUser: async () => staffUser,
     getOperation: async (patientId, operationId) => {
       const op = store.operations.get(operationId);
       if (!op || op.patientId !== patientId) {
@@ -147,7 +145,6 @@ function buildDepositDeps(store: {
   knownPatientIds: string[];
 }): DepositDeps {
   return {
-    requireActiveUser: async () => staffUser,
     addDeposit: async (patientId, operationId, amount) => {
       const parsedAmount = parseFloat(amount.toString());
       if (parsedAmount <= 0) {
@@ -188,20 +185,6 @@ function buildRequest(url: string, init: RequestInit = {}): Request {
 }
 
 describe("POST /api/patients/[id]/operations", () => {
-  it("returns 401 when no active user", async () => {
-    const store = { operations: new Map<string, MockOperation>(), knownPatientIds: ["pat-1"] };
-    const deps = { ...buildCollectionDeps(store), requireActiveUser: async () => null };
-    const response = await handleCreateOperationRequest(
-      buildRequest("http://localhost/api/patients/pat-1/operations", {
-        method: "POST",
-        body: JSON.stringify({ garmentType: "Media compresión" }),
-      }),
-      { params: Promise.resolve({ id: "pat-1" }) },
-      deps,
-    );
-    assert.equal(response.status, 401);
-  });
-
   it("returns 400 on invalid JSON body", async () => {
     const store = { operations: new Map<string, MockOperation>(), knownPatientIds: ["pat-1"] };
     const deps = buildCollectionDeps(store);
@@ -212,6 +195,7 @@ describe("POST /api/patients/[id]/operations", () => {
         body: "{not-json",
       }),
       { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
       deps,
     );
     assert.equal(response.status, 400);
@@ -226,6 +210,7 @@ describe("POST /api/patients/[id]/operations", () => {
         body: JSON.stringify({ garmentType: "Media", totalAmount: "-100" }),
       }),
       { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
       deps,
     );
     assert.equal(response.status, 400);
@@ -242,6 +227,7 @@ describe("POST /api/patients/[id]/operations", () => {
         body: JSON.stringify({ garmentType: "Media compresión" }),
       }),
       { params: Promise.resolve({ id: "missing" }) },
+      staffUser,
       deps,
     );
     assert.equal(response.status, 404);
@@ -256,6 +242,7 @@ describe("POST /api/patients/[id]/operations", () => {
         body: JSON.stringify({ garmentType: "Media corta", totalAmount: "150000", notes: "Paciente con edema" }),
       }),
       { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
       deps,
     );
     assert.equal(response.status, 201);
@@ -275,6 +262,7 @@ describe("POST /api/patients/[id]/operations", () => {
         body: JSON.stringify({ garmentType: "Media larga" }),
       }),
       { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
       deps,
     );
     assert.equal(response.status, 201);
@@ -284,23 +272,13 @@ describe("POST /api/patients/[id]/operations", () => {
 });
 
 describe("GET /api/patients/[id]/operations", () => {
-  it("returns 401 when no active user", async () => {
-    const store = { operations: new Map<string, MockOperation>(), knownPatientIds: ["pat-1"] };
-    const deps = { ...buildCollectionDeps(store), requireActiveUser: async () => null };
-    const response = await handleListOperationsRequest(
-      buildRequest("http://localhost/api/patients/pat-1/operations"),
-      { params: Promise.resolve({ id: "pat-1" }) },
-      deps,
-    );
-    assert.equal(response.status, 401);
-  });
-
   it("returns 404 when patient not found", async () => {
     const store = { operations: new Map<string, MockOperation>(), knownPatientIds: [] };
     const deps = buildCollectionDeps(store);
     const response = await handleListOperationsRequest(
       buildRequest("http://localhost/api/patients/missing/operations"),
       { params: Promise.resolve({ id: "missing" }) },
+      staffUser,
       deps,
     );
     assert.equal(response.status, 404);
@@ -320,6 +298,7 @@ describe("GET /api/patients/[id]/operations", () => {
     const response = await handleListOperationsRequest(
       buildRequest("http://localhost/api/patients/pat-1/operations"),
       { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
       deps,
     );
     assert.equal(response.status, 200);
@@ -334,6 +313,7 @@ describe("GET /api/patients/[id]/operations", () => {
     const response = await handleListOperationsRequest(
       buildRequest("http://localhost/api/patients/pat-1/operations"),
       { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
       deps,
     );
     assert.equal(response.status, 200);
@@ -349,6 +329,7 @@ describe("GET /api/patients/[id]/operations/[operationId]", () => {
     const response = await handleGetOperationRequest(
       buildRequest("http://localhost/api/patients/pat-1/operations/op-missing"),
       { params: Promise.resolve({ id: "pat-1", operationId: "op-missing" }) },
+      staffUser,
       deps,
     );
     assert.equal(response.status, 404);
@@ -361,6 +342,7 @@ describe("GET /api/patients/[id]/operations/[operationId]", () => {
     const response = await handleGetOperationRequest(
       buildRequest("http://localhost/api/patients/pat-1/operations/op-1"),
       { params: Promise.resolve({ id: "pat-1", operationId: "op-1" }) },
+      staffUser,
       deps,
     );
     assert.equal(response.status, 404);
@@ -373,6 +355,7 @@ describe("GET /api/patients/[id]/operations/[operationId]", () => {
     const response = await handleGetOperationRequest(
       buildRequest("http://localhost/api/patients/pat-1/operations/op-1"),
       { params: Promise.resolve({ id: "pat-1", operationId: "op-1" }) },
+      staffUser,
       deps,
     );
     assert.equal(response.status, 200);
@@ -383,20 +366,6 @@ describe("GET /api/patients/[id]/operations/[operationId]", () => {
 });
 
 describe("PATCH /api/patients/[id]/operations/[operationId]", () => {
-  it("returns 401 when no active user", async () => {
-    const store = { operations: new Map<string, MockOperation>(), knownPatientIds: ["pat-1"] };
-    const deps = { ...buildOperationDeps(store), requireActiveUser: async () => null };
-    const response = await handleUpdateOperationRequest(
-      buildRequest("http://localhost/api/patients/pat-1/operations/op-1", {
-        method: "PATCH",
-        body: JSON.stringify({ status: "CONFIRMADO" }),
-      }),
-      { params: Promise.resolve({ id: "pat-1", operationId: "op-1" }) },
-      deps,
-    );
-    assert.equal(response.status, 401);
-  });
-
   it("returns 400 when no fields to update", async () => {
     const store = { operations: new Map<string, MockOperation>(), knownPatientIds: ["pat-1"] };
     const deps = buildOperationDeps(store);
@@ -406,6 +375,7 @@ describe("PATCH /api/patients/[id]/operations/[operationId]", () => {
         body: JSON.stringify({}),
       }),
       { params: Promise.resolve({ id: "pat-1", operationId: "op-1" }) },
+      staffUser,
       deps,
     );
     assert.equal(response.status, 400);
@@ -420,6 +390,7 @@ describe("PATCH /api/patients/[id]/operations/[operationId]", () => {
         body: JSON.stringify({ status: "INVALID_STATUS" }),
       }),
       { params: Promise.resolve({ id: "pat-1", operationId: "op-1" }) },
+      staffUser,
       deps,
     );
     assert.equal(response.status, 400);
@@ -434,6 +405,7 @@ describe("PATCH /api/patients/[id]/operations/[operationId]", () => {
         body: JSON.stringify({ status: "CONFIRMADO" }),
       }),
       { params: Promise.resolve({ id: "pat-1", operationId: "missing" }) },
+      staffUser,
       deps,
     );
     assert.equal(response.status, 404);
@@ -449,6 +421,7 @@ describe("PATCH /api/patients/[id]/operations/[operationId]", () => {
         body: JSON.stringify({ status: "CONFIRMADO" }),
       }),
       { params: Promise.resolve({ id: "pat-1", operationId: "op-1" }) },
+      staffUser,
       deps,
     );
     assert.equal(response.status, 200);
@@ -466,6 +439,7 @@ describe("PATCH /api/patients/[id]/operations/[operationId]", () => {
         body: JSON.stringify({ garmentType: "Nueva prenda", notes: "Actualizado" }),
       }),
       { params: Promise.resolve({ id: "pat-1", operationId: "op-1" }) },
+      staffUser,
       deps,
     );
     assert.equal(response.status, 200);
@@ -484,6 +458,7 @@ describe("PATCH /api/patients/[id]/operations/[operationId]", () => {
         body: JSON.stringify({ status: "ENTREGADO" }),
       }),
       { params: Promise.resolve({ id: "pat-1", operationId: "op-1" }) },
+      staffUser,
       deps,
     );
     assert.equal(response.status, 400);
@@ -491,20 +466,6 @@ describe("PATCH /api/patients/[id]/operations/[operationId]", () => {
 });
 
 describe("POST /api/patients/[id]/operations/[operationId]/deposit", () => {
-  it("returns 401 when no active user", async () => {
-    const store = { operations: new Map<string, MockOperation>(), knownPatientIds: ["pat-1"] };
-    const deps = { ...buildDepositDeps(store), requireActiveUser: async () => null };
-    const response = await handleAddDepositRequest(
-      buildRequest("http://localhost/api/patients/pat-1/operations/op-1/deposit", {
-        method: "POST",
-        body: JSON.stringify({ amount: "50000" }),
-      }),
-      { params: Promise.resolve({ id: "pat-1", operationId: "op-1" }) },
-      deps,
-    );
-    assert.equal(response.status, 401);
-  });
-
   it("returns 400 when amount is missing", async () => {
     const store = { operations: new Map<string, MockOperation>(), knownPatientIds: ["pat-1"] };
     const deps = buildDepositDeps(store);
@@ -514,6 +475,7 @@ describe("POST /api/patients/[id]/operations/[operationId]/deposit", () => {
         body: JSON.stringify({}),
       }),
       { params: Promise.resolve({ id: "pat-1", operationId: "op-1" }) },
+      staffUser,
       deps,
     );
     assert.equal(response.status, 400);
@@ -528,6 +490,7 @@ describe("POST /api/patients/[id]/operations/[operationId]/deposit", () => {
         body: JSON.stringify({ amount: "0" }),
       }),
       { params: Promise.resolve({ id: "pat-1", operationId: "op-1" }) },
+      staffUser,
       deps,
     );
     assert.equal(response.status, 400);
@@ -542,6 +505,7 @@ describe("POST /api/patients/[id]/operations/[operationId]/deposit", () => {
         body: JSON.stringify({ amount: "50000" }),
       }),
       { params: Promise.resolve({ id: "pat-1", operationId: "missing" }) },
+      staffUser,
       deps,
     );
     assert.equal(response.status, 404);
@@ -561,6 +525,7 @@ describe("POST /api/patients/[id]/operations/[operationId]/deposit", () => {
         body: JSON.stringify({ amount: "50000" }),
       }),
       { params: Promise.resolve({ id: "pat-1", operationId: "op-1" }) },
+      staffUser,
       deps,
     );
     assert.equal(response.status, 200);
@@ -582,6 +547,7 @@ describe("POST /api/patients/[id]/operations/[operationId]/deposit", () => {
         body: JSON.stringify({ amount: "40000" }),
       }),
       { params: Promise.resolve({ id: "pat-1", operationId: "op-1" }) },
+      staffUser,
       deps,
     );
     assert.equal(response.status, 400);
@@ -602,6 +568,7 @@ describe("POST /api/patients/[id]/operations/[operationId]/deposit", () => {
         body: JSON.stringify({ amount: "50000" }),
       }),
       { params: Promise.resolve({ id: "pat-1", operationId: "op-1" }) },
+      staffUser,
       deps,
     );
     assert.equal(response.status, 400);

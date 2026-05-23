@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
-import { requireActiveUserFromRequest, type AuthUser } from "@/lib/auth";
+import { type AuthUser } from "@/lib/auth";
+import { withAuth } from "@/lib/with-auth";
 import { parseUpdateMeasurementValuesInput } from "@/lib/measurements-input";
 import {
   completeMeasurement,
@@ -15,12 +16,10 @@ type Params = {
 };
 
 export type MeasurementSessionDeps = {
-  requireActiveUser: (request: Request) => Promise<AuthUser | null>;
   repository: MeasurementsRepository;
 };
 
 const defaultDeps: MeasurementSessionDeps = {
-  requireActiveUser: requireActiveUserFromRequest,
   repository: getDefaultMeasurementsRepository(),
 };
 
@@ -31,11 +30,9 @@ function notFound(entity: string) {
 export async function handleGetMeasurementRequest(
   request: Request,
   { params }: Params,
+  _user: AuthUser,
   deps: MeasurementSessionDeps = defaultDeps,
 ) {
-  const user = await deps.requireActiveUser(request);
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
   const { id, sessionId } = await params;
   if (!id.trim() || !sessionId.trim()) {
     return NextResponse.json({ error: "Path parameters are required" }, { status: 400 });
@@ -57,11 +54,9 @@ export async function handleGetMeasurementRequest(
 export async function handlePatchMeasurementRequest(
   request: Request,
   { params }: Params,
+  _user: AuthUser,
   deps: MeasurementSessionDeps = defaultDeps,
 ) {
-  const user = await deps.requireActiveUser(request);
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
   const { id, sessionId } = await params;
   if (!id.trim() || !sessionId.trim()) {
     return NextResponse.json({ error: "Path parameters are required" }, { status: 400 });
@@ -135,10 +130,10 @@ export async function handlePatchMeasurementRequest(
   return NextResponse.json(refreshed.value, { status: 200 });
 }
 
-export async function GET(request: Request, context: Params) {
-  return handleGetMeasurementRequest(request, context);
-}
+export const GET = withAuth<Params>(async (request, ctx, { user }) =>
+  handleGetMeasurementRequest(request, ctx, user),
+);
 
-export async function PATCH(request: Request, context: Params) {
-  return handlePatchMeasurementRequest(request, context);
-}
+export const PATCH = withAuth<Params>(async (request, ctx, { user }) =>
+  handlePatchMeasurementRequest(request, ctx, user),
+);
