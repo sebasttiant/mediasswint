@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import type { ReactNode } from "react";
 
 import { BodyHighlight, type BodyFigureSex } from "@/app/_components/body-highlight/body-highlight";
@@ -58,15 +58,15 @@ export function MeasurementShell({
     .map((r) => r.left)
     .filter((f): f is MeasurementUiField => f !== null);
 
-  const handleFocus = useCallback((zoneId: string) => {
+  function handleFocus(zoneId: string) {
     setActiveZoneId(zoneId as AnatomyZoneId);
-  }, []);
+  }
 
-  const handleZoneClick = useCallback((zoneId: AnatomyZoneId) => {
+  function handleZoneClick(zoneId: AnatomyZoneId) {
     setActiveZoneId(zoneId);
     const input = document.querySelector<HTMLElement>(`[data-anatomy-zone="${zoneId}"]`);
     input?.focus();
-  }, []);
+  }
 
   const activeTabFields: MeasurementUiField[] = {
     RL: rightLegFields,
@@ -84,16 +84,22 @@ export function MeasurementShell({
       <MobileStripTabs activeTab={mobileTab} onTabChange={setMobileTab} />
 
       {/* Mobile body figure */}
-      <div className="lg:hidden flex justify-center py-4 bg-slate-50 border-b border-slate-200">
-        <div className="w-48">
-          <BodyHighlight
-            view="full"
-            sex={sex}
-            activeZoneId={activeZoneId}
-            filledZoneIds={filledZoneIds}
-            ariaLabel={`Figura humana ${sex === "male" ? "masculina" : "femenina"} con zonas activas`}
-            onZoneClick={handleZoneClick}
-          />
+      <div className="lg:hidden border-b border-slate-200 bg-slate-50 px-4 py-4">
+        <div className="mx-auto flex max-w-sm flex-col items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="text-center">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mapa corporal interactivo</p>
+            <p className="mt-1 text-xs text-slate-600">Tocá una zona para abrir su campo de medida.</p>
+          </div>
+          <div className="w-48">
+            <BodyHighlight
+              view="full"
+              sex={sex}
+              activeZoneId={activeZoneId}
+              filledZoneIds={filledZoneIds}
+              ariaLabel={`Figura humana ${sex === "male" ? "masculina" : "femenina"} con zonas activas`}
+              onZoneClick={handleZoneClick}
+            />
+          </div>
           {shouldRenderFaceGuide ? <FaceGuide sex={sex} /> : null}
         </div>
       </div>
@@ -142,23 +148,50 @@ export function MeasurementShell({
         </div>
 
         {/* Center: body figure sticky */}
-        <div className="flex flex-col items-center justify-start gap-4 overflow-y-auto bg-slate-50 px-4 py-6">
-          <div className="sticky top-4 flex flex-col items-center gap-4 w-full">
-            <div className="w-full max-w-[200px]">
-              <BodyHighlight
-                view="full"
-                sex={sex}
-                activeZoneId={activeZoneId}
-                filledZoneIds={filledZoneIds}
-                ariaLabel={`Figura humana ${sex === "male" ? "masculina" : "femenina"} con zonas activas`}
-                onZoneClick={handleZoneClick}
-              />
+        <div className="flex flex-col items-center justify-start overflow-y-auto bg-slate-50 px-4 py-6">
+          <div className="sticky top-4 flex w-full max-w-sm flex-col items-center gap-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm ring-1 ring-white">
+            <div className="w-full rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-center">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mapa corporal interactivo</p>
+              <h2 className="mt-1 text-sm font-semibold text-slate-900">Toma de medidas basada en ficha clínica</h2>
+              <p className="mt-1 text-xs text-slate-600">Seleccioná una zona del cuerpo o enfocá un campo para sincronizar la medición.</p>
             </div>
-            {shouldRenderFaceGuide ? (
-              <div className="w-full max-w-[180px]">
-                <FaceGuide sex={sex} />
+
+            <div className="grid w-full grid-cols-3 gap-2 text-[11px] font-medium text-slate-600" aria-label="Leyenda de estados de medición">
+              <div className="rounded-lg border border-sky-100 bg-sky-50 px-2 py-2 text-center text-sky-700">
+                <span className="mx-auto mb-1 block size-2 rounded-full bg-sky-500" />
+                Activa
               </div>
-            ) : null}
+              <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-2 py-2 text-center text-emerald-700">
+                <span className="mx-auto mb-1 block size-2 rounded-full bg-emerald-500" />
+                Medida
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-center text-slate-500">
+                <span className="mx-auto mb-1 block size-2 rounded-full bg-slate-300" />
+                Pendiente
+              </div>
+            </div>
+
+            <div className="w-full rounded-2xl border border-slate-100 bg-gradient-to-b from-white to-slate-50 px-5 py-4 shadow-inner">
+              <div className="mx-auto w-full max-w-[210px]">
+                <BodyHighlight
+                  view="full"
+                  sex={sex}
+                  activeZoneId={activeZoneId}
+                  filledZoneIds={filledZoneIds}
+                  ariaLabel={`Figura humana ${sex === "male" ? "masculina" : "femenina"} con zonas activas`}
+                  onZoneClick={handleZoneClick}
+                />
+              </div>
+              {shouldRenderFaceGuide ? (
+                <div className="mx-auto mt-4 w-full max-w-[180px]">
+                  <FaceGuide sex={sex} />
+                </div>
+              ) : null}
+            </div>
+
+            <p className="text-center text-xs leading-relaxed text-slate-500">
+              La figura funciona como índice visual: azul indica la zona actual y verde indica medidas registradas.
+            </p>
           </div>
         </div>
 

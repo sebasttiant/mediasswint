@@ -2,7 +2,11 @@
   position: relative;
   display: inline-block;
   width: 100%;
-  max-width: 320px;
+  max-width: 340px;
+  padding: 8px 6px 4px;
+  background: #ffffff;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
 }
 
 .svg {
@@ -10,17 +14,17 @@
   height: auto;
   display: block;
   overflow: visible;
-  filter: drop-shadow(0 4px 16px rgba(0, 0, 0, 0.10));
 }
 
 .zone {
   cursor: pointer;
+  transition: fill 0.15s ease, opacity 0.15s ease;
 }
 
 .zone:focus-visible {
   outline: none;
-  stroke: #7dd3fc;
-  stroke-width: 2;
+  stroke: #38bdf8;
+  stroke-width: 2.2;
 }
 
 .zoneReadonly {
@@ -29,35 +33,40 @@
 }
 
 .sideLabels text {
-  fill: #64748b;
-  font-size: 14px;
-  font-weight: 800;
+  fill: #475569;
+  font-size: 13px;
+  font-weight: 700;
   text-anchor: middle;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.08em;
+  font-family: "Inter Tight", "Inter", system-ui, sans-serif;
+  text-transform: uppercase;
 }
 
 .sideLabels text[data-active="true"] {
-  fill: #0284c7;
+  fill: #0369a1;
 }
 
 .pointLabels text {
-  fill: #334155;
+  fill: #1e293b;
   font-size: 9px;
-  font-weight: 800;
+  font-weight: 700;
   pointer-events: none;
   text-anchor: middle;
   paint-order: stroke;
-  stroke: rgba(255, 255, 255, 0.85);
-  stroke-width: 2px;
+  stroke: rgba(255, 255, 255, 0.95);
+  stroke-width: 2.5px;
   stroke-linecap: round;
   stroke-linejoin: round;
+  font-variant-numeric: tabular-nums;
+  font-family: "Inter Tight", "Inter", system-ui, sans-serif;
 }
 
 .pointLabels text[data-active="true"] {
   fill: white;
   font-size: 12px;
-  stroke: #075985;
-  stroke-width: 3px;
+  stroke: #0c4a6e;
+  stroke-width: 3.2px;
+  font-weight: 800;
 }
 
 /* Floating tooltip */

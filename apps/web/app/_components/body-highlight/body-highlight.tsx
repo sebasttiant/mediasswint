@@ -92,12 +92,12 @@ function ZonePath({
     ? "#0284c7"
     : isFilled
       ? "#10b981"
-      : "#cbd5e1";
+      : "#e2e8f0";
 
-  const fillOpacity = isActive ? 0.6 : isFilled ? 0.4 : 0.35;
+  const fillOpacity = isActive ? 0.72 : isFilled ? 0.44 : 0.08;
 
-  const strokeColor = isActive ? "#075985" : isFilled ? "#047857" : "none";
-  const strokeWidth = isActive ? 1.5 : isFilled ? 1 : 0;
+  const strokeColor = isActive ? "#0c4a6e" : isFilled ? "#065f46" : "#cbd5e1";
+  const strokeWidth = isActive ? 1.5 : isFilled ? 1 : 0.35;
 
   const activeFilter = isActive ? `url(#${defsId}-zone-glow)` : undefined;
 
@@ -120,7 +120,8 @@ function ZonePath({
         fillOpacity,
         stroke: strokeColor,
         strokeWidth,
-        scale: isActive ? [1, 1.03, 1] : 1,
+        strokeOpacity: isActive ? 1 : isFilled ? 0.78 : 0.38,
+        scale: isActive ? [1, 1.04, 1] : 1,
       }}
       transition={
         isActive
@@ -222,46 +223,69 @@ export function BodyHighlight({
           ) : null}
         </defs>
 
-        {/* Skin base gradient fill */}
+        {/* Silhouette fill */}
         <g>
           {outlines.map((d, index) => (
             <path
               key={`fill-${index}`}
               d={d}
-              fill={`url(#${defsId}-skin)`}
+              fill="#fbfcfe"
               stroke="none"
             />
           ))}
         </g>
 
-        {/* Volume shading overlay */}
-        <g>
-          {outlines.map((d, index) => (
-            <path
-              key={`volume-${index}`}
-              d={d}
-              fill={`url(#${defsId}-volume)`}
-              stroke="none"
-              opacity={0.2}
-            />
-          ))}
-        </g>
-
-        {/* Contour stroke */}
+        {/* Silhouette contour — single clean stroke, no internal decorations */}
         <g>
           {outlines.map((d, index) => (
             <path
               key={`outline-${index}`}
               d={d}
               fill="none"
-              stroke="#7c5a3e"
+              stroke="#1f2937"
               strokeWidth={1.2}
-              strokeOpacity={0.55}
+              strokeOpacity={0.9}
               strokeLinejoin="round"
               strokeLinecap="round"
+              vectorEffect="non-scaling-stroke"
             />
           ))}
         </g>
+
+        {/* Clinical body-map guide lines — segment references like the paper form */}
+        {view === "full" ? (
+          <g
+            aria-hidden="true"
+            fill="none"
+            stroke="#1f2937"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeOpacity={0.72}
+            strokeWidth={0.85}
+            vectorEffect="non-scaling-stroke"
+          >
+            {/* Neck and shoulder references */}
+            <path d="M 92 52 Q 86 60, 91 72 M 148 52 Q 154 60, 149 72" />
+            <path d="M 108 122 Q 120 126, 132 122" />
+            <path d="M 78 156 Q 98 164, 120 164 Q 142 164, 162 156" />
+
+            {/* Torso measurement bands */}
+            <path d="M 78 220 Q 120 226, 162 220" />
+            <path d="M 88 288 Q 120 294, 152 288" />
+            <path d="M 82 370 Q 120 386, 158 370" />
+
+            {/* Arm articulation references */}
+            <path d="M 34 278 Q 52 284, 70 278 M 170 278 Q 188 284, 206 278" />
+            <path d="M 38 424 Q 54 430, 70 424 M 170 424 Q 186 430, 202 424" />
+            <path d="M 52 490 L 52 510 M 58 492 L 58 512 M 64 490 L 64 508" />
+            <path d="M 176 490 L 176 508 M 182 492 L 182 512 M 188 490 L 188 510" />
+
+            {/* Leg articulation references */}
+            <path d="M 82 556 Q 101 564, 120 556 M 120 556 Q 139 564, 158 556" />
+            <path d="M 86 640 Q 102 646, 118 640 M 122 640 Q 138 646, 154 640" />
+            <path d="M 88 716 Q 102 720, 116 716 M 124 716 Q 138 720, 152 716" />
+          </g>
+        ) : null}
 
         {/* Side labels */}
         <g className={styles.sideLabels} aria-hidden="true">

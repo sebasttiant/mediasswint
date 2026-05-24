@@ -107,9 +107,10 @@ function buildIsolatedBandPath(definition: CompressionMeasurementDefinition): st
   const limbHeight = bottom - top;
   const bandHeight = limbHeight / totalPoints;
   const y = top + (definition.point - 1) * bandHeight;
-  const pad = 0.75;
+  const pad = 1.5;
+  const r = Math.min(4, (bandHeight - pad * 2) / 2);
 
-  return `M ${x + pad} ${y + pad} L ${x + width - pad} ${y + pad} L ${x + width - pad} ${y + bandHeight - pad} L ${x + pad} ${y + bandHeight - pad} Z`;
+  return `M ${x + pad + r} ${y + pad} L ${x + width - pad - r} ${y + pad} Q ${x + width - pad} ${y + pad}, ${x + width - pad} ${y + pad + r} L ${x + width - pad} ${y + bandHeight - pad - r} Q ${x + width - pad} ${y + bandHeight - pad}, ${x + width - pad - r} ${y + bandHeight - pad} L ${x + pad + r} ${y + bandHeight - pad} Q ${x + pad} ${y + bandHeight - pad}, ${x + pad} ${y + bandHeight - pad - r} L ${x + pad} ${y + pad + r} Q ${x + pad} ${y + pad}, ${x + pad + r} ${y + pad} Z`;
 }
 
 function buildFullBodyBandPath(definition: CompressionMeasurementDefinition): string {
@@ -129,9 +130,11 @@ function buildFullBodyBandPath(definition: CompressionMeasurementDefinition): st
 
   const bandHeight = (bottom - top) / totalPoints;
   const y = top + (definition.point - 1) * bandHeight;
-  const pad = 0.5;
+  const pad = 1.0;
+  const r = Math.min(3, (bandHeight - pad * 2) / 2);
 
-  return `M ${x + pad} ${y + pad} L ${x + width - pad} ${y + pad} L ${x + width - pad} ${y + bandHeight - pad} L ${x + pad} ${y + bandHeight - pad} Z`;
+  // Rounded rectangle path for clinical-looking bands with visible separation.
+  return `M ${x + pad + r} ${y + pad} L ${x + width - pad - r} ${y + pad} Q ${x + width - pad} ${y + pad}, ${x + width - pad} ${y + pad + r} L ${x + width - pad} ${y + bandHeight - pad - r} Q ${x + width - pad} ${y + bandHeight - pad}, ${x + width - pad - r} ${y + bandHeight - pad} L ${x + pad + r} ${y + bandHeight - pad} Q ${x + pad} ${y + bandHeight - pad}, ${x + pad} ${y + bandHeight - pad - r} L ${x + pad} ${y + pad + r} Q ${x + pad} ${y + pad}, ${x + pad + r} ${y + pad} Z`;
 }
 
 function buildShape(definition: CompressionMeasurementDefinition): BodyZoneShape {
@@ -196,154 +199,273 @@ export const ISO_VIEW = {
 } as const;
 
 // ---------------------------------------------------------------------------
-// Anatomical silhouette paths — 240×720 unified coordinate system
+// CLINICAL SILHOUETTE — single continuous outline per sex.
 //
-// Anatomical landmarks encoded as inflection points in bezier curves:
-//   - Neck visibly narrower than head
-//   - Clavicle indentation at shoulder
-//   - Bicep bulge mid-arm
-//   - Elbow inflection
-//   - Wrist narrowing
-//   - Knee inflection
-//   - Calf bulge
-//   - Ankle narrowing
-//   - Foot suggestion (rounded end)
+// Designed to read as a clinical paper-form figure (compression-stocking
+// measurement chart). Hard rules:
+//   - ONE closed path per sex → no internal seams between body parts.
+//   - 8-head proportions, sober posture (anatomical position).
+//   - Bands x-ranges fit fully inside the silhouette interior:
+//       arms.right  x 38–66  (silhouette outer ≤ 36, inner ≥ 68)
+//       arms.left   x 174–202 (silhouette outer ≥ 204, inner ≤ 172)
+//       legs.right  x 84–116 (silhouette outer ≤ 82, inner ≥ 118)
+//       legs.left   x 124–156 (silhouette outer ≥ 158, inner ≤ 122)
+//   - Trace order is clockwise from head apex; arms are drawn as
+//     “down-around-up” detours from the torso so the armpit reads naturally.
+// Coordinate system: 240 × 720, centerline x = 120.
 // ---------------------------------------------------------------------------
 
-// HEAD (shared male/female, centered 90-150 x, 0-88 y)
-const FULL_HEAD = `M 105 0 C 105 0, 90 8, 90 44 C 90 72, 100 88, 120 88 C 140 88, 150 72, 150 44 C 150 8, 135 0, 105 0 Z`;
+const FULL_OUTLINE_FEMALE = [
+  // Head — narrower oval, distinct from neck
+  "M 120 16",
+  "C 140 16, 148 34, 148 58",
+  "C 148 80, 140 92, 132 94",
+  // Visible neck column body-left (tapered)
+  "C 132 102, 131 112, 132 120",
+  // Clavicle → shoulder slope → deltoid body-left
+  "C 152 124, 184 130, 208 138",
+  // Bicep bulge then taper to elbow → forearm → wrist body-left outer
+  "C 214 200, 210 280, 204 340",
+  "C 200 380, 198 420, 196 470",
+  // Hand body-left (compact paddle)
+  "C 198 492, 192 510, 184 514",
+  "C 176 516, 172 510, 172 502",
+  "C 172 492, 172 482, 170 470",
+  // Inner forearm → bicep → shoulder-cap inner body-left
+  "C 168 420, 166 360, 168 280",
+  "C 168 220, 168 180, 170 140",
+  // Inner-arm top → armpit notch body-left
+  "C 168 146, 162 150, 158 158",
+  // Torso side: rib → waist (narrowest at ~y=290)
+  "C 158 200, 152 250, 146 290",
+  // Waist → hip flare body-left (wider female hip)
+  "C 150 340, 162 380, 166 408",
+  // Outer thigh → knee narrowing body-left
+  "C 166 460, 160 510, 152 558",
+  // Calf bulge body-left (lateral gastrocnemius)
+  "C 156 590, 162 615, 158 640",
+  // Shin taper → ankle body-left
+  "C 156 660, 152 682, 150 692",
+  // Foot body-left: short clinical footprint
+  "C 156 702, 164 714, 162 720",
+  "C 158 724, 148 724, 138 722",
+  "L 126 722",
+  "C 122 716, 122 706, 122 692",
+  // Inner shin → calf (slight medial bulge) body-left
+  "C 122 660, 122 620, 122 590",
+  // Inner knee → inner thigh body-left
+  "C 124 555, 124 510, 124 470",
+  "L 124 432",
+  // Crotch (smooth shallow V)
+  "C 123 444, 121 460, 120 466",
+  "C 119 460, 117 444, 116 432",
+  // Inner thigh → inner knee body-right
+  "L 116 470",
+  "C 116 510, 116 555, 118 590",
+  // Inner calf body-right
+  "C 118 620, 118 660, 118 692",
+  // Inner ankle → foot bottom body-right
+  "C 118 706, 118 716, 114 722",
+  "L 102 722",
+  "C 92 724, 82 724, 78 720",
+  "C 76 714, 84 702, 90 692",
+  // Body-right ankle → shin → calf
+  "C 88 682, 84 660, 82 640",
+  "C 78 615, 84 590, 88 558",
+  // Knee → outer thigh body-right
+  "C 80 510, 74 460, 74 408",
+  // Hip → waist body-right
+  "C 78 380, 90 340, 94 290",
+  "C 88 250, 82 200, 82 158",
+  // Armpit notch → inner-arm top body-right
+  "C 78 150, 72 146, 70 140",
+  // Inner arm body-right (down)
+  "C 72 180, 72 220, 72 280",
+  "C 74 360, 72 420, 70 470",
+  "C 68 482, 68 492, 68 502",
+  // Hand body-right
+  "C 68 510, 64 516, 56 514",
+  "C 46 510, 42 492, 44 470",
+  // Outer forearm → elbow → bicep body-right
+  "C 42 420, 40 380, 36 340",
+  "C 30 280, 26 200, 32 138",
+  // Deltoid → clavicle body-right
+  "C 56 130, 88 124, 108 120",
+  // Body-right neck column
+  "C 109 112, 108 102, 108 94",
+  // Jaw → temple body-right
+  "C 100 92, 92 80, 92 58",
+  "C 92 34, 100 16, 120 16",
+  "Z",
+].join(" ");
 
-// NECK
-const FULL_NECK_FEMALE = `M 109 88 L 131 88 C 128 106, 126 116, 122 120 L 118 120 C 114 116, 112 106, 109 88 Z`;
-const FULL_NECK_MALE = `M 107 88 L 133 88 C 130 106, 128 116, 124 120 L 116 120 C 112 116, 110 106, 107 88 Z`;
-
-// TORSO female: narrower shoulders, wider hips
-// Shoulder line y~120-135, hip flare y~340-400
-const FULL_TORSO_FEMALE = `M 68 120 C 88 120, 102 118, 120 118 C 138 118, 152 120, 172 120 C 178 130, 180 148, 177 165 C 174 178, 160 188, 155 200 C 148 215, 146 240, 146 260 C 146 290, 148 320, 152 340 L 88 340 C 92 320, 94 290, 94 260 C 94 240, 92 215, 85 200 C 80 188, 66 178, 63 165 C 60 148, 62 130, 68 120 Z`;
-
-// TORSO male: broader shoulders, narrower hips
-const FULL_TORSO_MALE = `M 58 120 C 76 120, 100 116, 120 116 C 140 116, 164 120, 182 120 C 186 132, 186 152, 182 168 C 178 180, 165 190, 160 205 C 154 222, 152 248, 152 268 C 152 296, 152 320, 156 340 L 84 340 C 88 320, 88 296, 88 268 C 88 248, 86 222, 80 205 C 75 190, 62 180, 58 168 C 54 152, 54 132, 58 120 Z`;
-
-// PELVIS female: wider, more flared
-const FULL_PELVIS_FEMALE = `M 88 340 L 152 340 C 160 352, 165 368, 162 385 C 159 395, 150 400, 140 402 L 100 402 C 90 400, 81 395, 78 385 C 75 368, 80 352, 88 340 Z`;
-
-// PELVIS male: narrower, boxier
-const FULL_PELVIS_MALE = `M 84 340 L 156 340 C 163 350, 167 365, 164 380 C 162 390, 154 395, 144 398 L 96 398 C 86 395, 78 390, 76 380 C 73 365, 77 350, 84 340 Z`;
-
-// ARMS (right/left mirror): anatomical landmarks
-// Right arm: outer side x~38-66, inner side x~66-80
-// Shoulder top y=135, wrist y=470, hand y=520
-// Landmarks: bicep bulge ~y200-230, elbow inflection y~295, wrist narrowing y~450
-
-const FULL_ARM_RIGHT_FEMALE = `M 68 122 C 54 128, 42 148, 38 175 C 34 200, 37 225, 42 252 C 46 272, 44 288, 40 302 C 37 316, 35 336, 38 360 C 41 385, 46 415, 50 445 C 52 458, 54 468, 56 475 L 72 475 C 70 465, 69 452, 68 440 C 66 410, 68 382, 70 358 C 72 334, 72 316, 70 302 C 68 288, 68 272, 70 252 C 73 226, 74 200, 72 175 C 70 148, 70 128, 68 122 Z`;
-
-const FULL_ARM_LEFT_FEMALE = `M 172 122 C 170 128, 170 148, 168 175 C 166 200, 167 226, 170 252 C 172 272, 172 288, 170 302 C 168 316, 168 334, 170 358 C 172 382, 174 410, 172 440 C 171 452, 170 465, 168 475 L 184 475 C 186 468, 188 458, 190 445 C 194 415, 199 385, 202 360 C 205 336, 203 316, 200 302 C 196 288, 194 272, 198 252 C 203 225, 206 200, 202 175 C 198 148, 186 128, 172 122 Z`;
-
-const FULL_ARM_RIGHT_MALE = `M 62 122 C 46 128, 34 148, 30 178 C 26 205, 30 232, 36 258 C 40 278, 38 295, 34 310 C 31 324, 30 345, 33 370 C 36 395, 41 425, 44 455 C 46 468, 48 475, 50 480 L 68 480 C 66 472, 65 460, 64 448 C 62 418, 64 390, 66 365 C 68 340, 68 322, 66 308 C 64 294, 64 278, 66 258 C 68 232, 68 205, 66 178 C 64 148, 64 128, 62 122 Z`;
-
-const FULL_ARM_LEFT_MALE = `M 178 122 C 176 128, 176 148, 174 178 C 172 205, 172 232, 174 258 C 176 278, 176 294, 174 308 C 172 322, 172 340, 174 365 C 176 390, 178 418, 176 448 C 175 460, 174 472, 172 480 L 190 480 C 192 475, 194 468, 196 455 C 199 425, 204 395, 207 370 C 210 345, 209 324, 206 310 C 202 295, 200 278, 204 258 C 210 232, 214 205, 210 178 C 206 148, 194 128, 178 122 Z`;
-
-// HANDS
-const FULL_HAND_RIGHT_FEMALE = `M 54 475 C 50 488, 49 500, 50 510 C 51 518, 54 522, 58 522 C 62 522, 65 518, 66 510 C 67 500, 66 488, 62 475 Z`;
-const FULL_HAND_LEFT_FEMALE = `M 178 475 C 174 488, 173 500, 174 510 C 175 518, 178 522, 182 522 C 186 522, 189 518, 190 510 C 191 500, 190 488, 186 475 Z`;
-const FULL_HAND_RIGHT_MALE = `M 48 480 C 44 493, 43 505, 44 515 C 45 524, 48 528, 52 528 C 56 528, 59 524, 60 515 C 61 505, 60 493, 56 480 Z`;
-const FULL_HAND_LEFT_MALE = `M 184 480 C 180 493, 179 505, 180 515 C 181 524, 184 528, 188 528 C 192 528, 195 524, 196 515 C 197 505, 196 493, 192 480 Z`;
-
-// LEGS: anatomical landmarks
-// y 402-700 female, 398-700 male
-// Landmarks: inner thigh curve, knee inflection y~540, calf bulge y~580-620, ankle narrowing y~670
-const FULL_LEG_RIGHT_FEMALE = `M 82 402 C 80 420, 79 445, 80 470 C 81 495, 84 510, 84 525 C 84 540, 82 554, 80 568 C 78 585, 82 612, 86 635 C 89 655, 90 670, 88 688 C 87 696, 86 702, 86 710 L 116 710 C 116 702, 115 696, 114 688 C 112 670, 113 655, 116 635 C 120 612, 124 585, 122 568 C 120 554, 118 540, 118 525 C 118 510, 121 495, 122 470 C 123 445, 122 420, 120 402 Z`;
-
-const FULL_LEG_LEFT_FEMALE = `M 120 402 C 118 420, 117 445, 118 470 C 119 495, 122 510, 122 525 C 122 540, 120 554, 118 568 C 116 585, 120 612, 124 635 C 127 655, 128 670, 126 688 C 125 696, 124 702, 124 710 L 154 710 C 154 702, 153 696, 152 688 C 150 670, 151 655, 154 635 C 158 612, 162 585, 160 568 C 158 554, 156 540, 156 525 C 156 510, 159 495, 160 470 C 161 445, 160 420, 158 402 Z`;
-
-const FULL_LEG_RIGHT_MALE = `M 78 398 C 76 418, 75 445, 76 472 C 77 497, 80 514, 80 528 C 80 544, 78 556, 76 570 C 74 588, 78 616, 82 638 C 85 658, 86 672, 84 690 C 83 698, 82 704, 82 712 L 114 712 C 114 704, 113 698, 112 690 C 110 672, 111 658, 114 638 C 118 616, 122 588, 120 570 C 118 556, 116 544, 116 528 C 116 514, 119 497, 120 472 C 121 445, 120 418, 118 398 Z`;
-
-const FULL_LEG_LEFT_MALE = `M 122 398 C 120 418, 119 445, 120 472 C 121 497, 124 514, 124 528 C 124 544, 122 556, 120 570 C 118 588, 122 616, 126 638 C 129 658, 130 672, 128 690 C 127 698, 126 704, 126 712 L 158 712 C 158 704, 157 698, 156 690 C 154 672, 155 658, 158 638 C 162 616, 166 588, 164 570 C 162 556, 160 544, 160 528 C 160 514, 163 497, 164 472 C 165 445, 164 418, 162 398 Z`;
-
-// FEET
-const FULL_FOOT_RIGHT_FEMALE = `M 84 710 C 80 716, 76 720, 72 720 C 64 720, 60 716, 60 710 L 60 706 C 70 706, 82 706, 88 708 C 89 710, 86 712, 84 710 Z`;
-const FULL_FOOT_LEFT_FEMALE = `M 122 710 C 120 712, 117 714, 116 710 C 122 706, 134 706, 144 706 L 144 710 C 144 716, 140 720, 132 720 C 128 720, 124 716, 122 710 Z`;
-const FULL_FOOT_RIGHT_MALE = `M 80 712 C 76 718, 72 722, 68 722 C 60 722, 56 718, 56 712 L 56 708 C 66 708, 78 708, 84 710 C 85 712, 82 714, 80 712 Z`;
-const FULL_FOOT_LEFT_MALE = `M 126 712 C 124 714, 121 716, 120 712 C 126 708, 138 708, 148 708 L 148 712 C 148 718, 144 722, 136 722 C 132 722, 128 718, 126 712 Z`;
+const FULL_OUTLINE_MALE = [
+  // Head — slightly wider oval (squarer jaw)
+  "M 120 16",
+  "C 142 16, 152 34, 152 58",
+  "C 152 80, 144 92, 136 94",
+  // Wider, shorter-looking neck column
+  "C 136 102, 136 112, 136 120",
+  // Wider shoulder slope to deltoid body-left
+  "C 156 124, 192 130, 218 138",
+  // Bicep + outer arm body-left (more muscle)
+  "C 222 200, 220 280, 212 340",
+  "C 208 380, 206 420, 204 470",
+  // Larger hand body-left
+  "C 206 494, 200 516, 190 520",
+  "C 180 522, 172 516, 172 506",
+  "C 172 494, 172 482, 170 470",
+  // Inner forearm → bicep body-left
+  "C 168 420, 166 360, 168 280",
+  "C 168 220, 168 180, 170 140",
+  "C 168 146, 162 150, 156 158",
+  // Less torso taper (straighter sides)
+  "C 156 200, 152 250, 150 290",
+  // Narrow male hip flare
+  "C 152 340, 158 380, 160 408",
+  // Straighter outer thigh, less calf curve
+  "C 162 460, 158 510, 152 558",
+  "C 154 588, 158 614, 156 640",
+  "C 154 660, 150 682, 150 692",
+  // Larger male foot
+  "C 156 702, 166 714, 164 722",
+  "C 160 726, 148 726, 136 724",
+  "L 126 724",
+  "C 122 716, 122 706, 122 692",
+  "C 122 660, 122 620, 122 590",
+  "C 124 555, 124 510, 124 470",
+  "L 124 432",
+  "C 123 444, 121 460, 120 466",
+  "C 119 460, 117 444, 116 432",
+  "L 116 470",
+  "C 116 510, 116 555, 118 590",
+  "C 118 620, 118 660, 118 692",
+  "C 118 706, 118 716, 114 724",
+  "L 104 724",
+  "C 92 726, 80 726, 76 722",
+  "C 74 714, 84 702, 90 692",
+  "C 88 682, 84 660, 84 640",
+  "C 80 614, 84 588, 86 558",
+  "C 80 510, 76 460, 78 408",
+  "C 80 380, 86 340, 88 290",
+  "C 86 250, 82 200, 82 158",
+  "C 76 150, 70 146, 68 140",
+  "C 70 180, 70 220, 70 280",
+  "C 72 360, 70 420, 68 470",
+  "C 66 482, 66 494, 66 506",
+  "C 66 516, 58 522, 48 520",
+  "C 38 516, 32 494, 34 470",
+  "C 32 420, 30 380, 26 340",
+  "C 18 280, 16 200, 20 138",
+  "C 46 130, 82 124, 102 120",
+  "C 102 112, 102 102, 102 94",
+  "C 94 92, 86 80, 86 58",
+  "C 86 34, 96 16, 120 16",
+  "Z",
+].join(" ");
 
 // ---------------------------------------------------------------------------
-// Isolated view silhouette paths (240×480 canvas each)
+// Clip paths — simple bounding rectangles around each band column.
+// They only constrain the band overlays so they don’t bleed into adjacent
+// anatomical regions; the silhouette itself contains the band x-ranges, so
+// rectangular clipping is sufficient and keeps the SVG cheap to render.
 // ---------------------------------------------------------------------------
 
-// Legs isolated view: right leg x 26-96, left leg x 144-214, y 20-460
-const ISO_PELVIS_LEGS = `M 20 22 C 52 14, 80 12, 120 12 C 160 12, 188 14, 220 22 L 214 52 L 144 52 C 136 58, 128 62, 120 62 C 112 62, 104 58, 96 52 L 26 52 Z`;
-const ISO_LEG_RIGHT = `M 26 52 C 24 100, 22 180, 24 260 C 26 310, 28 355, 30 392 C 32 420, 34 440, 36 455 L 90 455 C 88 440, 88 420, 88 392 C 90 355, 92 310, 94 260 C 96 180, 94 100, 92 52 C 80 48, 38 48, 26 52 Z`;
-const ISO_LEG_LEFT = `M 144 52 C 146 100, 148 180, 150 260 C 152 310, 154 355, 156 392 C 158 420, 160 440, 162 455 L 214 455 C 216 440, 208 420, 210 392 C 212 355, 214 310, 214 260 C 216 180, 214 100, 214 52 C 202 48, 162 48, 144 52 Z`;
+const ARM_RIGHT_CLIP_FULL = "M 30 128 L 72 128 L 72 528 L 30 528 Z";
+const ARM_LEFT_CLIP_FULL = "M 168 128 L 210 128 L 210 528 L 168 528 Z";
+const LEG_RIGHT_CLIP_FULL = "M 74 395 L 122 395 L 122 720 L 74 720 Z";
+const LEG_LEFT_CLIP_FULL = "M 118 395 L 166 395 L 166 720 L 118 720 Z";
 
-// Arms isolated view: right arm x 20-90, left arm x 150-220, y 20-460
-const ISO_SHOULDER_TORSO = `M 20 30 C 52 18, 80 14, 120 14 C 160 14, 188 18, 220 30 L 218 80 C 200 90, 168 96, 150 96 L 90 96 C 72 96, 40 90, 22 80 Z`;
-const ISO_ARM_RIGHT = `M 20 32 C 10 80, 8 160, 12 240 C 14 280, 12 310, 10 340 C 8 368, 10 400, 14 430 C 16 444, 18 456, 20 462 L 52 462 C 50 454, 49 440, 48 426 C 46 398, 48 370, 52 344 C 56 320, 58 292, 56 264 C 54 230, 56 170, 60 96 C 45 84, 26 56, 20 32 Z`;
-const ISO_ARM_LEFT = `M 220 32 C 214 56, 195 84, 180 96 C 184 170, 186 230, 184 264 C 182 292, 184 320, 188 344 C 192 370, 194 398, 192 426 C 191 440, 190 454, 188 462 L 220 462 C 222 456, 224 444, 226 430 C 230 400, 232 368, 230 340 C 228 310, 226 280, 228 240 C 232 160, 230 80, 220 32 Z`;
+// ---------------------------------------------------------------------------
+// Isolated view silhouettes (240×480 canvas).
+// One combined path per view, same single-outline philosophy.
+// ---------------------------------------------------------------------------
+
+const ISO_LEGS_OUTLINE = [
+  "M 22 50",
+  "C 36 30, 70 16, 120 16",
+  "C 170 16, 204 30, 218 50",
+  "C 220 120, 218 240, 214 360",
+  "C 212 400, 210 430, 210 450",
+  "C 212 462, 208 470, 200 470",
+  "L 144 470",
+  "C 138 466, 138 458, 140 448",
+  "L 140 60",
+  "C 134 64, 128 66, 120 66",
+  "C 112 66, 106 64, 100 60",
+  "L 100 448",
+  "C 102 458, 102 466, 96 470",
+  "L 40 470",
+  "C 32 470, 28 462, 30 450",
+  "C 30 430, 28 400, 26 360",
+  "C 22 240, 20 120, 22 50",
+  "Z",
+].join(" ");
+
+const ISO_ARMS_OUTLINE = [
+  "M 18 50",
+  "C 36 28, 70 14, 120 14",
+  "C 170 14, 204 28, 222 50",
+  "C 224 140, 222 260, 220 380",
+  "C 218 410, 216 430, 214 446",
+  "C 214 458, 204 466, 188 466",
+  "C 172 466, 156 460, 150 446",
+  "C 152 380, 150 200, 152 60",
+  "C 144 64, 134 66, 124 66",
+  "L 120 68",
+  "L 116 66",
+  "C 106 66, 96 64, 88 60",
+  "C 90 200, 88 380, 90 446",
+  "C 84 460, 68 466, 52 466",
+  "C 36 466, 26 458, 26 446",
+  "C 24 430, 22 410, 20 380",
+  "C 18 260, 16 140, 18 50",
+  "Z",
+].join(" ");
+
+const ARM_RIGHT_CLIP_ISO = "M 16 46 L 92 46 L 92 470 L 16 470 Z";
+const ARM_LEFT_CLIP_ISO = "M 148 46 L 224 46 L 224 470 L 148 470 Z";
+const LEG_RIGHT_CLIP_ISO = "M 22 46 L 98 46 L 98 470 L 22 470 Z";
+const LEG_LEFT_CLIP_ISO = "M 142 46 L 218 46 L 218 470 L 142 470 Z";
 
 // ---------------------------------------------------------------------------
 // Exports matching original API surface
 // ---------------------------------------------------------------------------
 
 export const BODY_FIGURE_OUTLINES = {
-  female: [
-    FULL_HEAD,
-    FULL_NECK_FEMALE,
-    FULL_TORSO_FEMALE,
-    FULL_PELVIS_FEMALE,
-    FULL_ARM_RIGHT_FEMALE,
-    FULL_ARM_LEFT_FEMALE,
-    FULL_HAND_RIGHT_FEMALE,
-    FULL_HAND_LEFT_FEMALE,
-    FULL_LEG_RIGHT_FEMALE,
-    FULL_LEG_LEFT_FEMALE,
-    FULL_FOOT_RIGHT_FEMALE,
-    FULL_FOOT_LEFT_FEMALE,
-  ],
-  male: [
-    FULL_HEAD,
-    FULL_NECK_MALE,
-    FULL_TORSO_MALE,
-    FULL_PELVIS_MALE,
-    FULL_ARM_RIGHT_MALE,
-    FULL_ARM_LEFT_MALE,
-    FULL_HAND_RIGHT_MALE,
-    FULL_HAND_LEFT_MALE,
-    FULL_LEG_RIGHT_MALE,
-    FULL_LEG_LEFT_MALE,
-    FULL_FOOT_RIGHT_MALE,
-    FULL_FOOT_LEFT_MALE,
-  ],
+  female: [FULL_OUTLINE_FEMALE],
+  male: [FULL_OUTLINE_MALE],
 } as const;
 
 export const BODY_FIGURE_CLIP_PATHS = {
   female: {
-    legs: { right: FULL_LEG_RIGHT_FEMALE, left: FULL_LEG_LEFT_FEMALE },
-    arms: { right: FULL_ARM_RIGHT_FEMALE, left: FULL_ARM_LEFT_FEMALE },
+    legs: { right: LEG_RIGHT_CLIP_FULL, left: LEG_LEFT_CLIP_FULL },
+    arms: { right: ARM_RIGHT_CLIP_FULL, left: ARM_LEFT_CLIP_FULL },
   },
   male: {
-    legs: { right: FULL_LEG_RIGHT_MALE, left: FULL_LEG_LEFT_MALE },
-    arms: { right: FULL_ARM_RIGHT_MALE, left: FULL_ARM_LEFT_MALE },
+    legs: { right: LEG_RIGHT_CLIP_FULL, left: LEG_LEFT_CLIP_FULL },
+    arms: { right: ARM_RIGHT_CLIP_FULL, left: ARM_LEFT_CLIP_FULL },
   },
 } as const;
 
 export const BODY_HIGHLIGHT_OUTLINES: Readonly<Record<BodyView, ReadonlyArray<string>>> = {
   full: BODY_FIGURE_OUTLINES.female,
-  legs: [ISO_PELVIS_LEGS, ISO_LEG_RIGHT, ISO_LEG_LEFT],
-  arms: [ISO_SHOULDER_TORSO, ISO_ARM_RIGHT, ISO_ARM_LEFT],
+  legs: [ISO_LEGS_OUTLINE],
+  arms: [ISO_ARMS_OUTLINE],
 };
 
 export const BODY_CLIP_PATHS: Readonly<Record<BodyView, Record<BodySide, string>>> = {
   full: {
-    right: FULL_LEG_RIGHT_FEMALE,
-    left: FULL_LEG_LEFT_FEMALE,
+    right: LEG_RIGHT_CLIP_FULL,
+    left: LEG_LEFT_CLIP_FULL,
   },
   legs: {
-    right: ISO_LEG_RIGHT,
-    left: ISO_LEG_LEFT,
+    right: LEG_RIGHT_CLIP_ISO,
+    left: LEG_LEFT_CLIP_ISO,
   },
   arms: {
-    right: ISO_ARM_RIGHT,
-    left: ISO_ARM_LEFT,
+    right: ARM_RIGHT_CLIP_ISO,
+    left: ARM_LEFT_CLIP_ISO,
   },
 };
 
