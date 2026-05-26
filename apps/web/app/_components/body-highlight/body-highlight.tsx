@@ -1,24 +1,42 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { useState } from "react";
+import { useId, useState } from "react";
 
+import { type AnatomicalRegion, findRegionSummary, hasDetailView } from "@/lib/body-anatomy";
 import type { AnatomyZoneId } from "@/lib/compression-measurements";
 
 import {
-  BODY_FIGURE_CLIP_PATHS,
-  BODY_FIGURE_OUTLINES,
+  getFullBodyCalibration,
+  type FigureCalibration,
+  type FullBodySex,
+} from "./body-highlight-calibration";
+import { getMaleZonePath } from "./zones-male";
+import {
   BODY_CLIP_PATHS,
+  BODY_HIGHLIGHT_ARTICULATIONS,
   BODY_HIGHLIGHT_OUTLINES,
-  BODY_HIGHLIGHT_VIEWBOX,
   SIDE_LABEL_POSITIONS,
+  getFullMarkerForSex,
   getSideSummaryForView,
   getZoneA11yLabel,
   getZoneLabel,
   getZonesForSide,
   type BodyView,
+  type IsolatedBodyView,
 } from "./body-highlight-zones";
+import { DetailRegionPanel } from "./detail-region-panel";
 import { SilhouetteDefs } from "./silhouette-defs";
+import {
+  FullBodyFemale,
+  FullBodyMale,
+  HAND_DETAIL_VIEWBOX,
+  HandDetailFemale,
+  HandDetailMale,
+  HEAD_DETAIL_VIEWBOX,
+  HeadDetailFemale,
+  HeadDetailMale,
+} from "./silhouettes";
 import styles from "./body-highlight.module.css";
 
 export const BODY_FIGURE_SEX = {
@@ -27,6 +45,17 @@ export const BODY_FIGURE_SEX = {
 } as const;
 
 export type BodyFigureSex = (typeof BODY_FIGURE_SEX)[keyof typeof BODY_FIGURE_SEX];
+
+// The calibration module's FullBodySex is the same string union; cast is
+// only here to bridge the typed-constant alias used at component props.
+function toFullBodySex(sex: BodyFigureSex): FullBodySex {
+  return sex === BODY_FIGURE_SEX.MALE ? "male" : "female";
+}
+
+// Regions that have a dedicated detail asset in this iteration.
+// Centralized in body-anatomy.ts via hasDetailView(). The names here just
+// declare which keys the BodyHighlight component knows how to render.
+export type DetailRegion = Extract<AnatomicalRegion, "head" | "hands">;
 
 export type BodyHighlightProps = {
   view: BodyView;
@@ -53,13 +82,6 @@ const DEFAULT_ARIA_LABEL: Record<BodyView, string> = {
   arms: "Diagrama de brazos",
 };
 
-// viewBox config per view: full uses the 240×720 canvas, isolated views use 240×480
-const VIEW_BOX_CONFIG: Record<BodyView, { x: number; y: number; width: number; height: number }> = {
-  full: { x: 0, y: 0, width: BODY_HIGHLIGHT_VIEWBOX.width, height: BODY_HIGHLIGHT_VIEWBOX.height },
-  legs: { x: 0, y: 0, width: 240, height: 480 },
-  arms: { x: 0, y: 0, width: 240, height: 480 },
-};
-
 type TooltipData = {
   zoneId: AnatomyZoneId;
   label: string;
@@ -67,7 +89,7 @@ type TooltipData = {
   y: number;
 };
 
-function ZonePath({
+function ZoneMarker({
   zone,
   zonePath,
   clipPath,
@@ -78,9 +100,14 @@ function ZonePath({
   onZoneClick,
   onHoverChange,
 }: {
-  zone: { zoneId: AnatomyZoneId; side: string; point: number; view: BodyView; labelX: number; labelY: number; fullLabelX: number; fullLabelY: number };
+  zone: {
+    zoneId: AnatomyZoneId;
+    side: string;
+    point: number;
+    view: BodyView;
+  };
   zonePath: string;
-  clipPath: string;
+  clipPath?: string;
   isActive: boolean;
   isFilled: boolean;
   isInteractive: boolean;
@@ -88,17 +115,10 @@ function ZonePath({
   onZoneClick?: (zoneId: AnatomyZoneId) => void;
   onHoverChange: (data: TooltipData | null) => void;
 }) {
-  const fillColor = isActive
-    ? "#0284c7"
-    : isFilled
-      ? "#10b981"
-      : "#e2e8f0";
-
-  const fillOpacity = isActive ? 0.72 : isFilled ? 0.44 : 0.08;
-
-  const strokeColor = isActive ? "#0c4a6e" : isFilled ? "#065f46" : "#cbd5e1";
-  const strokeWidth = isActive ? 1.5 : isFilled ? 1 : 0.35;
-
+  const fillColor = isActive ? "#0ea5e9" : isFilled ? "#10b981" : "#0f172a";
+  const fillOpacity = isActive ? 0.72 : isFilled ? 0.42 : 0;
+  const strokeColor = isActive ? "#075985" : isFilled ? "#047857" : "transparent";
+  const strokeWidth = isActive ? 1.4 : isFilled ? 1 : 0;
   const activeFilter = isActive ? `url(#${defsId}-zone-glow)` : undefined;
 
   return (
@@ -120,17 +140,12 @@ function ZonePath({
         fillOpacity,
         stroke: strokeColor,
         strokeWidth,
-        strokeOpacity: isActive ? 1 : isFilled ? 0.78 : 0.38,
-        scale: isActive ? [1, 1.04, 1] : 1,
+        strokeOpacity: isActive ? 1 : isFilled ? 0.75 : 0,
       }}
-      transition={
-        isActive
-          ? { scale: { duration: 2, repeat: Infinity, ease: "easeInOut" }, fill: { duration: 0.3 }, fillOpacity: { duration: 0.3 } }
-          : { fill: { duration: 0.3 }, fillOpacity: { duration: 0.3 } }
-      }
+      transition={{ fill: { duration: 0.2 }, fillOpacity: { duration: 0.2 } }}
       whileHover={
         isInteractive
-          ? { fillOpacity: 0.45, fill: "#0ea5e9", scale: 1.02, transition: { duration: 0.15 } }
+          ? { fillOpacity: 0.28, fill: "#0ea5e9", transition: { duration: 0.12 } }
           : undefined
       }
       className={isInteractive ? styles.zone : styles.zoneReadonly}
@@ -151,11 +166,94 @@ function ZonePath({
         const rect = svgEl.getBoundingClientRect();
         const evtX = event.clientX - rect.left;
         const evtY = event.clientY - rect.top;
-        onHoverChange({ zoneId: zone.zoneId, label: getZoneLabel(zone.zoneId) || zone.zoneId, x: evtX, y: evtY });
+        onHoverChange({
+          zoneId: zone.zoneId,
+          label: getZoneLabel(zone.zoneId) || zone.zoneId,
+          x: evtX,
+          y: evtY,
+        });
       }}
       onMouseLeave={() => onHoverChange(null)}
     />
   );
+}
+
+type RegionHotspotProps = {
+  region: DetailRegion;
+  label: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  onActivate: (region: DetailRegion) => void;
+};
+
+function RegionHotspot({ region, label, x, y, width, height, onActivate }: RegionHotspotProps) {
+  return (
+    <g className={styles.regionHotspot}>
+      <rect
+        x={x}
+        y={y}
+        width={width}
+        height={height}
+        rx={10}
+        ry={10}
+        className={styles.regionHotspotRect}
+        role="button"
+        tabIndex={0}
+        aria-label={`Abrir detalle de ${label}`}
+        onClick={() => onActivate(region)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onActivate(region);
+          }
+        }}
+      />
+    </g>
+  );
+}
+
+type FullBodyLayerProps = {
+  sex: BodyFigureSex;
+};
+
+function FullBodyLayer({ sex }: FullBodyLayerProps) {
+  return sex === "male" ? <FullBodyMale /> : <FullBodyFemale />;
+}
+
+type DetailLayerProps = {
+  region: DetailRegion;
+  sex: BodyFigureSex;
+};
+
+function DetailLayer({ region, sex }: DetailLayerProps) {
+  if (region === "head") {
+    return sex === "male" ? <HeadDetailMale /> : <HeadDetailFemale />;
+  }
+  return sex === "male" ? <HandDetailMale /> : <HandDetailFemale />;
+}
+
+function getViewBoxForState(
+  view: BodyView,
+  detail: DetailRegion | null,
+  fullBodyCalibration: FigureCalibration,
+): { x: number; y: number; width: number; height: number } {
+  if (view !== "full") {
+    return { x: 0, y: 0, width: 240, height: 480 };
+  }
+  if (detail === "head") {
+    return { x: 0, y: 0, width: HEAD_DETAIL_VIEWBOX.width, height: HEAD_DETAIL_VIEWBOX.height };
+  }
+  if (detail === "hands") {
+    return { x: 0, y: 0, width: HAND_DETAIL_VIEWBOX.width, height: HAND_DETAIL_VIEWBOX.height };
+  }
+  return {
+    x: 0,
+    y: 0,
+    width: fullBodyCalibration.viewBox.width,
+    height: fullBodyCalibration.viewBox.height,
+  };
 }
 
 export function BodyHighlight({
@@ -168,205 +266,282 @@ export function BodyHighlight({
   onZoneClick,
 }: BodyHighlightProps) {
   const [tooltip, setTooltip] = useState<TooltipData | null>(null);
+  const [detailRegion, setDetailRegion] = useState<DetailRegion | null>(null);
+  const instanceId = useId().replace(/:/g, "");
 
-  const outlines = view === "full" ? BODY_FIGURE_OUTLINES[sex] : BODY_HIGHLIGHT_OUTLINES[view];
-  const sideSummaries = getSideSummaryForView(view);
-  const svgClassName = [styles.svg, className].filter(Boolean).join(" ");
+  const isFull = view === "full";
+  const isDetail = isFull && detailRegion !== null;
   const isInteractive = Boolean(onZoneClick);
-  const sideLabels = SIDE_LABEL_POSITIONS[view];
-  const vb = VIEW_BOX_CONFIG[view];
+
+  const fullBodyCalibration = getFullBodyCalibration(toFullBodySex(sex));
+  const vb = getViewBoxForState(view, isDetail ? detailRegion : null, fullBodyCalibration);
   const viewBox = `${vb.x} ${vb.y} ${vb.width} ${vb.height}`;
-  const defsId = `bh-${view}`;
+  const defsId = `bh-${view}-${detailRegion ?? "root"}-${instanceId}`;
+  const svgClassName = [styles.svg, className].filter(Boolean).join(" ");
+  const summary = detailRegion ? findRegionSummary(detailRegion) : null;
+
+  const sideSummaries = getSideSummaryForView(view);
+  // Full view reads side-label positions from the sex-specific calibration
+  // (different figures have different head + side margins). Isolated
+  // legs/arms sheets keep their dedicated SIDE_LABEL_POSITIONS entry.
+  const sideLabels = isFull
+    ? {
+        right: {
+          x: fullBodyCalibration.sideLabels.right.x,
+          y: fullBodyCalibration.sideLabels.right.y,
+          label: fullBodyCalibration.sideLabels.right.text,
+        },
+        left: {
+          x: fullBodyCalibration.sideLabels.left.x,
+          y: fullBodyCalibration.sideLabels.left.y,
+          label: fullBodyCalibration.sideLabels.left.text,
+        },
+      }
+    : SIDE_LABEL_POSITIONS[view];
+  // Isolated outlines/articulations live in body-highlight-zones; the
+  // full-body silhouette comes from silhouettes/* and never reads from
+  // this module.
+  const isolatedView: IsolatedBodyView | null = isFull ? null : view;
+  const isolatedOutlines = isolatedView ? BODY_HIGHLIGHT_OUTLINES[isolatedView] : null;
+  const isolatedArticulations = isolatedView ? BODY_HIGHLIGHT_ARTICULATIONS[isolatedView] : null;
 
   return (
     <div className={styles.wrapper}>
+      {isDetail && summary ? (
+        <div className={styles.detailHeader}>
+          <button
+            type="button"
+            className={styles.backButton}
+            onClick={() => setDetailRegion(null)}
+            aria-label="Volver al cuerpo completo"
+          >
+            <span aria-hidden="true">←</span> Volver al cuerpo
+          </button>
+          <div className={styles.detailHeaderText}>
+            <p className={styles.detailHeaderKicker}>Detalle anatómico</p>
+            <h3 className={styles.detailHeaderTitle}>{summary.label}</h3>
+          </div>
+        </div>
+      ) : null}
+
       <svg
         role="img"
-        aria-label={ariaLabel ?? DEFAULT_ARIA_LABEL[view]}
+        aria-label={
+          isDetail && summary
+            ? `Detalle anatómico de ${summary.label.toLowerCase()}`
+            : (ariaLabel ?? DEFAULT_ARIA_LABEL[view])
+        }
         viewBox={viewBox}
         className={svgClassName}
         data-view={view}
+        data-detail={detailRegion ?? "none"}
         data-active-zone={activeZoneId ?? ""}
         overflow="visible"
       >
-        <title>{ariaLabel ?? DEFAULT_ARIA_LABEL[view]}</title>
+        <title>
+          {isDetail && summary
+            ? `Detalle anatómico de ${summary.label}`
+            : (ariaLabel ?? DEFAULT_ARIA_LABEL[view])}
+        </title>
         <desc>
-          {sideSummaries
-            .map((summary) => `${summary.label}: ${summary.points} puntos`)
-            .join(". ")}
+          {isDetail && summary
+            ? `Referencia clínica para ${summary.label}. Los campos asociados se listan debajo del gráfico.`
+            : sideSummaries.map((s) => `${s.label}: ${s.points} puntos`).join(". ")}
         </desc>
 
         <SilhouetteDefs id={defsId} />
 
-        <defs>
-          <clipPath id={`clip-${view}-right`}>
-            <path d={BODY_CLIP_PATHS[view].right} />
-          </clipPath>
-          <clipPath id={`clip-${view}-left`}>
-            <path d={BODY_CLIP_PATHS[view].left} />
-          </clipPath>
-          {view === "full" ? (
-            <>
-              <clipPath id={`clip-full-${sex}-legs-right`}>
-                <path d={BODY_FIGURE_CLIP_PATHS[sex].legs.right} />
-              </clipPath>
-              <clipPath id={`clip-full-${sex}-legs-left`}>
-                <path d={BODY_FIGURE_CLIP_PATHS[sex].legs.left} />
-              </clipPath>
-              <clipPath id={`clip-full-${sex}-arms-right`}>
-                <path d={BODY_FIGURE_CLIP_PATHS[sex].arms.right} />
-              </clipPath>
-              <clipPath id={`clip-full-${sex}-arms-left`}>
-                <path d={BODY_FIGURE_CLIP_PATHS[sex].arms.left} />
-              </clipPath>
-            </>
-          ) : null}
-        </defs>
+        {/* DETAIL VIEW — dedicated head or hand asset only */}
+        {isDetail && detailRegion ? <DetailLayer region={detailRegion} sex={sex} /> : null}
 
-        {/* Silhouette fill */}
-        <g>
-          {outlines.map((d, index) => (
-            <path
-              key={`fill-${index}`}
-              d={d}
-              fill="#fbfcfe"
-              stroke="none"
-            />
-          ))}
-        </g>
+        {/* FULL or ISOLATED VIEW */}
+        {!isDetail ? (
+          <>
+            {/* Figure underneath: traced silhouette (full) or hand-drawn isolated outline */}
+            {isFull ? (
+              <FullBodyLayer sex={sex} />
+            ) : isolatedOutlines && isolatedArticulations ? (
+              <>
+                <g>
+                  {isolatedOutlines.map((d, index) => (
+                    <path
+                      key={`outline-fill-${index}`}
+                      d={d}
+                      fill="white"
+                      fillRule="evenodd"
+                      stroke="none"
+                    />
+                  ))}
+                </g>
+                <g>
+                  {isolatedOutlines.map((d, index) => (
+                    <path
+                      key={`outline-${index}`}
+                      d={d}
+                      fill="none"
+                      fillRule="evenodd"
+                      stroke="#1f2937"
+                      strokeWidth={1.4}
+                      strokeLinejoin="round"
+                      strokeLinecap="round"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  ))}
+                </g>
+                <g
+                  aria-hidden="true"
+                  fill="none"
+                  stroke="#64748b"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeOpacity={0.7}
+                  strokeWidth={1}
+                  vectorEffect="non-scaling-stroke"
+                >
+                  {isolatedArticulations.map((d, index) => (
+                    <path key={`articulation-${index}`} d={d} />
+                  ))}
+                </g>
+              </>
+            ) : null}
 
-        {/* Silhouette contour — single clean stroke, no internal decorations */}
-        <g>
-          {outlines.map((d, index) => (
-            <path
-              key={`outline-${index}`}
-              d={d}
-              fill="none"
-              stroke="#1f2937"
-              strokeWidth={1.2}
-              strokeOpacity={0.9}
-              strokeLinejoin="round"
-              strokeLinecap="round"
-              vectorEffect="non-scaling-stroke"
-            />
-          ))}
-        </g>
+            {/* Clip paths only needed for isolated views (per-limb rect). */}
+            {isolatedView ? (
+              <defs>
+                <clipPath id={`${defsId}-right`}>
+                  <path d={BODY_CLIP_PATHS[isolatedView].right} />
+                </clipPath>
+                <clipPath id={`${defsId}-left`}>
+                  <path d={BODY_CLIP_PATHS[isolatedView].left} />
+                </clipPath>
+              </defs>
+            ) : null}
 
-        {/* Clinical body-map guide lines — segment references like the paper form */}
-        {view === "full" ? (
-          <g
-            aria-hidden="true"
-            fill="none"
-            stroke="#1f2937"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeOpacity={0.72}
-            strokeWidth={0.85}
-            vectorEffect="non-scaling-stroke"
-          >
-            {/* Neck and shoulder references */}
-            <path d="M 92 52 Q 86 60, 91 72 M 148 52 Q 154 60, 149 72" />
-            <path d="M 108 122 Q 120 126, 132 122" />
-            <path d="M 78 156 Q 98 164, 120 164 Q 142 164, 162 156" />
-
-            {/* Torso measurement bands */}
-            <path d="M 78 220 Q 120 226, 162 220" />
-            <path d="M 88 288 Q 120 294, 152 288" />
-            <path d="M 82 370 Q 120 386, 158 370" />
-
-            {/* Arm articulation references */}
-            <path d="M 34 278 Q 52 284, 70 278 M 170 278 Q 188 284, 206 278" />
-            <path d="M 38 424 Q 54 430, 70 424 M 170 424 Q 186 430, 202 424" />
-            <path d="M 52 490 L 52 510 M 58 492 L 58 512 M 64 490 L 64 508" />
-            <path d="M 176 490 L 176 508 M 182 492 L 182 512 M 188 490 L 188 510" />
-
-            {/* Leg articulation references */}
-            <path d="M 82 556 Q 101 564, 120 556 M 120 556 Q 139 564, 158 556" />
-            <path d="M 86 640 Q 102 646, 118 640 M 122 640 Q 138 646, 154 640" />
-            <path d="M 88 716 Q 102 720, 116 716 M 124 716 Q 138 720, 152 716" />
-          </g>
-        ) : null}
-
-        {/* Side labels */}
-        <g className={styles.sideLabels} aria-hidden="true">
-          {(Object.keys(sideLabels) as Array<"right" | "left">).map((side) => {
-            const sl = sideLabels[side];
-            const summary = sideSummaries.find((s) => s.side === side);
-            return (
-              <text
-                key={side}
-                x={sl.x}
-                y={view === "full" ? 20 : 16}
-                data-active={
-                  summary && summary.side === activeZoneId?.split(".")[1] ? "true" : "false"
-                }
-              >
-                {sl.label}
-              </text>
-            );
-          })}
-        </g>
-
-        {/* Zone overlays */}
-        {(Object.keys(sideLabels) as Array<"right" | "left">).map((side) => {
-          const zones = getZonesForSide(view, side);
-          return (
-            <g key={side}>
-              {zones.map((zone) => {
-                const isActive = zone.zoneId === activeZoneId;
-                const isFilled = hasFilledZone(filledZoneIds, zone.zoneId);
-                const zonePath = view === "full" ? zone.fullD : zone.d;
-                const clipPath = view === "full"
-                  ? `url(#clip-full-${sex}-${zone.view}-${zone.side})`
-                  : `url(#clip-${view}-${side})`;
+            {/* Zone markers (bounded rects). Full-body markers are
+                positioned via the sex-specific calibration so they always
+                stay inside the limb; isolated views keep their column
+                clip. */}
+            <g>
+              {(Object.keys(sideLabels) as Array<"right" | "left">).map((side) => {
+                const zones = getZonesForSide(view, side);
                 return (
-                  <ZonePath
-                    key={zone.zoneId}
-                    zone={zone}
-                    zonePath={zonePath}
-                    clipPath={clipPath}
-                    isActive={isActive}
-                    isFilled={isFilled}
-                    isInteractive={isInteractive}
-                    defsId={defsId}
-                    onZoneClick={onZoneClick}
-                    onHoverChange={setTooltip}
-                  />
+                  <g key={`zones-${side}`}>
+                    {zones.map((zone) => {
+                      const isActive = zone.zoneId === activeZoneId;
+                      const isFilled = hasFilledZone(filledZoneIds, zone.zoneId);
+                      // Full-body male uses the auto-generated anatomical
+                      // zone polygon (entire limb section fills). Female
+                      // and any missing zone fall back to a bounded marker.
+                      const zonedFullPath =
+                        isFull && sex === BODY_FIGURE_SEX.MALE
+                          ? getMaleZonePath(zone.zoneId)
+                          : undefined;
+                      const zonePath = isFull
+                        ? (zonedFullPath ?? getFullMarkerForSex(fullBodyCalibration, zone).path)
+                        : zone.d;
+                      const clipPath = isFull ? undefined : `url(#${defsId}-${side})`;
+                      return (
+                        <ZoneMarker
+                          key={zone.zoneId}
+                          zone={zone}
+                          zonePath={zonePath}
+                          clipPath={clipPath}
+                          isActive={isActive}
+                          isFilled={isFilled}
+                          isInteractive={isInteractive}
+                          defsId={defsId}
+                          onZoneClick={onZoneClick}
+                          onHoverChange={setTooltip}
+                        />
+                      );
+                    })}
+                  </g>
                 );
               })}
             </g>
-          );
-        })}
 
-        {/* Point labels */}
-        <g className={styles.pointLabels} aria-hidden="true">
-          {getZonesForSide(view, "right")
-            .concat(getZonesForSide(view, "left"))
-            .filter(
-              (zone) =>
-                zone.point === 1 ||
-                zone.point % 4 === 0 ||
-                zone.point ===
-                  getZonesForSide(view, "right")
+            {/* Side labels (D / I) */}
+            <g className={styles.sideLabels} aria-hidden="true">
+              {(Object.keys(sideLabels) as Array<"right" | "left">).map((side) => {
+                const sl = sideLabels[side];
+                const summarySide = sideSummaries.find((s) => s.side === side);
+                return (
+                  <text
+                    key={side}
+                    x={sl.x}
+                    y={sl.y}
+                    data-active={
+                      summarySide && summarySide.side === activeZoneId?.split(".")[1]
+                        ? "true"
+                        : "false"
+                    }
+                  >
+                    {sl.label}
+                  </text>
+                );
+              })}
+            </g>
+
+            {/* Active point number — small, sits inside the active marker.
+                In full view we read the center from the sex-specific
+                calibration to stay aligned with the rendered marker. */}
+            <g className={styles.pointLabels} aria-hidden="true">
+              {activeZoneId
+                ? getZonesForSide(view, "right")
                     .concat(getZonesForSide(view, "left"))
-                    .find((z) => z.zoneId === activeZoneId)?.point,
-            )
-            .map((zone) => (
-              <text
-                key={`label-${zone.zoneId}`}
-                x={view === "full" ? zone.fullLabelX : zone.labelX}
-                y={(view === "full" ? zone.fullLabelY : zone.labelY) + 3}
-                data-active={zone.zoneId === activeZoneId ? "true" : "false"}
-              >
-                {zone.point}
-              </text>
-            ))}
-        </g>
+                    .filter((zone) => zone.zoneId === activeZoneId)
+                    .map((zone) => {
+                      const center = isFull
+                        ? getFullMarkerForSex(fullBodyCalibration, zone)
+                        : { centerX: zone.labelX, centerY: zone.labelY };
+                      return (
+                        <text
+                          key={`label-${zone.zoneId}`}
+                          x={center.centerX}
+                          y={center.centerY + 3}
+                          data-active="true"
+                        >
+                          {zone.point}
+                        </text>
+                      );
+                    })
+                : null}
+            </g>
+
+            {/* Region hotspots — head + hands trigger detail view (full only).
+                Coordinates come from the sex-specific calibration. */}
+            {isFull && isInteractive && hasDetailView("head") ? (
+              <RegionHotspot
+                region="head"
+                label="cabeza"
+                x={fullBodyCalibration.headHotspot.x}
+                y={fullBodyCalibration.headHotspot.y}
+                width={fullBodyCalibration.headHotspot.width}
+                height={fullBodyCalibration.headHotspot.height}
+                onActivate={setDetailRegion}
+              />
+            ) : null}
+            {isFull && isInteractive && hasDetailView("hands")
+              ? fullBodyCalibration.handHotspots.map((hotspot) => (
+                  <RegionHotspot
+                    key={`hand-${hotspot.side}`}
+                    region="hands"
+                    label={`mano ${hotspot.side === "right" ? "derecha" : "izquierda"}`}
+                    x={hotspot.x}
+                    y={hotspot.y}
+                    width={hotspot.width}
+                    height={hotspot.height}
+                    onActivate={setDetailRegion}
+                  />
+                ))
+              : null}
+          </>
+        ) : null}
       </svg>
 
-      {/* Floating tooltip */}
+      {/* Floating tooltip — only for measurement zones in full/iso views */}
       <AnimatePresence>
-        {tooltip ? (
+        {tooltip && !isDetail ? (
           <motion.div
             key={tooltip.zoneId}
             className={styles.tooltip}
@@ -387,6 +562,9 @@ export function BodyHighlight({
           </motion.div>
         ) : null}
       </AnimatePresence>
+
+      {/* Pending-fields panel for detail mode */}
+      {isDetail && detailRegion ? <DetailRegionPanel region={detailRegion} /> : null}
     </div>
   );
 }
