@@ -76,30 +76,35 @@ export const MALE_FULL_BODY: FigureCalibration = {
   precision: "traced",
   markerHeightRange: { min: 7, max: 13 },
   markerHeightFactor: 1.35,
+  // Synced to the zone generator y_range (see /tmp/anatomy-trace/generate_zones.py):
+  //   legs bitmap y 685..1180 → viewBox 283..492
+  //   arms bitmap y 285..660  → viewBox 113..272
+  // Marker centers stay aligned with the rendered zone band so the active
+  // point number sits inside its highlight.
   legs: {
     right: {
-      top: 270,
-      bottom: 470,
+      top: 283,
+      bottom: 492,
       centerlineX: { atTop: 91, atBottom: 92 },
       width: { atTop: 36, atBottom: 22 },
     },
     left: {
-      top: 270,
-      bottom: 470,
+      top: 283,
+      bottom: 492,
       centerlineX: { atTop: 149, atBottom: 148 },
       width: { atTop: 36, atBottom: 22 },
     },
   },
   arms: {
     right: {
-      top: 102,
-      bottom: 248,
+      top: 113,
+      bottom: 272,
       centerlineX: { atTop: 56, atBottom: 47 },
       width: { atTop: 26, atBottom: 18 },
     },
     left: {
-      top: 102,
-      bottom: 248,
+      top: 113,
+      bottom: 272,
       centerlineX: { atTop: 184, atBottom: 193 },
       width: { atTop: 26, atBottom: 18 },
     },
