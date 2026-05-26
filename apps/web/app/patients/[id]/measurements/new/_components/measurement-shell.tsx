@@ -244,7 +244,10 @@ export function MeasurementShell({
         </div>
       ) : (
         <MobileStripPanel activeTab={mobileTab}>
-          <div className="min-h-0 overflow-hidden" style={{ height: "calc(100dvh - 280px)" }}>
+          <div
+            className="min-h-0 overflow-hidden rounded-xl shadow-sm mx-3 my-2"
+            style={{ height: "calc(100dvh - 280px)" }}
+          >
             <ZoneStrip
               side={activeTabSide}
               limb={activeTabLimb}
@@ -262,13 +265,15 @@ export function MeasurementShell({
           so we never leave half the screen empty. Body-map column capped
           around the figure's natural width. Strip order follows the
           figure: arms above (anatomy upper body), legs below. */}
-      <div className="hidden lg:grid lg:grid-cols-[minmax(280px,1fr)_minmax(380px,460px)_minmax(280px,1fr)] flex-1 min-h-0 overflow-hidden">
+      <div className="hidden lg:grid lg:grid-cols-[minmax(280px,1fr)_minmax(380px,460px)_minmax(280px,1fr)] flex-1 min-h-0 overflow-hidden bg-slate-50">
         {/* Left panel: in body view → right-side limbs (arm above, leg below).
             In detail view → mano/cabeza derecha (or the single centered
-            column when the region has no laterality, e.g. head). */}
-        <div className="flex flex-col border-r border-slate-200 overflow-hidden">
+            column when the region has no laterality, e.g. head). Each
+            strip is a self-contained clinical card with its own ring, so
+            this wrapper only provides spacing — no extra borders. */}
+        <div className="flex min-h-0 flex-col gap-3 overflow-hidden p-3">
           {detailRegion && detailStrips ? (
-            <div className="min-h-0 flex-1 overflow-hidden">
+            <div className="min-h-0 flex-1 overflow-hidden rounded-xl shadow-sm">
               {detailStrips.center ? (
                 <DetailFieldStrip
                   title={detailStrips.center.title}
@@ -286,7 +291,7 @@ export function MeasurementShell({
                   tone="right"
                 />
               ) : (
-                <div className="flex h-full items-center justify-center bg-white p-4 text-center text-xs text-slate-500">
+                <div className="flex h-full items-center justify-center rounded-xl bg-white p-4 text-center text-xs text-slate-500 ring-1 ring-inset ring-slate-200">
                   {detailRegion === "hands"
                     ? "Volvé al cuerpo y elegí la otra mano para medirla."
                     : "Esta región no tiene mediciones laterales."}
@@ -295,7 +300,7 @@ export function MeasurementShell({
             </div>
           ) : (
             <>
-              <div className="min-h-0 flex-1 overflow-hidden border-b border-slate-100">
+              <div className="min-h-0 flex-1 overflow-hidden rounded-xl shadow-sm">
                 <ZoneStrip
                   side="right"
                   limb="arm"
@@ -306,7 +311,7 @@ export function MeasurementShell({
                   onChange={onValueChange}
                 />
               </div>
-              <div className="min-h-0 flex-1 overflow-hidden">
+              <div className="min-h-0 flex-1 overflow-hidden rounded-xl shadow-sm">
                 <ZoneStrip
                   side="right"
                   limb="leg"
@@ -367,9 +372,9 @@ export function MeasurementShell({
         {/* Right panel: in body view → left-side limbs. In detail view →
             mano izquierda (head only fills the left panel, so this stays
             empty for head and shows the spacer message). */}
-        <div className="flex flex-col border-l border-slate-200 overflow-hidden">
+        <div className="flex min-h-0 flex-col gap-3 overflow-hidden p-3">
           {detailRegion && detailStrips ? (
-            <div className="min-h-0 flex-1 overflow-hidden">
+            <div className="min-h-0 flex-1 overflow-hidden rounded-xl shadow-sm">
               {detailStrips.left ? (
                 <DetailFieldStrip
                   title={detailStrips.left.title}
@@ -379,7 +384,7 @@ export function MeasurementShell({
                   tone="left"
                 />
               ) : (
-                <div className="flex h-full items-center justify-center bg-white p-4 text-center text-xs text-slate-500">
+                <div className="flex h-full items-center justify-center rounded-xl bg-white p-4 text-center text-xs text-slate-500 ring-1 ring-inset ring-slate-200">
                   {detailRegion === "hands"
                     ? "Volvé al cuerpo y elegí la otra mano para medirla."
                     : "Esta región no tiene mediciones laterales."}
@@ -388,7 +393,7 @@ export function MeasurementShell({
             </div>
           ) : (
             <>
-              <div className="min-h-0 flex-1 overflow-hidden border-b border-slate-100">
+              <div className="min-h-0 flex-1 overflow-hidden rounded-xl shadow-sm">
                 <ZoneStrip
                   side="left"
                   limb="arm"
@@ -399,7 +404,7 @@ export function MeasurementShell({
                   onChange={onValueChange}
                 />
               </div>
-              <div className="min-h-0 flex-1 overflow-hidden">
+              <div className="min-h-0 flex-1 overflow-hidden rounded-xl shadow-sm">
                 <ZoneStrip
                   side="left"
                   limb="leg"
