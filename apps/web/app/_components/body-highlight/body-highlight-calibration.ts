@@ -120,61 +120,60 @@ export const MALE_FULL_BODY: FigureCalibration = {
   },
 };
 
-// Hand-drawn female silhouette — silhouettes/full-body-female.tsx.
-// Native viewBox 240 × 720 (legacy mannequin proportions). Until the
-// female reference PNG is auto-traced, this calibration uses defensive,
-// conservatively-centered coordinates so markers stay clearly inside the
-// drawn limb at every point. Marker positions are intentionally NOT
-// claimed to be clinically precise — `precision: "approximate"` flags
-// that downstream UX can surface a "calibración pendiente" hint.
+// Auto-traced female full body — public/anatomy/full-body-female.svg
+// Image native dimensions: 522.84 × 1226.85 (potrace --tight output from
+// the FIGURA FEMENINA.png front-body crop). Landmarks measured from
+// silhouette_female_eroded.png (bitmap 523 × 1228) via
+// /tmp/anatomy-trace-female/refine_calibration.py.
 //
-// Landmarks (from silhouettes/full-body-female.tsx OUTLINE):
-//   crown y≈16, shoulder cap y≈144, chest y≈218, waist y≈318,
-//   hip y≈416, crotch y≈470, knee y≈566, ankle y≈696, foot y≈712.
-// Limb interior x ranges (rough):
-//   arms.right outer x≈44, inner x≈80;  arms.left outer x≈196, inner x≈164
-//   legs.right outer x≈80, inner x≈116; legs.left outer x≈164, inner x≈124
+//   arms bitmap y 320..555 → viewBox 147..255 (above palm spread)
+//   legs bitmap y 660..1170 → viewBox 303..537 (above ankle widening)
+//
+// Zone polygons live in zones-female.ts (FULL_BODY_FEMALE_ZONES). Marker
+// centers are aligned so the active point number sits inside the band.
 export const FEMALE_FULL_BODY: FigureCalibration = {
-  viewBox: { width: 240, height: 720 },
-  precision: "approximate",
-  markerHeightRange: { min: 8, max: 14 },
-  markerHeightFactor: 1.4,
+  viewBox: { width: 240, height: 564 },
+  assetHref: "/anatomy/full-body-female.svg",
+  assetHeightInViewBox: 564,
+  precision: "traced",
+  markerHeightRange: { min: 7, max: 13 },
+  markerHeightFactor: 1.35,
   legs: {
     right: {
-      top: 440,
-      bottom: 670,
-      centerlineX: { atTop: 100, atBottom: 102 },
-      width: { atTop: 28, atBottom: 18 },
+      top: 303,
+      bottom: 537,
+      centerlineX: { atTop: 90, atBottom: 86 },
+      width: { atTop: 46, atBottom: 19 },
     },
     left: {
-      top: 440,
-      bottom: 670,
-      centerlineX: { atTop: 140, atBottom: 138 },
-      width: { atTop: 28, atBottom: 18 },
+      top: 303,
+      bottom: 537,
+      centerlineX: { atTop: 150, atBottom: 154 },
+      width: { atTop: 46, atBottom: 19 },
     },
   },
   arms: {
     right: {
-      top: 170,
-      bottom: 432,
-      centerlineX: { atTop: 60, atBottom: 54 },
-      width: { atTop: 22, atBottom: 16 },
+      top: 147,
+      bottom: 255,
+      centerlineX: { atTop: 62, atBottom: 31 },
+      width: { atTop: 20, atBottom: 15 },
     },
     left: {
-      top: 170,
-      bottom: 432,
-      centerlineX: { atTop: 180, atBottom: 186 },
-      width: { atTop: 22, atBottom: 16 },
+      top: 147,
+      bottom: 255,
+      centerlineX: { atTop: 178, atBottom: 208 },
+      width: { atTop: 20, atBottom: 15 },
     },
   },
-  headHotspot: { x: 84, y: 8, width: 72, height: 102 },
+  headHotspot: { x: 90, y: 0, width: 60, height: 92 },
   handHotspots: [
-    { side: "right", x: 24, y: 442, width: 56, height: 64 },
-    { side: "left", x: 160, y: 442, width: 56, height: 64 },
+    { side: "right", x: 0, y: 260, width: 70, height: 60 },
+    { side: "left", x: 170, y: 260, width: 70, height: 60 },
   ],
   sideLabels: {
-    right: { x: 16, y: 18, text: "D" },
-    left: { x: 224, y: 18, text: "I" },
+    right: { x: 18, y: 14, text: "D" },
+    left: { x: 222, y: 14, text: "I" },
   },
 };
 

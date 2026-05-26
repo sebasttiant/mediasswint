@@ -11,6 +11,7 @@ import {
   type FigureCalibration,
   type FullBodySex,
 } from "./body-highlight-calibration";
+import { getFemaleZonePath } from "./zones-female";
 import { getMaleZonePath } from "./zones-male";
 import {
   BODY_CLIP_PATHS,
@@ -57,6 +58,11 @@ function toFullBodySex(sex: BodyFigureSex): FullBodySex {
 // declare which keys the BodyHighlight component knows how to render.
 export type DetailRegion = Extract<AnatomicalRegion, "head" | "hands">;
 
+// Side selector for regions where laterality matters at the detail level.
+// Head detail ignores this; hands use it to crop the asset to just the
+// chosen palm/dorso column.
+export type DetailSide = "right" | "left";
+
 export type BodyHighlightProps = {
   view: BodyView;
   sex?: BodyFigureSex;
@@ -65,6 +71,12 @@ export type BodyHighlightProps = {
   className?: string;
   ariaLabel?: string;
   onZoneClick?: (zoneId: AnatomyZoneId) => void;
+  // Fires whenever the detail-view region toggles (hands/head ↔ null) so
+  // parents can swap the surrounding measurement strips. For hands, side
+  // identifies which palm/dorso column the user opened. Head detail
+  // always emits side=null. Internal state still drives rendering; the
+  // callback is informative.
+  onDetailChange?: (region: DetailRegion | null, side: DetailSide | null) => void;
 };
 
 function hasFilledZone(
@@ -180,15 +192,16 @@ function ZoneMarker({
 
 type RegionHotspotProps = {
   region: DetailRegion;
+  side: DetailSide | null;
   label: string;
   x: number;
   y: number;
   width: number;
   height: number;
-  onActivate: (region: DetailRegion) => void;
+  onActivate: (region: DetailRegion, side: DetailSide | null) => void;
 };
 
-function RegionHotspot({ region, label, x, y, width, height, onActivate }: RegionHotspotProps) {
+function RegionHotspot({ region, side, label, x, y, width, height, onActivate }: RegionHotspotProps) {
   return (
     <g className={styles.regionHotspot}>
       <rect
@@ -202,11 +215,11 @@ function RegionHotspot({ region, label, x, y, width, height, onActivate }: Regio
         role="button"
         tabIndex={0}
         aria-label={`Abrir detalle de ${label}`}
-        onClick={() => onActivate(region)}
+        onClick={() => onActivate(region, side)}
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
-            onActivate(region);
+            onActivate(region, side);
           }
         }}
       />
@@ -237,6 +250,7 @@ function DetailLayer({ region, sex }: DetailLayerProps) {
 function getViewBoxForState(
   view: BodyView,
   detail: DetailRegion | null,
+  detailSide: DetailSide | null,
   fullBodyCalibration: FigureCalibration,
 ): { x: number; y: number; width: number; height: number } {
   if (view !== "full") {
@@ -246,6 +260,18 @@ function getViewBoxForState(
     return { x: 0, y: 0, width: HEAD_DETAIL_VIEWBOX.width, height: HEAD_DETAIL_VIEWBOX.height };
   }
   if (detail === "hands") {
+    // Crop to the column matching the selected side. PNG layout:
+    //   left column  → subject's right hand (palma D + dorso D)
+    //   right column → subject's left hand  (palma I + dorso I)
+    // If side is missing (legacy callers, no-side activation), fall back
+    // to the full sheet so neither hand goes missing.
+    const halfWidth = HAND_DETAIL_VIEWBOX.width / 2;
+    if (detailSide === "right") {
+      return { x: 0, y: 0, width: halfWidth, height: HAND_DETAIL_VIEWBOX.height };
+    }
+    if (detailSide === "left") {
+      return { x: halfWidth, y: 0, width: halfWidth, height: HAND_DETAIL_VIEWBOX.height };
+    }
     return { x: 0, y: 0, width: HAND_DETAIL_VIEWBOX.width, height: HAND_DETAIL_VIEWBOX.height };
   }
   return {
@@ -264,21 +290,46 @@ export function BodyHighlight({
   className,
   ariaLabel,
   onZoneClick,
+  onDetailChange,
 }: BodyHighlightProps) {
   const [tooltip, setTooltip] = useState<TooltipData | null>(null);
-  const [detailRegion, setDetailRegion] = useState<DetailRegion | null>(null);
+  const [detailRegion, setDetailRegionState] = useState<DetailRegion | null>(null);
+  const [detailSide, setDetailSideState] = useState<DetailSide | null>(null);
   const instanceId = useId().replace(/:/g, "");
+
+  const openDetail = (region: DetailRegion, side: DetailSide | null) => {
+    setDetailRegionState(region);
+    setDetailSideState(side);
+    onDetailChange?.(region, side);
+  };
+
+  const closeDetail = () => {
+    setDetailRegionState(null);
+    setDetailSideState(null);
+    onDetailChange?.(null, null);
+  };
 
   const isFull = view === "full";
   const isDetail = isFull && detailRegion !== null;
   const isInteractive = Boolean(onZoneClick);
 
   const fullBodyCalibration = getFullBodyCalibration(toFullBodySex(sex));
-  const vb = getViewBoxForState(view, isDetail ? detailRegion : null, fullBodyCalibration);
+  const vb = getViewBoxForState(
+    view,
+    isDetail ? detailRegion : null,
+    isDetail ? detailSide : null,
+    fullBodyCalibration,
+  );
   const viewBox = `${vb.x} ${vb.y} ${vb.width} ${vb.height}`;
-  const defsId = `bh-${view}-${detailRegion ?? "root"}-${instanceId}`;
+  const defsId = `bh-${view}-${detailRegion ?? "root"}-${detailSide ?? "x"}-${instanceId}`;
   const svgClassName = [styles.svg, className].filter(Boolean).join(" ");
   const summary = detailRegion ? findRegionSummary(detailRegion) : null;
+  const detailTitle = (() => {
+    if (!summary) return null;
+    if (detailRegion === "hands" && detailSide === "right") return "Mano Derecha";
+    if (detailRegion === "hands" && detailSide === "left") return "Mano Izquierda";
+    return summary.label;
+  })();
 
   const sideSummaries = getSideSummaryForView(view);
   // Full view reads side-label positions from the sex-specific calibration
@@ -312,14 +363,14 @@ export function BodyHighlight({
           <button
             type="button"
             className={styles.backButton}
-            onClick={() => setDetailRegion(null)}
+            onClick={closeDetail}
             aria-label="Volver al cuerpo completo"
           >
             <span aria-hidden="true">←</span> Volver al cuerpo
           </button>
           <div className={styles.detailHeaderText}>
             <p className={styles.detailHeaderKicker}>Detalle anatómico</p>
-            <h3 className={styles.detailHeaderTitle}>{summary.label}</h3>
+            <h3 className={styles.detailHeaderTitle}>{detailTitle}</h3>
           </div>
         </div>
       ) : null}
@@ -327,25 +378,33 @@ export function BodyHighlight({
       <svg
         role="img"
         aria-label={
-          isDetail && summary
-            ? `Detalle anatómico de ${summary.label.toLowerCase()}`
+          isDetail && detailTitle
+            ? `Detalle anatómico de ${detailTitle.toLowerCase()}`
             : (ariaLabel ?? DEFAULT_ARIA_LABEL[view])
         }
         viewBox={viewBox}
         className={svgClassName}
         data-view={view}
         data-detail={detailRegion ?? "none"}
+        data-detail-side={detailSide ?? "none"}
         data-active-zone={activeZoneId ?? ""}
-        overflow="visible"
+        // Body view keeps overflow visible so the active-zone glow filter
+        // can extend past the SVG bounds. In detail mode the viewBox is
+        // intentionally cropped (e.g. half the hands PNG for a single side)
+        // so we MUST hide overflow or the rest of the asset leaks in.
+        // The inline style is needed because .svg in CSS sets overflow:visible
+        // and would otherwise win against the presentation attribute.
+        overflow={isDetail ? "hidden" : "visible"}
+        style={isDetail ? { overflow: "hidden" } : undefined}
       >
         <title>
-          {isDetail && summary
-            ? `Detalle anatómico de ${summary.label}`
+          {isDetail && detailTitle
+            ? `Detalle anatómico de ${detailTitle}`
             : (ariaLabel ?? DEFAULT_ARIA_LABEL[view])}
         </title>
         <desc>
-          {isDetail && summary
-            ? `Referencia clínica para ${summary.label}. Los campos asociados se listan debajo del gráfico.`
+          {isDetail && detailTitle
+            ? `Referencia clínica para ${detailTitle}. Los campos asociados se listan debajo del gráfico.`
             : sideSummaries.map((s) => `${s.label}: ${s.points} puntos`).join(". ")}
         </desc>
 
@@ -429,13 +488,15 @@ export function BodyHighlight({
                     {zones.map((zone) => {
                       const isActive = zone.zoneId === activeZoneId;
                       const isFilled = hasFilledZone(filledZoneIds, zone.zoneId);
-                      // Full-body male uses the auto-generated anatomical
-                      // zone polygon (entire limb section fills). Female
-                      // and any missing zone fall back to a bounded marker.
-                      const zonedFullPath =
-                        isFull && sex === BODY_FIGURE_SEX.MALE
+                      // Full-body uses the auto-generated anatomical zone
+                      // polygon (entire limb section fills) for each sex.
+                      // Any zone missing from the per-sex map falls back to
+                      // a bounded marker so the figure keeps rendering.
+                      const zonedFullPath = isFull
+                        ? sex === BODY_FIGURE_SEX.MALE
                           ? getMaleZonePath(zone.zoneId)
-                          : undefined;
+                          : getFemaleZonePath(zone.zoneId)
+                        : undefined;
                       const zonePath = isFull
                         ? (zonedFullPath ?? getFullMarkerForSex(fullBodyCalibration, zone).path)
                         : zone.d;
@@ -513,12 +574,13 @@ export function BodyHighlight({
             {isFull && isInteractive && hasDetailView("head") ? (
               <RegionHotspot
                 region="head"
+                side={null}
                 label="cabeza"
                 x={fullBodyCalibration.headHotspot.x}
                 y={fullBodyCalibration.headHotspot.y}
                 width={fullBodyCalibration.headHotspot.width}
                 height={fullBodyCalibration.headHotspot.height}
-                onActivate={setDetailRegion}
+                onActivate={openDetail}
               />
             ) : null}
             {isFull && isInteractive && hasDetailView("hands")
@@ -526,12 +588,13 @@ export function BodyHighlight({
                   <RegionHotspot
                     key={`hand-${hotspot.side}`}
                     region="hands"
+                    side={hotspot.side}
                     label={`mano ${hotspot.side === "right" ? "derecha" : "izquierda"}`}
                     x={hotspot.x}
                     y={hotspot.y}
                     width={hotspot.width}
                     height={hotspot.height}
-                    onActivate={setDetailRegion}
+                    onActivate={openDetail}
                   />
                 ))
               : null}
@@ -564,7 +627,9 @@ export function BodyHighlight({
       </AnimatePresence>
 
       {/* Pending-fields panel for detail mode */}
-      {isDetail && detailRegion ? <DetailRegionPanel region={detailRegion} /> : null}
+      {isDetail && detailRegion ? (
+        <DetailRegionPanel region={detailRegion} side={detailSide} />
+      ) : null}
     </div>
   );
 }

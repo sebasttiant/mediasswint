@@ -29,8 +29,8 @@ export function ZoneStrip({
   const label = LIMB_LABELS[limb][side];
 
   return (
-    <div className="flex flex-col h-full">
-      <div className={`sticky top-[57px] z-10 px-2 py-1.5 text-xs font-bold uppercase tracking-wider text-center border-b ${
+    <div className="flex h-full min-h-0 flex-col">
+      <div className={`shrink-0 px-2 py-1.5 text-center text-xs font-bold uppercase tracking-wider border-b ${
         side === "right"
           ? "bg-sky-50 text-sky-700 border-sky-200"
           : "bg-violet-50 text-violet-700 border-violet-200"
@@ -38,7 +38,7 @@ export function ZoneStrip({
         {label}
       </div>
 
-      <div className="flex-1 overflow-y-auto bg-white">
+      <div className="min-h-0 flex-1 overflow-y-auto bg-white">
         <div className="divide-y divide-slate-100">
           {fields.map((field) => {
             const anatomyZone = field.metadata.anatomyZone as string | undefined;

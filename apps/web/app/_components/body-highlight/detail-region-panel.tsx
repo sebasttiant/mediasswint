@@ -11,6 +11,10 @@ import styles from "./body-highlight.module.css";
 
 type DetailRegionPanelProps = {
   region: AnatomicalRegion;
+  // When set, the panel narrows to fields matching this laterality plus
+  // any bilateral entries. Region without laterality (head, neck) ignore
+  // this prop. `null` keeps the legacy "show all fields" behavior.
+  side?: "right" | "left" | null;
 };
 
 const KIND_LABEL: Record<PdfMeasurementField["kind"], string> = {
@@ -27,16 +31,26 @@ function SideTag({ side }: { side: PdfMeasurementField["side"] }) {
   return <span className={styles.pendingSide}>{text}</span>;
 }
 
-export function DetailRegionPanel({ region }: DetailRegionPanelProps) {
+export function DetailRegionPanel({ region, side = null }: DetailRegionPanelProps) {
   const summary = findRegionSummary(region);
-  const fields = getPendingFieldsForRegion(region);
+  const allFields = getPendingFieldsForRegion(region);
+  const fields = side
+    ? allFields.filter((f) => f.side === side || f.side === "bilateral" || !f.side)
+    : allFields;
+
+  const sidedLabel =
+    region === "hands" && side === "right"
+      ? "Mano Derecha"
+      : region === "hands" && side === "left"
+        ? "Mano Izquierda"
+        : summary.label;
 
   return (
-    <section className={styles.pendingPanel} aria-label={`Campos pendientes — ${summary.label}`}>
+    <section className={styles.pendingPanel} aria-label={`Campos pendientes — ${sidedLabel}`}>
       <header className={styles.pendingHeader}>
         <div>
           <p className={styles.pendingKicker}>Catálogo PDF</p>
-          <h3 className={styles.pendingTitle}>{summary.label}</h3>
+          <h3 className={styles.pendingTitle}>{sidedLabel}</h3>
           <p className={styles.pendingDescription}>{summary.description}</p>
         </div>
         <span className={styles.pendingBadge} data-status={summary.status}>

@@ -6,9 +6,12 @@
 
 export const FULL_BODY_VIEWBOX = { width: 240, height: 545 } as const;
 
-export const HEAD_DETAIL_VIEWBOX = { width: 360, height: 200 } as const;
+// Head and hand detail viewBoxes match the native pixel dimensions of the
+// clinical reference PNGs in /public/anatomy so an <image> element can be
+// dropped in 1:1.
+export const HEAD_DETAIL_VIEWBOX = { width: 1122, height: 1402 } as const;
 
-export const HAND_DETAIL_VIEWBOX = { width: 320, height: 360 } as const;
+export const HAND_DETAIL_VIEWBOX = { width: 1122, height: 1402 } as const;
 
 export type SilhouetteStyleProps = {
   outlineStroke?: string;
