@@ -3,31 +3,29 @@
 export function SilhouetteDefs({ id }: { id: string }) {
   return (
     <defs>
-      <linearGradient id={`${id}-skin`} x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stopColor="#fde7d2" />
-        <stop offset="100%" stopColor="#f5d4b3" />
-      </linearGradient>
-
-      <linearGradient id={`${id}-volume`} x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0%" stopColor="#c8860a" stopOpacity="0.18" />
-        <stop offset="35%" stopColor="#c8860a" stopOpacity="0.04" />
-        <stop offset="50%" stopColor="#ffffff" stopOpacity="0.12" />
-        <stop offset="65%" stopColor="#c8860a" stopOpacity="0.04" />
-        <stop offset="100%" stopColor="#c8860a" stopOpacity="0.18" />
-      </linearGradient>
-
-      <filter id={`${id}-glow`} x="-20%" y="-20%" width="140%" height="140%">
-        <feGaussianBlur stdDeviation="2" result="blur" />
-        <feComposite in="SourceGraphic" in2="blur" operator="over" />
-      </filter>
-
-      <filter id={`${id}-zone-glow`} x="-30%" y="-30%" width="160%" height="160%">
-        <feGaussianBlur stdDeviation="2.5" result="blur" />
+      {/* Soft clinical glow — tight, controlled, no halo bleed */}
+      <filter
+        id={`${id}-zone-glow`}
+        x="-20%"
+        y="-20%"
+        width="140%"
+        height="140%"
+        filterUnits="objectBoundingBox"
+      >
+        <feGaussianBlur in="SourceAlpha" stdDeviation="1.4" result="blurAlpha" />
+        <feFlood floodColor="#0ea5e9" floodOpacity="0.55" result="glowColor" />
+        <feComposite in="glowColor" in2="blurAlpha" operator="in" result="coloredGlow" />
         <feMerge>
-          <feMergeNode in="blur" />
+          <feMergeNode in="coloredGlow" />
           <feMergeNode in="SourceGraphic" />
         </feMerge>
       </filter>
+
+      {/* Subtle inner shading gradient for the silhouette fill */}
+      <linearGradient id={`${id}-body-fill`} x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stopColor="#f7f9fc" />
+        <stop offset="1" stopColor="#e5ebf2" />
+      </linearGradient>
     </defs>
   );
 }

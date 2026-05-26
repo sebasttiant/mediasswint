@@ -1,14 +1,45 @@
 "use client";
 
 import { motion } from "framer-motion";
-import type { LucideIcon } from "lucide-react";
+import {
+  Activity,
+  AlertCircle,
+  Briefcase,
+  Calendar,
+  DollarSign,
+  TrendingUp,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 
 import { Sparkline } from "./sparkline";
 
 type TrendDirection = "up" | "down" | "neutral";
 
+export const KPI_CARD_ICON = {
+  activity: "activity",
+  alertCircle: "alertCircle",
+  briefcase: "briefcase",
+  calendar: "calendar",
+  dollarSign: "dollarSign",
+  trendingUp: "trendingUp",
+  users: "users",
+} as const;
+
+export type KpiCardIcon = (typeof KPI_CARD_ICON)[keyof typeof KPI_CARD_ICON];
+
+const KPI_CARD_ICONS: Record<KpiCardIcon, LucideIcon> = {
+  activity: Activity,
+  alertCircle: AlertCircle,
+  briefcase: Briefcase,
+  calendar: Calendar,
+  dollarSign: DollarSign,
+  trendingUp: TrendingUp,
+  users: Users,
+};
+
 type KpiCardProps = {
-  icon: LucideIcon;
+  icon: KpiCardIcon;
   label: string;
   value: string | number;
   iconClassName?: string;
@@ -38,6 +69,8 @@ export function KpiCard({
   trendLabel,
   value,
 }: KpiCardProps) {
+  const ResolvedIcon = KPI_CARD_ICONS[Icon];
+
   return (
     <motion.div
       className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
@@ -46,7 +79,7 @@ export function KpiCard({
     >
       <div className="flex items-start justify-between gap-3">
         <span className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${iconClassName}`}>
-          <Icon className="h-5 w-5" strokeWidth={1.75} />
+          <ResolvedIcon className="h-5 w-5" strokeWidth={1.75} />
         </span>
         {trendDirection && trendDirection !== "neutral" && (
           <span className={`text-sm font-semibold ${TREND_STYLES[trendDirection]}`}>

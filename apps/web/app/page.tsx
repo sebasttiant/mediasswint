@@ -1,16 +1,8 @@
 import { cookies } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import {
-  Activity,
-  AlertCircle,
-  Briefcase,
-  Calendar,
-  DollarSign,
-  Stethoscope,
-  TrendingUp,
-  Users,
-} from "lucide-react";
+import { KpiCard } from "./_components/dashboard/kpi-card";
+import { QuickActionCard } from "./_components/dashboard/quick-action-card";
 
 import { getSessionCookieName, requireActiveUserFromRequest } from "@/lib/auth";
 import { fetchDashboardData } from "@/lib/dashboard";
@@ -19,9 +11,7 @@ import { AppShell } from "./_components/app-shell/app-shell";
 import { LogoutButton } from "./_components/logout-button";
 import { Avatar } from "./_components/dashboard/avatar";
 import { DataTable, type DataTableColumn } from "./_components/dashboard/data-table";
-import { KpiCard } from "./_components/dashboard/kpi-card";
 import { PendingTimeline } from "./_components/dashboard/pending-timeline";
-import { QuickActionCard } from "./_components/dashboard/quick-action-card";
 import { StatusBadge } from "./_components/dashboard/status-badge";
 import type { DashboardMeasurement, DashboardOperation, DashboardPatient } from "@/lib/dashboard";
 
@@ -186,7 +176,7 @@ export default async function DashboardPage() {
         <section aria-label="Indicadores clave">
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
             <KpiCard
-              icon={Users}
+              icon="users"
               iconClassName="bg-clinical-50 text-clinical-600"
               label="Pacientes totales"
               value={data.totalPatients}
@@ -194,7 +184,7 @@ export default async function DashboardPage() {
               trendDirection="up"
             />
             <KpiCard
-              icon={Calendar}
+              icon="calendar"
               iconClassName="bg-brand/10 text-brand"
               label="Creados hoy"
               value={data.patientsCreatedTodayCount}
@@ -202,7 +192,7 @@ export default async function DashboardPage() {
               trendDirection={data.patientsCreatedTodayCount > 0 ? "up" : "neutral"}
             />
             <KpiCard
-              icon={Briefcase}
+              icon="briefcase"
               iconClassName="bg-amber-50 text-amber-600"
               label="Operaciones activas"
               value={data.activeOperationsCount}
@@ -210,7 +200,7 @@ export default async function DashboardPage() {
               trendDirection="neutral"
             />
             <KpiCard
-              icon={AlertCircle}
+              icon="alertCircle"
               iconClassName="bg-orange-50 text-orange-500"
               label="Mediciones abiertas"
               value={data.openMeasurementDraftsCount}
@@ -218,7 +208,7 @@ export default async function DashboardPage() {
               trendDirection={data.openMeasurementDraftsCount > 0 ? "down" : "neutral"}
             />
             <KpiCard
-              icon={Activity}
+              icon="activity"
               iconClassName="bg-emerald-50 text-emerald-600"
               label="Finalizadas hoy"
               value={data.completedMeasurementsTodayCount}
@@ -226,7 +216,7 @@ export default async function DashboardPage() {
               trendDirection={data.completedMeasurementsTodayCount > 0 ? "up" : "neutral"}
             />
             <KpiCard
-              icon={DollarSign}
+              icon="dollarSign"
               iconClassName="bg-mint-50 text-mint-600"
               label="Total señado"
               value={formatCurrency(data.totalDeposits)}
@@ -234,7 +224,7 @@ export default async function DashboardPage() {
               trendDirection="up"
             />
             <KpiCard
-              icon={TrendingUp}
+              icon="trendingUp"
               iconClassName="bg-violet-50 text-violet-600"
               label="Saldo pendiente"
               value={formatCurrency(data.totalPendingBalance)}
@@ -253,25 +243,25 @@ export default async function DashboardPage() {
             <div className="flex gap-4 overflow-x-auto p-4 md:grid md:grid-cols-4">
               <QuickActionCard
                 href="/patients"
-                icon={Users}
+                icon="users"
                 label="Nuevo paciente / Buscar"
                 description="Dar de alta o buscar pacientes existentes"
               />
               <QuickActionCard
                 href="/patients"
-                icon={Stethoscope}
+                icon="stethoscope"
                 label="Buscar paciente para medir"
                 description="Elegir paciente antes de iniciar la toma de medidas"
               />
               <QuickActionCard
                 href="/patients"
-                icon={Activity}
+                icon="activity"
                 label="Buscar para operación"
                 description="Elegir paciente antes de crear presupuesto o pedido"
               />
               <QuickActionCard
                 href="/operations"
-                icon={Briefcase}
+                icon="briefcase"
                 label="Operaciones activas"
                 description="Gestionar presupuestos, producción y entregas"
               />
