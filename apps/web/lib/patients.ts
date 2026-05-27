@@ -1,5 +1,6 @@
 import type { Patient } from "@prisma/client";
 
+import { recordAudit, toAuditPayload } from "@/lib/audit-log";
 import type { CreatePatientInput, ListPatientsQuery, UpdatePatientInput } from "@/lib/patients-input";
 import { getPrisma } from "@/lib/prisma";
 
@@ -110,6 +111,12 @@ export async function createPatient(
 ): Promise<ServiceResult<Patient>> {
   try {
     const patient = await repository.create(input);
+    await recordAudit({
+      action: "CREATE",
+      entityType: "Patient",
+      entityId: patient.id,
+      diff: { after: toAuditPayload(patient) },
+    });
     return { ok: true, value: patient };
   } catch (error) {
     if (isUniqueViolation(error)) {
@@ -156,10 +163,18 @@ export async function updatePatient(
   repository: PatientsRepository = defaultRepository,
 ): Promise<ServiceResult<Patient>> {
   try {
+    const before = await repository.getById(id);
     const patient = await repository.update(id, input);
     if (!patient) {
       return { ok: false, error: "NOT_FOUND" };
     }
+
+    await recordAudit({
+      action: "UPDATE",
+      entityType: "Patient",
+      entityId: patient.id,
+      diff: { before: toAuditPayload(before), after: toAuditPayload(patient) },
+    });
 
     return { ok: true, value: patient };
   } catch (error) {

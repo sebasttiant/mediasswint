@@ -4,12 +4,20 @@ import {
   type CompressionMeasurementDefinition,
 } from "@/lib/compression-measurements";
 
+import {
+  MALE_FULL_BODY,
+  getMarkerRect,
+  markerRectToPath,
+  type FigureCalibration,
+} from "./body-highlight-calibration";
+
 export type BodyView = "full" | "legs" | "arms";
+export type IsolatedBodyView = Exclude<BodyView, "full">;
 export type BodySide = "right" | "left";
 
 export type BodyZoneShape = {
   zoneId: AnatomyZoneId;
-  view: BodyView;
+  view: IsolatedBodyView;
   side: BodySide;
   point: number;
   label: string;
@@ -21,24 +29,35 @@ export type BodyZoneShape = {
   fullLabelY: number;
 };
 
-const VIEW_WIDTH = 240;
-const VIEW_HEIGHT = 400;
-const LIMB_TOP = 50;
-const LIMB_BOTTOM = 375;
-const LIMB_WIDTH = 46;
-const LIMB_X_RIGHT = 28;
-const LIMB_X_LEFT = 147;
+// ---------------------------------------------------------------------------
+// This module owns MEASUREMENT zone geometry for the legs/arms isolated
+// sheets and the per-point marker paths for the full body view. Marker
+// coordinates are derived from body-highlight-calibration.ts so all
+// scattered magic constants live in one typed place.
+//
+// Coordinate system: 240 × 720 viewBox for the isolated sheets,
+// 240 × 545 for the full body (matches MALE_FULL_BODY.viewBox).
+// ---------------------------------------------------------------------------
 
-const FULL_LEG_TOP = 185;
-const FULL_LEG_BOTTOM = 379;
-const FULL_LEG_WIDTH = 33;
-const FULL_LEG_X_RIGHT = 82;
-const FULL_LEG_X_LEFT = 125;
-const FULL_ARM_TOP = 96;
-const FULL_ARM_BOTTOM = 270;
-const FULL_ARM_WIDTH = 29;
-const FULL_ARM_X_RIGHT = 37;
-const FULL_ARM_X_LEFT = 174;
+const VIEW_WIDTH = 240;
+const VIEW_HEIGHT = 720;
+
+const ISO_VIEW_WIDTH = 240;
+const ISO_VIEW_HEIGHT = 480;
+
+// Isolated view (legs sheet) — band columns
+const ISO_LEG_TOP = 50;
+const ISO_LEG_BOTTOM = 430;
+const ISO_LEG_WIDTH = 70;
+const ISO_LEG_X_RIGHT = 26;
+const ISO_LEG_X_LEFT = 144;
+
+// Isolated view (arms sheet) — band columns
+const ISO_ARM_TOP = 50;
+const ISO_ARM_BOTTOM = 450;
+const ISO_ARM_WIDTH = 70;
+const ISO_ARM_X_RIGHT = 20;
+const ISO_ARM_X_LEFT = 150;
 
 const MAX_POINT_BY_GROUP: Record<"legs" | "arms", number> = COMPRESSION_MEASUREMENTS.reduce(
   (acc, definition) => {
@@ -50,55 +69,54 @@ const MAX_POINT_BY_GROUP: Record<"legs" | "arms", number> = COMPRESSION_MEASUREM
   { legs: 0, arms: 0 } as Record<"legs" | "arms", number>,
 );
 
-function buildBandPath(definition: CompressionMeasurementDefinition): string {
-  const totalPoints = MAX_POINT_BY_GROUP[definition.group];
-  const limbHeight = LIMB_BOTTOM - LIMB_TOP;
-  const bandHeight = limbHeight / totalPoints;
-  const x = definition.side === "right" ? LIMB_X_RIGHT : LIMB_X_LEFT;
-  const y = LIMB_TOP + (definition.point - 1) * bandHeight;
-  const right = x + LIMB_WIDTH;
-  const bottom = y + bandHeight;
-  const pad = 1;
-  return `M ${x + pad} ${y + pad} L ${right - pad} ${y + pad} L ${right - pad} ${bottom - pad} L ${x + pad} ${bottom - pad} Z`;
-}
+// Isolated bands are still rendered ~2× their slot height for visual
+// emphasis (compact 240×480 sheet). Full body markers are sized via
+// MALE_FULL_BODY.markerHeightRange in the calibration module.
+const ISO_BAND_VISIBLE_SCALE = 2;
 
-function buildFullBodyBandPath(definition: CompressionMeasurementDefinition): string {
+function buildIsolatedBandPath(definition: CompressionMeasurementDefinition): string {
+  const isLeg = definition.group === "legs";
   const totalPoints = MAX_POINT_BY_GROUP[definition.group];
-  const top = definition.group === "legs" ? FULL_LEG_TOP : FULL_ARM_TOP;
-  const bottom = definition.group === "legs" ? FULL_LEG_BOTTOM : FULL_ARM_BOTTOM;
-  const width = definition.group === "legs" ? FULL_LEG_WIDTH : FULL_ARM_WIDTH;
-  const x = definition.group === "legs"
+  const top = isLeg ? ISO_LEG_TOP : ISO_ARM_TOP;
+  const bottom = isLeg ? ISO_LEG_BOTTOM : ISO_ARM_BOTTOM;
+  const width = isLeg ? ISO_LEG_WIDTH : ISO_ARM_WIDTH;
+  const x = isLeg
     ? definition.side === "right"
-      ? FULL_LEG_X_RIGHT
-      : FULL_LEG_X_LEFT
+      ? ISO_LEG_X_RIGHT
+      : ISO_LEG_X_LEFT
     : definition.side === "right"
-      ? FULL_ARM_X_RIGHT
-      : FULL_ARM_X_LEFT;
-  const bandHeight = (bottom - top) / totalPoints;
-  const y = top + (definition.point - 1) * bandHeight;
-  const pad = 0.75;
+      ? ISO_ARM_X_RIGHT
+      : ISO_ARM_X_LEFT;
 
-  return `M ${x + pad} ${y + pad} L ${x + width - pad} ${y + pad} L ${x + width - pad} ${y + bandHeight - pad} L ${x + pad} ${y + bandHeight - pad} Z`;
+  const slotHeight = (bottom - top) / totalPoints;
+  const centerY = top + (definition.point - 0.5) * slotHeight;
+  const h = slotHeight * ISO_BAND_VISIBLE_SCALE;
+  const y = centerY - h / 2;
+  const pad = 0.5;
+  const r = Math.min(5, (h - pad * 2) / 2);
+
+  return `M ${x + pad + r} ${y + pad} L ${x + width - pad - r} ${y + pad} Q ${x + width - pad} ${y + pad}, ${x + width - pad} ${y + pad + r} L ${x + width - pad} ${y + h - pad - r} Q ${x + width - pad} ${y + h - pad}, ${x + width - pad - r} ${y + h - pad} L ${x + pad + r} ${y + h - pad} Q ${x + pad} ${y + h - pad}, ${x + pad} ${y + h - pad - r} L ${x + pad} ${y + pad + r} Q ${x + pad} ${y + pad}, ${x + pad + r} ${y + pad} Z`;
 }
 
 function buildShape(definition: CompressionMeasurementDefinition): BodyZoneShape {
+  const isLeg = definition.group === "legs";
   const totalPoints = MAX_POINT_BY_GROUP[definition.group];
-  const limbHeight = LIMB_BOTTOM - LIMB_TOP;
-  const bandHeight = limbHeight / totalPoints;
-  const x = definition.side === "right" ? LIMB_X_RIGHT : LIMB_X_LEFT;
-  const y = LIMB_TOP + (definition.point - 1) * bandHeight;
-  const fullTop = definition.group === "legs" ? FULL_LEG_TOP : FULL_ARM_TOP;
-  const fullBottom = definition.group === "legs" ? FULL_LEG_BOTTOM : FULL_ARM_BOTTOM;
-  const fullWidth = definition.group === "legs" ? FULL_LEG_WIDTH : FULL_ARM_WIDTH;
-  const fullX = definition.group === "legs"
+
+  // Isolated sheet coords (legs/arms-only views)
+  const isoTop = isLeg ? ISO_LEG_TOP : ISO_ARM_TOP;
+  const isoBottom = isLeg ? ISO_LEG_BOTTOM : ISO_ARM_BOTTOM;
+  const isoWidth = isLeg ? ISO_LEG_WIDTH : ISO_ARM_WIDTH;
+  const isoX = isLeg
     ? definition.side === "right"
-      ? FULL_LEG_X_RIGHT
-      : FULL_LEG_X_LEFT
+      ? ISO_LEG_X_RIGHT
+      : ISO_LEG_X_LEFT
     : definition.side === "right"
-      ? FULL_ARM_X_RIGHT
-      : FULL_ARM_X_LEFT;
-  const fullBandHeight = (fullBottom - fullTop) / totalPoints;
-  const fullY = fullTop + (definition.point - 1) * fullBandHeight;
+      ? ISO_ARM_X_RIGHT
+      : ISO_ARM_X_LEFT;
+  const isoBandHeight = (isoBottom - isoTop) / totalPoints;
+  const isoY = isoTop + (definition.point - 1) * isoBandHeight;
+
+  const markerRect = getMarkerRect(MALE_FULL_BODY, definition, totalPoints);
 
   return {
     zoneId: definition.anatomyZone,
@@ -106,12 +124,12 @@ function buildShape(definition: CompressionMeasurementDefinition): BodyZoneShape
     side: definition.side,
     point: definition.point,
     label: definition.label,
-    d: buildBandPath(definition),
-    fullD: buildFullBodyBandPath(definition),
-    labelX: x + LIMB_WIDTH / 2,
-    labelY: y + bandHeight / 2,
-    fullLabelX: fullX + fullWidth / 2,
-    fullLabelY: fullY + fullBandHeight / 2,
+    d: buildIsolatedBandPath(definition),
+    fullD: markerRectToPath(markerRect),
+    labelX: isoX + isoWidth / 2,
+    labelY: isoY + isoBandHeight / 2,
+    fullLabelX: markerRect.x + markerRect.width / 2,
+    fullLabelY: markerRect.y + markerRect.height / 2,
   };
 }
 
@@ -123,86 +141,133 @@ export const BODY_HIGHLIGHT_VIEWBOX = {
   height: VIEW_HEIGHT,
 } as const;
 
-const LEG_OUTER_R = `M 26 48 C 18 120, 16 200, 18 280 C 20 330, 22 365, 26 380 L 72 380 C 70 365, 68 330, 66 280 C 64 200, 62 120, 58 48 Z`;
-const LEG_INNER_R = `M 150 48 C 148 120, 146 200, 148 280 C 150 330, 152 365, 156 380 L 202 380 C 206 365, 208 330, 210 280 C 212 200, 210 120, 208 48 Z`;
-const PELVIS = `M 24 18 Q 120 8, 216 18 L 210 48 L 148 48 Q 120 52, 92 48 L 30 48 Z`;
-
-const TORSO = `M 62 48 C 50 100, 45 170, 44 240 C 43 280, 45 320, 52 355 L 188 355 C 195 320, 197 280, 196 240 C 195 170, 190 100, 178 48 Z`;
-const HEAD = `M 106 10 C 106 2, 134 2, 134 10 C 134 24, 106 24, 106 10 Z`;
-const NECK = `M 109 24 L 131 24 L 128 48 L 112 48 Z`;
-
-const ARM_OUTER_R = `M 66 48 C 50 120, 42 200, 46 280 C 48 320, 50 350, 55 375 L 90 375 C 86 350, 84 320, 82 280 C 78 200, 72 120, 76 48 Z`;
-const ARM_INNER_R = `M 174 48 C 178 120, 182 200, 178 280 C 176 320, 174 350, 170 375 L 205 375 C 210 350, 212 320, 214 280 C 218 200, 210 120, 204 48 Z`;
-
-const FULL_HEAD = `M 105 18 C 105 4, 135 4, 135 18 C 135 38, 105 38, 105 18 Z`;
-const FULL_NECK = `M 111 40 L 129 40 L 132 58 L 108 58 Z`;
-const FULL_TORSO_FEMALE = `M 85 60 C 94 70, 102 77, 120 77 C 138 77, 146 70, 155 60 C 166 86, 160 135, 151 170 C 141 181, 99 181, 89 170 C 80 135, 74 86, 85 60 Z`;
-const FULL_TORSO_MALE = `M 78 60 C 90 70, 101 76, 120 76 C 139 76, 150 70, 162 60 C 172 95, 166 139, 152 174 C 136 180, 104 180, 88 174 C 74 139, 68 95, 78 60 Z`;
-const FULL_PELVIS_FEMALE = `M 86 168 C 102 184, 138 184, 154 168 L 163 197 C 148 207, 92 207, 77 197 Z`;
-const FULL_PELVIS_MALE = `M 88 168 C 104 181, 136 181, 152 168 L 158 194 C 143 202, 97 202, 82 194 Z`;
-const FULL_ARM_RIGHT_FEMALE = `M 82 62 C 56 89, 44 145, 37 270 L 65 270 C 69 192, 75 124, 93 78 Z`;
-const FULL_ARM_LEFT_FEMALE = `M 158 62 C 184 89, 196 145, 203 270 L 175 270 C 171 192, 165 124, 147 78 Z`;
-const FULL_ARM_RIGHT_MALE = `M 75 61 C 52 85, 41 145, 35 270 L 66 270 C 70 190, 78 122, 95 76 Z`;
-const FULL_ARM_LEFT_MALE = `M 165 61 C 188 85, 199 145, 205 270 L 174 270 C 170 190, 162 122, 145 76 Z`;
-const FULL_LEG_RIGHT_FEMALE = `M 82 197 C 78 247, 78 316, 84 380 L 115 380 C 113 317, 113 247, 110 197 Z`;
-const FULL_LEG_LEFT_FEMALE = `M 130 197 C 127 247, 127 317, 125 380 L 156 380 C 162 316, 162 247, 158 197 Z`;
-const FULL_LEG_RIGHT_MALE = `M 80 194 C 76 250, 77 318, 83 380 L 116 380 C 114 318, 113 250, 111 194 Z`;
-const FULL_LEG_LEFT_MALE = `M 129 194 C 127 250, 126 318, 124 380 L 157 380 C 163 318, 164 250, 160 194 Z`;
-
-export const BODY_FIGURE_OUTLINES = {
-  female: [
-    FULL_HEAD,
-    FULL_NECK,
-    FULL_TORSO_FEMALE,
-    FULL_PELVIS_FEMALE,
-    FULL_ARM_RIGHT_FEMALE,
-    FULL_ARM_LEFT_FEMALE,
-    FULL_LEG_RIGHT_FEMALE,
-    FULL_LEG_LEFT_FEMALE,
-  ],
-  male: [
-    FULL_HEAD,
-    FULL_NECK,
-    FULL_TORSO_MALE,
-    FULL_PELVIS_MALE,
-    FULL_ARM_RIGHT_MALE,
-    FULL_ARM_LEFT_MALE,
-    FULL_LEG_RIGHT_MALE,
-    FULL_LEG_LEFT_MALE,
-  ],
+export const ISO_VIEW = {
+  legs: { x: 0, y: 0, width: ISO_VIEW_WIDTH, height: ISO_VIEW_HEIGHT },
+  arms: { x: 0, y: 0, width: ISO_VIEW_WIDTH, height: ISO_VIEW_HEIGHT },
 } as const;
 
-export const BODY_FIGURE_CLIP_PATHS = {
-  female: {
-    legs: { right: FULL_LEG_RIGHT_FEMALE, left: FULL_LEG_LEFT_FEMALE },
-    arms: { right: FULL_ARM_RIGHT_FEMALE, left: FULL_ARM_LEFT_FEMALE },
-  },
-  male: {
-    legs: { right: FULL_LEG_RIGHT_MALE, left: FULL_LEG_LEFT_MALE },
-    arms: { right: FULL_ARM_RIGHT_MALE, left: FULL_ARM_LEFT_MALE },
-  },
-} as const;
+// ---------------------------------------------------------------------------
+// Clip path rectangles. Only the isolated sheets still rely on a per-side
+// rectangular clip; the full-body markers are positioned via the
+// calibration module and need no external clipping.
+// ---------------------------------------------------------------------------
 
-export const BODY_HIGHLIGHT_OUTLINES: Readonly<Record<BodyView, ReadonlyArray<string>>> = {
-  full: BODY_FIGURE_OUTLINES.female,
-  legs: [PELVIS, LEG_OUTER_R, LEG_INNER_R],
-  arms: [HEAD, NECK, TORSO, ARM_OUTER_R, ARM_INNER_R],
+const ARM_RIGHT_CLIP_ISO = "M 16 46 L 92 46 L 92 470 L 16 470 Z";
+const ARM_LEFT_CLIP_ISO = "M 148 46 L 224 46 L 224 470 L 148 470 Z";
+const LEG_RIGHT_CLIP_ISO = "M 22 46 L 98 46 L 98 470 L 22 470 Z";
+const LEG_LEFT_CLIP_ISO = "M 142 46 L 218 46 L 218 470 L 142 470 Z";
+
+export const BODY_CLIP_PATHS: Readonly<Record<IsolatedBodyView, Record<BodySide, string>>> = {
+  legs: { right: LEG_RIGHT_CLIP_ISO, left: LEG_LEFT_CLIP_ISO },
+  arms: { right: ARM_RIGHT_CLIP_ISO, left: ARM_LEFT_CLIP_ISO },
 };
 
-export const BODY_CLIP_PATHS: Readonly<Record<BodyView, Record<BodySide, string>>> = {
+// ---------------------------------------------------------------------------
+// Isolated-view silhouettes — paired figure sheets used by the read-only
+// measurement detail page (view="legs" / view="arms"). The full-body view
+// does NOT use these: it renders dedicated FullBodyFemale / FullBodyMale
+// components from silhouettes/.
+// ---------------------------------------------------------------------------
+
+const ISO_LEGS_OUTLINE = [
+  "M 22 50",
+  "C 36 30, 70 16, 120 16",
+  "C 170 16, 204 30, 218 50",
+  "C 220 120, 218 240, 214 360",
+  "C 212 400, 210 430, 210 450",
+  "C 212 462, 208 470, 200 470",
+  "L 144 470",
+  "C 138 466, 138 458, 140 448",
+  "L 140 60",
+  "C 134 64, 128 66, 120 66",
+  "C 112 66, 106 64, 100 60",
+  "L 100 448",
+  "C 102 458, 102 466, 96 470",
+  "L 40 470",
+  "C 32 470, 28 462, 30 450",
+  "C 30 430, 28 400, 26 360",
+  "C 22 240, 20 120, 22 50",
+  "Z",
+].join(" ");
+
+const ISO_ARMS_OUTLINE = [
+  "M 18 50",
+  "C 36 28, 70 14, 120 14",
+  "C 170 14, 204 28, 222 50",
+  "C 224 140, 222 260, 220 380",
+  "C 218 410, 216 430, 214 446",
+  "C 214 458, 204 466, 188 466",
+  "C 172 466, 156 460, 150 446",
+  "C 152 380, 150 200, 152 60",
+  "C 144 64, 134 66, 124 66",
+  "L 120 68",
+  "L 116 66",
+  "C 106 66, 96 64, 88 60",
+  "C 90 200, 88 380, 90 446",
+  "C 84 460, 68 466, 52 466",
+  "C 36 466, 26 458, 26 446",
+  "C 24 430, 22 410, 20 380",
+  "C 18 260, 16 140, 18 50",
+  "Z",
+].join(" ");
+
+const ARTICULATIONS_LEGS_ISO: ReadonlyArray<string> = [
+  "M 26 58 Q 60 70, 100 60 M 140 60 Q 180 70, 214 58",
+  "M 30 170 Q 60 178, 96 170 M 144 170 Q 180 178, 210 170",
+  "M 32 250 Q 62 258, 96 250 M 144 250 Q 178 258, 208 250",
+  "M 32 340 Q 62 346, 96 340 M 144 340 Q 178 346, 208 340",
+  "M 34 430 Q 62 438, 94 430 M 146 430 Q 178 438, 206 430",
+];
+
+const ARTICULATIONS_ARMS_ISO: ReadonlyArray<string> = [
+  "M 24 60 Q 56 70, 88 60 M 152 60 Q 184 70, 216 60",
+  "M 24 160 Q 56 168, 88 160 M 152 160 Q 184 168, 216 160",
+  "M 22 240 Q 56 248, 90 240 M 150 240 Q 184 248, 218 240",
+  "M 22 330 Q 56 338, 90 330 M 150 330 Q 184 338, 218 330",
+  "M 24 430 Q 56 438, 88 430 M 152 430 Q 184 438, 216 430",
+];
+
+export const BODY_HIGHLIGHT_OUTLINES: Readonly<Record<IsolatedBodyView, ReadonlyArray<string>>> = {
+  legs: [ISO_LEGS_OUTLINE],
+  arms: [ISO_ARMS_OUTLINE],
+};
+
+export const BODY_HIGHLIGHT_ARTICULATIONS: Readonly<Record<IsolatedBodyView, ReadonlyArray<string>>> = {
+  legs: ARTICULATIONS_LEGS_ISO,
+  arms: ARTICULATIONS_ARMS_ISO,
+};
+
+// ---------------------------------------------------------------------------
+// Side-label (D / I) positions per view. Full-body labels are read from
+// the calibration so all full-body coordinates live in one place.
+// ---------------------------------------------------------------------------
+
+export const SIDE_LABEL_POSITIONS: Record<BodyView, Record<BodySide, { x: number; y: number; label: string }>> = {
   full: {
-    right: FULL_LEG_RIGHT_FEMALE,
-    left: FULL_LEG_LEFT_FEMALE,
+    right: {
+      x: MALE_FULL_BODY.sideLabels.right.x,
+      y: MALE_FULL_BODY.sideLabels.right.y,
+      label: MALE_FULL_BODY.sideLabels.right.text,
+    },
+    left: {
+      x: MALE_FULL_BODY.sideLabels.left.x,
+      y: MALE_FULL_BODY.sideLabels.left.y,
+      label: MALE_FULL_BODY.sideLabels.left.text,
+    },
   },
   legs: {
-    right: LEG_OUTER_R,
-    left: LEG_INNER_R,
+    right: { x: 58, y: 16, label: "D" },
+    left: { x: 178, y: 16, label: "I" },
   },
   arms: {
-    right: ARM_OUTER_R,
-    left: ARM_INNER_R,
+    right: { x: 35, y: 16, label: "D" },
+    left: { x: 205, y: 16, label: "I" },
   },
 };
+
+// ---------------------------------------------------------------------------
+// Lookup helpers
+// ---------------------------------------------------------------------------
 
 export function getZonesForView(view: BodyView): ReadonlyArray<BodyZoneShape> {
   if (view === "full") return BODY_HIGHLIGHT_ZONES;
@@ -222,7 +287,7 @@ export function hasZone(zoneId: string): boolean {
   return BODY_HIGHLIGHT_ZONES.some((zone) => zone.zoneId === zoneId);
 }
 
-export function findViewForZone(zoneId: string): BodyView | null {
+export function findViewForZone(zoneId: string): IsolatedBodyView | null {
   return BODY_HIGHLIGHT_ZONES.find((zone) => zone.zoneId === zoneId)?.view ?? null;
 }
 
@@ -269,4 +334,25 @@ export function getSideSummaryForView(
 
 export function findMeasurementKeyForZone(zoneId: AnatomyZoneId): string | null {
   return COMPRESSION_MEASUREMENTS.find((m) => m.anatomyZone === zoneId)?.key ?? null;
+}
+
+// Re-compute a full-body marker (path + center) against a specific
+// figure calibration so the renderer can swap male/female geometry
+// without baking sex-specific paths into BodyZoneShape. The baked
+// `fullD` field on BodyZoneShape stays male-default for back-compat.
+export function getFullMarkerForSex(
+  calibration: FigureCalibration,
+  zone: { view: IsolatedBodyView; side: BodySide; point: number },
+): { path: string; centerX: number; centerY: number } {
+  const totalPoints = MAX_POINT_BY_GROUP[zone.view];
+  const rect = getMarkerRect(
+    calibration,
+    { group: zone.view, side: zone.side, point: zone.point },
+    totalPoints,
+  );
+  return {
+    path: markerRectToPath(rect),
+    centerX: rect.x + rect.width / 2,
+    centerY: rect.y + rect.height / 2,
+  };
 }

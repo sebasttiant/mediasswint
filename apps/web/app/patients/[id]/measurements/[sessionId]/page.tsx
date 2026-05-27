@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { BodyHighlight } from "@/app/_components/body-highlight/body-highlight";
+import { BODY_FIGURE_SEX, BodyHighlight, type BodyFigureSex } from "@/app/_components/body-highlight/body-highlight";
 import { getSessionCookieName, requireActiveUserFromRequest } from "@/lib/auth";
 import { getDefaultMeasurementsRepository, getMeasurement, type TemplateSnapshot } from "@/lib/measurements";
 import { getPatient } from "@/lib/patients";
@@ -20,6 +20,10 @@ function formatDateTime(date: Date): string {
     dateStyle: "short",
     timeStyle: "short",
   }).format(date);
+}
+
+function resolveBodyFigureSex(patientSex: string | null): BodyFigureSex {
+  return patientSex === "MALE" ? BODY_FIGURE_SEX.MALE : BODY_FIGURE_SEX.FEMALE;
 }
 
 function ReadOnlyMeasurementTable({
@@ -113,8 +117,13 @@ export default async function MeasurementDetailPage({ params }: Params) {
         <section className={styles.card}>
           <div className={styles.measurementWorkspace}>
             <aside className={styles.bodyHighlightRail} aria-label="Zonas anatómicas">
-              <BodyHighlight view="legs" activeZoneId={null} filledZoneIds={filledZoneIds} />
-              <BodyHighlight view="arms" activeZoneId={null} filledZoneIds={filledZoneIds} />
+              <BodyHighlight
+                view="full"
+                sex={resolveBodyFigureSex(decision.patient.sex)}
+                activeZoneId={null}
+                filledZoneIds={filledZoneIds}
+                ariaLabel="Resumen anatómico con zonas medidas"
+              />
             </aside>
             <div className={styles.measurementTables}>
               <ReadOnlyMeasurementTable group="legs" snapshot={snapshot} values={measurement.values} />
