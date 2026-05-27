@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # ------------------------------------------------------------
-# mediasswint - web (Next.js 16.2.4) - multi-stage
+# mediasswint - web (Next.js 16.2.6) - multi-stage
 # Base: Debian 13 (trixie) slim + Node 24.16.0 LTS
 # ------------------------------------------------------------
 

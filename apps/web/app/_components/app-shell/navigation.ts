@@ -1,3 +1,6 @@
+import type { LucideIcon } from "lucide-react";
+import { Briefcase, Home, Stethoscope, Users } from "lucide-react";
+
 export type AppShellNavKey = "dashboard" | "patients" | "measurements" | "operations";
 
 export type AppShellNavItem = {
@@ -6,6 +9,7 @@ export type AppShellNavItem = {
   href: string;
   description: string;
   dashboardHref: "/";
+  icon: LucideIcon;
   children?: AppShellNavChild[];
 };
 
@@ -22,6 +26,7 @@ export const APP_SHELL_NAVIGATION: AppShellNavItem[] = [
     href: "/",
     description: "Resumen operativo y accesos rápidos",
     dashboardHref: "/",
+    icon: Home,
   },
   {
     key: "patients",
@@ -29,6 +34,7 @@ export const APP_SHELL_NAVIGATION: AppShellNavItem[] = [
     href: "/patients",
     description: "Alta, búsqueda y ficha clínica",
     dashboardHref: "/",
+    icon: Users,
     children: [
       { label: "Buscar o crear paciente", href: "/patients", description: "Abrir el listado clínico" },
       { label: "Ficha del paciente", href: "/patients", description: "Seleccionar un paciente para continuar" },
@@ -40,6 +46,7 @@ export const APP_SHELL_NAVIGATION: AppShellNavItem[] = [
     href: "/patients",
     description: "Toma, borradores y consulta de medidas",
     dashboardHref: "/",
+    icon: Stethoscope,
     children: [
       { label: "Iniciar medición", href: "/patients", description: "Elegir paciente antes de medir" },
       { label: "Continuar borrador", href: "/patients", description: "Abrir paciente con mediciones pendientes" },
@@ -51,6 +58,7 @@ export const APP_SHELL_NAVIGATION: AppShellNavItem[] = [
     href: "/operations",
     description: "Presupuestos, producción y entregas",
     dashboardHref: "/",
+    icon: Briefcase,
     children: [
       { label: "Cola operativa", href: "/operations", description: "Ver saldos y producción pendientes" },
       { label: "Crear operación", href: "/patients", description: "Elegir paciente antes de presupuestar" },

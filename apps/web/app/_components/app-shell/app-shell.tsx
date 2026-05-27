@@ -1,17 +1,16 @@
-import type { ReactNode } from "react";
-import Link from "next/link";
+"use client";
 
-import {
-  APP_SHELL_NAVIGATION,
-  buildAppShellAriaLabel,
-  findAppShellActiveItem,
-  getDashboardNavigationItem,
-} from "./navigation";
-import styles from "./app-shell.module.css";
+import type { ReactNode } from "react";
+
+import { CommandPalette } from "./command-palette";
+import { Sidebar } from "./sidebar";
+import { Topbar } from "./topbar";
+import { useCommandPalette } from "./use-command-palette";
+import { useRecentItems } from "./use-recent-items";
 
 type AppShellProps = {
   children: ReactNode;
-  currentPath: string;
+  currentPath?: string;
   title: string;
   kicker: string;
   description?: string;
@@ -22,75 +21,38 @@ type AppShellProps = {
 export function AppShell({
   actions,
   children,
-  currentPath,
   description,
   kicker,
   title,
   userLabel,
 }: AppShellProps) {
-  const activeItem = findAppShellActiveItem(currentPath) ?? getDashboardNavigationItem();
+  const { inputRef, open, setOpen } = useCommandPalette();
+  const { items: recentItems } = useRecentItems();
 
   return (
-    <div className={styles.shell}>
-      <aside className={styles.sidebar} aria-label="Navegación principal">
-        <Link className={styles.brand} href="/" aria-label="Volver al dashboard principal">
-          <span className={styles.brandMark}>M</span>
-          <span>
-            <strong>MEDIASSWINT</strong>
-            <small>Gestión interna</small>
-          </span>
-        </Link>
+    <div className="flex min-h-dvh bg-surface-soft">
+      <Sidebar recentItems={recentItems} onCommandPaletteOpen={() => setOpen(true)} />
 
-        <nav className={styles.nav} aria-label="Módulos">
-          {APP_SHELL_NAVIGATION.map((item) => {
-            const active = item.key === activeItem.key;
+      <div className="flex min-w-0 flex-1 flex-col">
+        <Topbar
+          title={title}
+          kicker={kicker}
+          description={description}
+          actions={actions}
+          userLabel={userLabel}
+          onCommandPaletteOpen={() => setOpen(true)}
+        />
 
-            return (
-              <div className={styles.navGroup} key={item.key}>
-                <Link
-                  aria-current={active ? "page" : undefined}
-                  aria-label={buildAppShellAriaLabel(item, active)}
-                  className={active ? `${styles.navLink} ${styles.navLinkActive}` : styles.navLink}
-                  href={item.href}
-                >
-                  <span>{item.label}</span>
-                  <small>{item.description}</small>
-                </Link>
-                {item.children && active ? (
-                  <div className={styles.subnav} aria-label={`${item.label} submenú`}>
-                    {item.children.map((child) => (
-                      <Link className={styles.subnavLink} href={child.href} key={`${item.key}-${child.label}`}>
-                        <span>{child.label}</span>
-                        <small>{child.description}</small>
-                      </Link>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
-        </nav>
-      </aside>
+        <main className="flex-1 p-4 md:p-6">
+          {children}
+        </main>
+      </div>
 
-      <main className={styles.main}>
-        <header className={styles.topbar}>
-          <div className={styles.titleBlock}>
-            <Link className={styles.dashboardReturn} href="/">
-              ← Dashboard
-            </Link>
-            <p className={styles.kicker}>{kicker}</p>
-            <h1>{title}</h1>
-            {description ? <p className={styles.description}>{description}</p> : null}
-            <p className={styles.context}>Sección activa: {activeItem.label}</p>
-          </div>
-          <div className={styles.actions}>
-            {userLabel ? <span className={styles.userLabel}>{userLabel}</span> : null}
-            {actions}
-          </div>
-        </header>
-
-        <div className={styles.content}>{children}</div>
-      </main>
+      <CommandPalette
+        open={open}
+        onClose={() => setOpen(false)}
+        inputRef={inputRef}
+      />
     </div>
   );
 }
