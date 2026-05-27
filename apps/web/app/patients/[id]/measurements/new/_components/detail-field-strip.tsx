@@ -18,10 +18,22 @@ const KIND_LABEL: Record<PdfMeasurementField["kind"], string> = {
   flag: "Marcador",
 };
 
-const TONE_HEADER: Record<NonNullable<DetailFieldStripProps["tone"]>, string> = {
-  right: "bg-sky-50 text-sky-700 border-sky-200",
-  left: "bg-violet-50 text-violet-700 border-violet-200",
-  neutral: "bg-slate-50 text-slate-700 border-slate-200",
+const TONE: Record<NonNullable<DetailFieldStripProps["tone"]>, { ring: string; text: string; chip: string }> = {
+  right: {
+    ring: "ring-sky-100",
+    text: "text-sky-700",
+    chip: "bg-sky-50 text-sky-700 border-sky-200",
+  },
+  left: {
+    ring: "ring-violet-100",
+    text: "text-violet-700",
+    chip: "bg-violet-50 text-violet-700 border-violet-200",
+  },
+  neutral: {
+    ring: "ring-slate-200",
+    text: "text-slate-700",
+    chip: "bg-slate-50 text-slate-600 border-slate-200",
+  },
 };
 
 function sideTagFor(side: PdfMeasurementField["side"]): string | null {
@@ -38,92 +50,106 @@ export function DetailFieldStrip({
   onDraftChange,
   tone = "neutral",
 }: DetailFieldStripProps) {
+  const filled = fields.reduce((acc, f) => {
+    const v = draftByKey[f.key] ?? "";
+    return v.trim().length > 0 ? acc + 1 : acc;
+  }, 0);
+  const total = fields.length;
+  const t = TONE[tone];
+
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div
-        className={`shrink-0 border-b px-2 py-1.5 text-center text-xs font-bold uppercase tracking-wider ${TONE_HEADER[tone]}`}
-      >
-        {title}
+    <section
+      className={`flex h-full min-h-0 flex-col bg-white ring-1 ring-inset ${t.ring}`}
+      aria-label={`${title} — ${filled} de ${total} campos en borrador`}
+    >
+      <header className="shrink-0 border-b border-slate-100 bg-white px-3 py-2">
+        <div className="flex items-baseline justify-between gap-2">
+          <h3 className={`truncate text-[13px] font-bold tracking-tight ${t.text}`}>{title}</h3>
+          <span
+            className={`shrink-0 rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold ${t.chip}`}
+            aria-label={`${filled} de ${total} campos completados`}
+          >
+            {filled}/{total}
+          </span>
+        </div>
+        <p className="mt-0.5 text-[10px] font-medium uppercase tracking-wider text-slate-400">
+          Catálogo PDF · cm
+        </p>
+      </header>
+
+      <div className="shrink-0 border-b border-amber-200/70 bg-amber-50/70 px-3 py-1.5 text-[10px] font-medium leading-snug text-amber-800">
+        Borrador local — estos campos aún no se persisten al guardar.
       </div>
 
-      <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-2 py-1.5 text-[10px] font-medium text-amber-800">
-        Borrador — estos campos aún no se persisten al guardar.
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-y-auto bg-white">
+      <ul className="min-h-0 flex-1 divide-y divide-slate-100 overflow-y-auto bg-white">
         {fields.length === 0 ? (
-          <p className="px-3 py-4 text-xs text-slate-500">
+          <li className="px-3 py-4 text-xs text-slate-500">
             No hay campos catalogados en el PDF para esta región.
-          </p>
+          </li>
         ) : (
-          <div className="divide-y divide-slate-100">
-            {fields.map((field) => {
-              const value = draftByKey[field.key] ?? "";
-              const isFilled = value.trim().length > 0;
-              const sideLabel = sideTagFor(field.side);
-              const acceptsNumber = field.kind !== "product" && field.kind !== "flag";
+          fields.map((field) => {
+            const value = draftByKey[field.key] ?? "";
+            const isFilled = value.trim().length > 0;
+            const sideLabel = sideTagFor(field.side);
+            const acceptsNumber = field.kind !== "product" && field.kind !== "flag";
+            const kindShort = KIND_LABEL[field.kind];
 
-              return (
-                <div key={field.key} className="hover:bg-slate-50">
-                  <div className="flex items-center gap-2 px-2 py-2">
-                    <div
-                      className={`flex size-7 shrink-0 items-center justify-center rounded-full font-mono text-[10px] font-bold uppercase select-none ${
-                        isFilled
-                          ? "bg-emerald-100 text-emerald-700"
-                          : "bg-slate-100 text-slate-400"
-                      }`}
+            return (
+              <li key={field.key} className="hover:bg-slate-50/60">
+                <div className="flex flex-col gap-1.5 px-3 py-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <label
+                      htmlFor={`draft-${field.key}`}
+                      className="truncate text-[13px] font-semibold text-slate-800"
                     >
-                      {KIND_LABEL[field.kind].slice(0, 3)}
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                      <div className="mb-1 flex items-center justify-between gap-2">
-                        <label className="truncate text-xs font-semibold text-slate-700">
-                          {field.label}
-                        </label>
-                        <span
-                          className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                            isFilled
-                              ? "bg-emerald-100 text-emerald-700"
-                              : "bg-slate-100 text-slate-500"
-                          }`}
-                        >
-                          {isFilled ? "Anotada" : "Pendiente"}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <input
-                          type={acceptsNumber ? "number" : "text"}
-                          inputMode={acceptsNumber ? "decimal" : "text"}
-                          step={acceptsNumber ? "0.1" : undefined}
-                          value={value}
-                          aria-label={`${field.label}${field.unit ? ` (${field.unit})` : ""}`}
-                          onChange={(event) => onDraftChange(field.key, event.target.value)}
-                          className={`min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 font-mono text-sm outline-none transition-all ${
-                            isFilled
-                              ? "border-emerald-300 bg-emerald-50 text-slate-800"
-                              : "border-slate-200 bg-white text-slate-800 focus:border-sky-400 focus:ring-1 focus:ring-sky-200"
-                          }`}
-                        />
-                        <span className="w-10 shrink-0 text-center text-[10px] font-medium uppercase text-slate-400">
-                          {field.unit && field.unit !== "n/a" ? field.unit : "·"}
-                        </span>
-                      </div>
-
-                      {sideLabel ? (
-                        <div className="mt-1 text-[10px] font-medium text-slate-500">
-                          {sideLabel}
-                        </div>
-                      ) : null}
-                    </div>
+                      {field.label}
+                    </label>
+                    <span
+                      className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-500"
+                      aria-hidden="true"
+                    >
+                      {kindShort}
+                    </span>
                   </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      id={`draft-${field.key}`}
+                      type={acceptsNumber ? "number" : "text"}
+                      inputMode={acceptsNumber ? "decimal" : "text"}
+                      step={acceptsNumber ? "0.1" : undefined}
+                      value={value}
+                      placeholder="—"
+                      aria-label={`${field.label}${field.unit ? ` en ${field.unit}` : ""}`}
+                      onChange={(event) => onDraftChange(field.key, event.target.value)}
+                      className={`min-w-0 flex-1 rounded-md border px-2.5 py-1.5 text-right font-mono text-sm tabular-nums outline-none transition-all placeholder:text-slate-300 ${
+                        isFilled
+                          ? "border-slate-200 bg-white text-slate-900"
+                          : "border-slate-200 bg-white text-slate-800 focus:border-sky-400 focus:ring-1 focus:ring-sky-200"
+                      }`}
+                    />
+                    <span className="w-9 shrink-0 text-left text-[10px] font-medium uppercase text-slate-400">
+                      {field.unit && field.unit !== "n/a" ? field.unit : "—"}
+                    </span>
+                    <span
+                      aria-hidden="true"
+                      className={`block size-1.5 shrink-0 rounded-full transition-colors ${
+                        isFilled ? "bg-emerald-500" : "bg-slate-200"
+                      }`}
+                    />
+                  </div>
+
+                  {sideLabel ? (
+                    <span className="text-[10px] font-medium uppercase tracking-wider text-slate-400">
+                      {sideLabel}
+                    </span>
+                  ) : null}
                 </div>
-              );
-            })}
-          </div>
+              </li>
+            );
+          })
         )}
-      </div>
-    </div>
+      </ul>
+    </section>
   );
 }
