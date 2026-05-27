@@ -90,6 +90,12 @@ services:
       NODE_ENV: production
       DATABASE_URL: postgresql://${POSTGRES_USER:-mediass}:${POSTGRES_PASSWORD:-mediass}@postgres:5432/${POSTGRES_DB:-mediass}
       REDIS_URL: redis://redis:6379
+      # AUTH_SECRET is mandatory: getAuthSecret() throws at runtime on every
+      # login / session verify if it is missing, returning a 500 that surfaces
+      # to the UI as "Credenciales inválidas". Using the `:?` form makes
+      # `docker compose up` fail fast at orchestration time instead of letting
+      # the container start in a half-working state.
+      AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required (>=32 bytes)}
     depends_on:
       postgres:
         condition: service_healthy

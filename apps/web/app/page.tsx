@@ -1,37 +1,158 @@
 import { cookies } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { KpiCard } from "./_components/dashboard/kpi-card";
+import { QuickActionCard } from "./_components/dashboard/quick-action-card";
 
 import { getSessionCookieName, requireActiveUserFromRequest } from "@/lib/auth";
 import { fetchDashboardData } from "@/lib/dashboard";
 
 import { AppShell } from "./_components/app-shell/app-shell";
 import { LogoutButton } from "./_components/logout-button";
-import styles from "./dashboard.module.css";
-
-const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
-  PRESUPUESTO: { bg: "#fef5ec", color: "#b8733f", label: "Presupuesto" },
-  CONFIRMADO: { bg: "#ecfdf5", color: "#10b981", label: "Confirmado" },
-  EN_PRODUCCION: { bg: "#eff6ff", color: "#3b82f6", label: "En producción" },
-  ENTREGADO: { bg: "#f5f3ff", color: "#8b5cf6", label: "Entregado" },
-  CANCELADO: { bg: "#fef2f2", color: "#ef4444", label: "Cancelado" },
-};
-
-const MEASUREMENT_STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
-  DRAFT: { bg: "#fef5ec", color: "#b8733f", label: "Borrador" },
-  COMPLETED: { bg: "#ecfdf5", color: "#10b981", label: "Completada" },
-  VOID: { bg: "#fef2f2", color: "#ef4444", label: "Anulada" },
-};
+import { Avatar } from "./_components/dashboard/avatar";
+import { DataTable, type DataTableColumn } from "./_components/dashboard/data-table";
+import { PendingTimeline } from "./_components/dashboard/pending-timeline";
+import { StatusBadge } from "./_components/dashboard/status-badge";
+import type { DashboardMeasurement, DashboardOperation, DashboardPatient } from "@/lib/dashboard";
 
 function formatCurrency(value: string | number): string {
   const num = typeof value === "string" ? Number(value) : value;
   return `$${num.toLocaleString("es-AR")}`;
 }
 
+const MEASUREMENT_COLUMNS: DataTableColumn<DashboardMeasurement>[] = [
+  {
+    key: "patient",
+    header: "Paciente",
+    render: (row) => (
+      <div className="flex items-center gap-2.5">
+        <Avatar name={row.patientName ?? "?"} />
+        {row.patientId ? (
+          <Link className="font-medium text-brand hover:underline" href={`/patients/${row.patientId}`}>
+            {row.patientName ?? "—"}
+          </Link>
+        ) : (
+          <span className="text-slate-400">{row.patientName ?? "—"}</span>
+        )}
+      </div>
+    ),
+  },
+  {
+    key: "status",
+    header: "Estado",
+    render: (row) => <StatusBadge status={row.status} variant="measurement" />,
+  },
+  {
+    key: "date",
+    header: "Fecha",
+    render: (row) => (
+      <span className="text-slate-400">{row.measuredAt.toLocaleDateString("es-AR")}</span>
+    ),
+  },
+  {
+    key: "garment",
+    header: "Prenda",
+    render: (row) => <span className="text-slate-400">{row.garmentType ?? "—"}</span>,
+  },
+  {
+    key: "class",
+    header: "Clase",
+    render: (row) => <span className="text-slate-400">{row.compressionClass ?? "—"}</span>,
+  },
+  {
+    key: "action",
+    header: "Acción",
+    render: (row) => {
+      const href = row.patientId
+        ? `/patients/${row.patientId}/measurements/${row.id}`
+        : null;
+      return href ? (
+        <Link className="font-semibold text-brand hover:underline" href={href}>
+          {row.status === "DRAFT" ? "Continuar" : "Ver detalle"}
+        </Link>
+      ) : (
+        <span className="text-slate-300">—</span>
+      );
+    },
+  },
+];
+
+const PATIENT_COLUMNS: DataTableColumn<DashboardPatient>[] = [
+  {
+    key: "name",
+    header: "Nombre",
+    render: (row) => (
+      <div className="flex items-center gap-2.5">
+        <Avatar name={row.fullName} />
+        <Link className="font-medium text-brand hover:underline" href={`/patients/${row.id}`}>
+          {row.fullName}
+        </Link>
+      </div>
+    ),
+  },
+  {
+    key: "document",
+    header: "Documento",
+    render: (row) => (
+      <span className="text-slate-400">
+        {[row.documentType, row.documentNumber].filter(Boolean).join(" ") || "—"}
+      </span>
+    ),
+  },
+  {
+    key: "since",
+    header: "Alta",
+    render: (row) => (
+      <span className="text-slate-400">{row.createdAt.toLocaleDateString("es-AR")}</span>
+    ),
+  },
+];
+
+const OPERATION_COLUMNS: DataTableColumn<DashboardOperation>[] = [
+  {
+    key: "patient",
+    header: "Paciente",
+    render: (row) => (
+      <div className="flex items-center gap-2.5">
+        <Avatar name={row.patientName ?? "?"} />
+        {row.patientId ? (
+          <Link className="font-medium text-brand hover:underline" href={`/patients/${row.patientId}`}>
+            {row.patientName ?? "—"}
+          </Link>
+        ) : (
+          <span className="text-slate-400">{row.patientName ?? "—"}</span>
+        )}
+      </div>
+    ),
+  },
+  {
+    key: "garment",
+    header: "Prenda",
+    render: (row) => <span className="text-slate-400">{row.garmentType ?? "—"}</span>,
+  },
+  {
+    key: "status",
+    header: "Estado",
+    render: (row) => <StatusBadge status={row.status} variant="operation" />,
+  },
+  {
+    key: "total",
+    header: "Total",
+    render: (row) => <span className="font-medium">{formatCurrency(row.totalAmount)}</span>,
+  },
+  {
+    key: "deposit",
+    header: "Seña",
+    render: (row) => <span className="text-slate-400">{formatCurrency(row.depositPaid)}</span>,
+  },
+];
+
 export default async function DashboardPage() {
   const sessionCookie = (await cookies()).get(getSessionCookieName())?.value;
   const request = new Request("http://localhost/", {
-    headers: sessionCookie ? { cookie: `${getSessionCookieName()}=${encodeURIComponent(sessionCookie ?? "")}` } : undefined,
+    headers: sessionCookie
+      ? { cookie: `${getSessionCookieName()}=${encodeURIComponent(sessionCookie ?? "")}` }
+      : undefined,
   });
   const user = await requireActiveUserFromRequest(request);
 
@@ -50,289 +171,203 @@ export default async function DashboardPage() {
       title="Panel de gestión"
       userLabel={user.fullName ? `Bienvenido, ${user.fullName}` : "Bienvenido"}
     >
-      <div className={styles.content}>
-        {/* KPI metrics */}
-        <div className={styles.metricsGrid}>
-          <div className={styles.metricCard}>
-            <span className={styles.metricLabel}>Pacientes totales</span>
-            <strong className={styles.metricValue}>{data.totalPatients}</strong>
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* KPI grid */}
+        <section aria-label="Indicadores clave">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+            <KpiCard
+              icon="users"
+              iconClassName="bg-clinical-50 text-clinical-600"
+              label="Pacientes totales"
+              value={data.totalPatients}
+              sparklineSeed={data.totalPatients}
+              trendDirection="up"
+            />
+            <KpiCard
+              icon="calendar"
+              iconClassName="bg-brand/10 text-brand"
+              label="Creados hoy"
+              value={data.patientsCreatedTodayCount}
+              sparklineSeed={data.patientsCreatedTodayCount + 7}
+              trendDirection={data.patientsCreatedTodayCount > 0 ? "up" : "neutral"}
+            />
+            <KpiCard
+              icon="briefcase"
+              iconClassName="bg-amber-50 text-amber-600"
+              label="Operaciones activas"
+              value={data.activeOperationsCount}
+              sparklineSeed={data.activeOperationsCount + 13}
+              trendDirection="neutral"
+            />
+            <KpiCard
+              icon="alertCircle"
+              iconClassName="bg-orange-50 text-orange-500"
+              label="Mediciones abiertas"
+              value={data.openMeasurementDraftsCount}
+              sparklineSeed={data.openMeasurementDraftsCount + 31}
+              trendDirection={data.openMeasurementDraftsCount > 0 ? "down" : "neutral"}
+            />
+            <KpiCard
+              icon="activity"
+              iconClassName="bg-emerald-50 text-emerald-600"
+              label="Finalizadas hoy"
+              value={data.completedMeasurementsTodayCount}
+              sparklineSeed={data.completedMeasurementsTodayCount + 17}
+              trendDirection={data.completedMeasurementsTodayCount > 0 ? "up" : "neutral"}
+            />
+            <KpiCard
+              icon="dollarSign"
+              iconClassName="bg-mint-50 text-mint-600"
+              label="Total señado"
+              value={formatCurrency(data.totalDeposits)}
+              sparklineSeed={Number(data.totalDeposits) % 10000 + 3}
+              trendDirection="up"
+            />
+            <KpiCard
+              icon="trendingUp"
+              iconClassName="bg-violet-50 text-violet-600"
+              label="Saldo pendiente"
+              value={formatCurrency(data.totalPendingBalance)}
+              sparklineSeed={Number(data.totalPendingBalance) % 10000 + 5}
+              trendDirection={Number(data.totalPendingBalance) > 0 ? "down" : "neutral"}
+            />
           </div>
-          <div className={styles.metricCard}>
-            <span className={styles.metricLabel}>Creados hoy</span>
-            <strong className={`${styles.metricValue} ${styles.metricValueBrand}`}>{data.patientsCreatedTodayCount}</strong>
-          </div>
-          <div className={styles.metricCard}>
-            <span className={styles.metricLabel}>Operaciones activas</span>
-            <strong className={`${styles.metricValue} ${styles.metricValueWarning}`}>{data.activeOperationsCount}</strong>
-          </div>
-          <div className={styles.metricCard}>
-            <span className={styles.metricLabel}>Mediciones abiertas</span>
-            <strong className={`${styles.metricValue} ${styles.metricValueWarning}`}>{data.openMeasurementDraftsCount}</strong>
-          </div>
-          <div className={styles.metricCard}>
-            <span className={styles.metricLabel}>Mediciones finalizadas hoy</span>
-            <strong className={`${styles.metricValue} ${styles.metricValuePositive}`}>{data.completedMeasurementsTodayCount}</strong>
-          </div>
-          <div className={styles.metricCard}>
-            <span className={styles.metricLabel}>Total señado</span>
-            <strong className={`${styles.metricValue} ${styles.metricValuePositive}`}>{formatCurrency(data.totalDeposits)}</strong>
-          </div>
-          <div className={styles.metricCard}>
-            <span className={styles.metricLabel}>Saldo pendiente</span>
-            <strong className={`${styles.metricValue} ${styles.metricValueWarning}`}>{formatCurrency(data.totalPendingBalance)}</strong>
-          </div>
-        </div>
+        </section>
 
         {/* Quick actions */}
-        <div className={styles.section}>
-          <div className={styles.sectionHeader}>
-            <h2 className={styles.sectionTitle}>Acciones rápidas</h2>
+        <section aria-label="Acciones rápidas">
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-5 py-3.5">
+              <h2 className="text-sm font-semibold text-slate-700">Acciones rápidas</h2>
+            </div>
+            <div className="flex gap-4 overflow-x-auto p-4 md:grid md:grid-cols-4">
+              <QuickActionCard
+                href="/patients"
+                icon="users"
+                label="Nuevo paciente / Buscar"
+                description="Dar de alta o buscar pacientes existentes"
+              />
+              <QuickActionCard
+                href="/patients"
+                icon="stethoscope"
+                label="Buscar paciente para medir"
+                description="Elegir paciente antes de iniciar la toma de medidas"
+              />
+              <QuickActionCard
+                href="/patients"
+                icon="activity"
+                label="Buscar para operación"
+                description="Elegir paciente antes de crear presupuesto o pedido"
+              />
+              <QuickActionCard
+                href="/operations"
+                icon="briefcase"
+                label="Operaciones activas"
+                description="Gestionar presupuestos, producción y entregas"
+              />
+            </div>
           </div>
-          <div className={styles.ctaGrid}>
-            <Link href="/patients" className={styles.ctaCard}>
-              <span className={styles.ctaIcon}>➕</span>
-              <span className={styles.ctaLabel}>Nuevo paciente / Buscar</span>
-              <span className={styles.ctaDesc}>Dar de alta o buscar pacientes existentes</span>
-            </Link>
-            <Link href="/patients" className={styles.ctaCard}>
-              <span className={styles.ctaIcon}>📏</span>
-              <span className={styles.ctaLabel}>Buscar paciente para medir</span>
-              <span className={styles.ctaDesc}>Elegir paciente antes de iniciar la toma de medidas</span>
-            </Link>
-            <Link href="/patients" className={styles.ctaCard}>
-              <span className={styles.ctaIcon}>📋</span>
-              <span className={styles.ctaLabel}>Buscar paciente para operación</span>
-              <span className={styles.ctaDesc}>Elegir paciente antes de crear presupuesto o pedido</span>
-            </Link>
-            <Link
-              href="/operations"
-              className={styles.ctaCard}
-            >
-              <span className={styles.ctaIcon}>⚙️</span>
-              <span className={styles.ctaLabel}>Operaciones activas</span>
-              <span className={styles.ctaDesc}>Gestionar presupuestos, producción y entregas</span>
-            </Link>
-          </div>
-        </div>
+        </section>
 
         {/* Pending work */}
-        <div className={styles.section}>
-          <div className={styles.sectionHeader}>
-            <h2 className={styles.sectionTitle}>Trabajo pendiente</h2>
-            <div className={styles.sectionActions}>
-              <Link href="/operations" className={styles.link}>Ver cola operativa</Link>
+        <section aria-label="Trabajo pendiente">
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-5 py-3.5">
+              <h2 className="text-sm font-semibold text-slate-700">Trabajo pendiente</h2>
+              <Link href="/operations" className="text-xs font-semibold text-brand hover:underline">
+                Ver cola operativa
+              </Link>
+            </div>
+            <div className="p-5">
+              {/* Summary counters */}
+              <div className="mb-5 grid grid-cols-3 gap-3">
+                <div className="rounded-lg border border-slate-100 bg-slate-50 px-4 py-3">
+                  <p className="text-xs font-bold uppercase tracking-widest text-slate-400">
+                    Saldos por cobrar
+                  </p>
+                  <strong className="font-display text-2xl font-bold text-brand">
+                    {data.pendingWork.paymentFollowUpsCount}
+                  </strong>
+                </div>
+                <div className="rounded-lg border border-slate-100 bg-slate-50 px-4 py-3">
+                  <p className="text-xs font-bold uppercase tracking-widest text-slate-400">
+                    Producción / entrega
+                  </p>
+                  <strong className="font-display text-2xl font-bold text-brand">
+                    {data.pendingWork.productionFollowUpsCount}
+                  </strong>
+                </div>
+                <div className="rounded-lg border border-slate-100 bg-slate-50 px-4 py-3">
+                  <p className="text-xs font-bold uppercase tracking-widest text-slate-400">
+                    Mediciones a continuar
+                  </p>
+                  <strong className="font-display text-2xl font-bold text-brand">
+                    {data.pendingWork.draftMeasurementsCount}
+                  </strong>
+                </div>
+              </div>
+
+              <PendingTimeline items={data.pendingWork.items} />
             </div>
           </div>
-          <div className={styles.sectionBody}>
-            <div className={styles.pendingSummary}>
-              <div className={styles.pendingSummaryItem}>
-                <span className={styles.metricLabel}>Saldos por cobrar</span>
-                <strong className={styles.pendingSummaryValue}>{data.pendingWork.paymentFollowUpsCount}</strong>
-              </div>
-              <div className={styles.pendingSummaryItem}>
-                <span className={styles.metricLabel}>Producción / entrega</span>
-                <strong className={styles.pendingSummaryValue}>{data.pendingWork.productionFollowUpsCount}</strong>
-              </div>
-              <div className={styles.pendingSummaryItem}>
-                <span className={styles.metricLabel}>Mediciones a continuar</span>
-                <strong className={styles.pendingSummaryValue}>{data.pendingWork.draftMeasurementsCount}</strong>
-              </div>
+        </section>
+
+        {/* Recent measurements */}
+        <section aria-label="Mediciones recientes">
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-5 py-3.5">
+              <h2 className="text-sm font-semibold text-slate-700">Mediciones recientes</h2>
+              <Link href="/patients" className="text-xs font-semibold text-brand hover:underline">
+                Buscar paciente
+              </Link>
             </div>
-
-            {data.pendingWork.items.length > 0 ? (
-              <div className={styles.pendingList}>
-                {data.pendingWork.items.map((item) => (
-                  <article key={item.id} className={styles.pendingItem}>
-                    <div>
-                      <p className={styles.pendingTitle}>{item.title}</p>
-                      <p className={styles.pendingDescription}>{item.description}</p>
-                    </div>
-                    <Link className={styles.link} href={item.href}>
-                      {item.actionLabel}
-                    </Link>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <p className={styles.muted}>No hay trabajo pendiente con las señales disponibles.</p>
-            )}
-          </div>
-        </div>
-
-        {/* Latest measurements */}
-        <div className={styles.section}>
-          <div className={styles.sectionHeader}>
-            <h2 className={styles.sectionTitle}>Mediciones recientes</h2>
-            <div className={styles.sectionActions}>
-              <Link href="/patients" className={styles.link}>Buscar paciente</Link>
+            <div className="p-5">
+              <DataTable
+                columns={MEASUREMENT_COLUMNS}
+                rows={data.latestMeasurements}
+                getKey={(row) => row.id}
+                emptyMessage="Todavía no hay mediciones registradas."
+              />
             </div>
           </div>
-          <div className={styles.sectionBody}>
-            {data.latestMeasurements.length > 0 ? (
-              <div className={styles.tableResponsive}>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>Paciente</th>
-                      <th>Estado</th>
-                      <th>Fecha</th>
-                      <th>Prenda</th>
-                      <th>Clase</th>
-                      <th>Acción</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.latestMeasurements.map((measurement) => {
-                      const statusStyle = MEASUREMENT_STATUS_STYLES[measurement.status] ?? {
-                        bg: "#f3f4f6",
-                        color: "#6b7280",
-                        label: measurement.status,
-                      };
-                      const measurementHref = measurement.patientId
-                        ? `/patients/${measurement.patientId}/measurements/${measurement.id}`
-                        : null;
-
-                      return (
-                        <tr key={measurement.id}>
-                          <td>
-                            {measurement.patientId ? (
-                              <Link className={styles.link} href={`/patients/${measurement.patientId}`}>
-                                {measurement.patientName ?? "—"}
-                              </Link>
-                            ) : (
-                              <span className={styles.muted}>{measurement.patientName ?? "—"}</span>
-                            )}
-                          </td>
-                          <td>
-                            <span
-                              className={styles.statusBadge}
-                              style={{ background: statusStyle.bg, color: statusStyle.color }}
-                            >
-                              {statusStyle.label}
-                            </span>
-                          </td>
-                          <td className={styles.muted}>{measurement.measuredAt.toLocaleDateString("es-AR")}</td>
-                          <td className={styles.muted}>{measurement.garmentType ?? "—"}</td>
-                          <td className={styles.muted}>{measurement.compressionClass ?? "—"}</td>
-                          <td>
-                            {measurementHref ? (
-                              <Link className={styles.link} href={measurementHref}>
-                                {measurement.status === "DRAFT" ? "Continuar" : "Ver detalle"}
-                              </Link>
-                            ) : (
-                              <span className={styles.muted}>—</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className={styles.muted}>Todavía no hay mediciones registradas.</p>
-            )}
-          </div>
-        </div>
+        </section>
 
         {/* Latest patients */}
-        <div className={styles.section}>
-          <div className={styles.sectionHeader}>
-            <h2 className={styles.sectionTitle}>Últimos pacientes</h2>
-            <div className={styles.sectionActions}>
-              <Link href="/patients" className={styles.link}>Ver todos</Link>
+        <section aria-label="Últimos pacientes">
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-5 py-3.5">
+              <h2 className="text-sm font-semibold text-slate-700">Últimos pacientes</h2>
+              <Link href="/patients" className="text-xs font-semibold text-brand hover:underline">
+                Ver todos
+              </Link>
+            </div>
+            <div className="p-5">
+              <DataTable
+                columns={PATIENT_COLUMNS}
+                rows={data.latestPatients}
+                getKey={(row) => row.id}
+                emptyMessage="Todavía no hay pacientes registrados."
+              />
             </div>
           </div>
-          <div className={styles.sectionBody}>
-            {data.latestPatients.length > 0 ? (
-              <div className={styles.tableResponsive}>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>Nombre</th>
-                      <th>Documento</th>
-                      <th>Alta</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.latestPatients.map((patient) => (
-                      <tr key={patient.id}>
-                        <td>
-                          <Link className={styles.link} href={`/patients/${patient.id}`}>
-                            {patient.fullName}
-                          </Link>
-                        </td>
-                        <td className={styles.muted}>
-                          {[patient.documentType, patient.documentNumber].filter(Boolean).join(" ") || "—"}
-                        </td>
-                        <td className={styles.muted}>
-                          {patient.createdAt.toLocaleDateString("es-AR")}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className={styles.muted}>Todavía no hay pacientes registrados.</p>
-            )}
-          </div>
-        </div>
+        </section>
 
-        {/* Latest active operations */}
-        <div className={styles.section}>
-          <div className={styles.sectionHeader}>
-            <h2 className={styles.sectionTitle}>Operaciones recientes</h2>
+        {/* Recent operations */}
+        <section aria-label="Operaciones recientes">
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-5 py-3.5">
+              <h2 className="text-sm font-semibold text-slate-700">Operaciones recientes</h2>
+            </div>
+            <div className="p-5">
+              <DataTable
+                columns={OPERATION_COLUMNS}
+                rows={data.latestOperations}
+                getKey={(row) => row.id}
+                emptyMessage="Todavía no hay operaciones activas."
+              />
+            </div>
           </div>
-          <div className={styles.sectionBody}>
-            {data.latestOperations.length > 0 ? (
-              <div className={styles.tableResponsive}>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>Paciente</th>
-                      <th>Prenda</th>
-                      <th>Estado</th>
-                      <th>Total</th>
-                      <th>Seña</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.latestOperations.map((op) => {
-                      const statusStyle = STATUS_STYLES[op.status] ?? { bg: "#f3f4f6", color: "#6b7280", label: op.status };
-                      return (
-                        <tr key={op.id}>
-                          <td>
-                            {op.patientId ? (
-                              <Link className={styles.link} href={`/patients/${op.patientId}`}>
-                                {op.patientName ?? "—"}
-                              </Link>
-                            ) : (
-                              <span className={styles.muted}>{op.patientName ?? "—"}</span>
-                            )}
-                          </td>
-                          <td className={styles.muted}>{op.garmentType ?? "—"}</td>
-                          <td>
-                            <span
-                              className={styles.statusBadge}
-                              style={{ background: statusStyle.bg, color: statusStyle.color }}
-                            >
-                              {statusStyle.label}
-                            </span>
-                          </td>
-                          <td>{formatCurrency(op.totalAmount)}</td>
-                          <td className={styles.muted}>{formatCurrency(op.depositPaid)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className={styles.muted}>Todavía no hay operaciones activas.</p>
-            )}
-          </div>
-        </div>
+        </section>
       </div>
     </AppShell>
   );

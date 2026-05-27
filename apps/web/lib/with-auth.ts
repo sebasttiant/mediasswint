@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { runWithAuditContext } from "@/lib/audit-context";
 import { requireActiveUserFromRequest, type AuthUser } from "@/lib/auth";
 
 export type EmptyRouteCtx = { params: Promise<Record<string, never>> };
@@ -27,7 +28,7 @@ export function withAuth<Ctx = EmptyRouteCtx>(
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
 
-    return handler(request, context, { user });
+    return runWithAuditContext({ user }, () => handler(request, context, { user }));
   };
 }
 

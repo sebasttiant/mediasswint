@@ -1,97 +1,343 @@
+.wrapper {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 360px;
+  margin: 0 auto;
+  padding: 6px 4px 4px;
+  background: #ffffff;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.detailHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 6px;
+}
+
+.detailHeaderText {
+  text-align: right;
+}
+
+.detailHeaderKicker {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+  font-family: "Inter Tight", "Inter", system-ui, sans-serif;
+}
+
+.detailHeaderTitle {
+  margin: 2px 0 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+  font-family: "Inter Tight", "Inter", system-ui, sans-serif;
+}
+
+.backButton {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: #f1f5f9;
+  border: 1px solid rgba(100, 116, 139, 0.3);
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  font-family: "Inter Tight", "Inter", system-ui, sans-serif;
+}
+
+.backButton:hover {
+  background: #e2e8f0;
+  border-color: rgba(100, 116, 139, 0.55);
+  color: #0f172a;
+}
+
+.backButton:focus-visible {
+  outline: 2px solid #0ea5e9;
+  outline-offset: 2px;
+}
+
+/* Region hotspots on full body — invisible until hover/focus */
+.regionHotspotRect {
+  fill: rgba(14, 165, 233, 0);
+  stroke: rgba(14, 165, 233, 0);
+  stroke-width: 1.5;
+  cursor: pointer;
+  transition: fill 0.18s ease, stroke 0.18s ease;
+}
+
+.regionHotspotRect:hover,
+.regionHotspotRect:focus-visible {
+  fill: rgba(14, 165, 233, 0.1);
+  stroke: rgba(14, 165, 233, 0.65);
+  stroke-dasharray: 4 3;
+  outline: none;
+}
+
+/* Pending-field panel for detail mode */
+.pendingPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 12px 14px;
+  border: 1px dashed rgba(148, 163, 184, 0.5);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #fafbfc 0%, #f1f5f9 100%);
+  font-family: "Inter Tight", "Inter", system-ui, sans-serif;
+}
+
+.pendingHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.pendingKicker {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin: 0;
+}
+
+.pendingTitle {
+  margin: 2px 0 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.pendingDescription {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: #475569;
+  line-height: 1.4;
+}
+
+.pendingBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 9999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.pendingBadge[data-status="implemented"] {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.pendingBadge[data-status="partial"] {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.pendingBadge[data-status="pending"] {
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.pendingList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pendingItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  opacity: 0.85;
+}
+
+.pendingItemLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.pendingItemMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pendingKind,
+.pendingSide,
+.pendingUnit {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-weight: 600;
+}
+
+.pendingKind {
+  background: #ede9fe;
+  color: #5b21b6;
+}
+
+.pendingSide {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.pendingUnit {
+  background: #fef3c7;
+  color: #92400e;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.pendingEmpty {
+  margin: 0;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.pendingFootnote {
+  margin: 0;
+  font-size: 10px;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
 .svg {
   width: 100%;
-  max-width: 320px;
   height: auto;
   display: block;
   overflow: visible;
-  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.08));
-}
-
-.bodyFill {
-  fill: #f1f5f9;
-  stroke: none;
-}
-
-.outline {
-  fill: none;
-  stroke: #cbd5e1;
-  stroke-width: 1.8;
-  stroke-linejoin: round;
-  stroke-linecap: round;
-}
-
-.zoneGroup {
-  transition: opacity 120ms ease;
 }
 
 .zone {
-  fill: #e2e8f0;
-  stroke: none;
-  transition:
-    fill 150ms ease,
-    opacity 150ms ease,
-    stroke 150ms ease;
-  opacity: 0.55;
   cursor: pointer;
-}
-
-.zone:hover {
-  opacity: 0.7;
-  fill: #cbd5e1;
-}
-
-.zone[data-filled="true"] {
-  fill: #bfdbfe;
-  opacity: 0.75;
-}
-
-.zone[data-active="true"] {
-  fill: #2563eb;
-  opacity: 0.85;
-  stroke: #1e40af;
-  stroke-width: 0.8;
+  transition: fill 0.15s ease, opacity 0.15s ease;
 }
 
 .zone:focus-visible {
   outline: none;
-  fill: #1d4ed8;
-  opacity: 0.9;
-  stroke: #7dd3fc;
-  stroke-width: 1.5;
+  stroke: #38bdf8;
+  stroke-width: 2;
+}
+
+.zoneReadonly {
+  cursor: default;
+  pointer-events: none;
 }
 
 .sideLabels text {
-  fill: #64748b;
-  font-size: 14px;
-  font-weight: 800;
+  fill: #475569;
+  font-size: 12px;
+  font-weight: 700;
   text-anchor: middle;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.12em;
+  font-family: "Inter Tight", "Inter", system-ui, sans-serif;
+  text-transform: uppercase;
 }
 
 .sideLabels text[data-active="true"] {
-  fill: #1d4ed8;
+  fill: #0369a1;
 }
 
 .pointLabels text {
-  fill: #334155;
+  fill: #1e293b;
   font-size: 9px;
-  font-weight: 800;
+  font-weight: 700;
   pointer-events: none;
   text-anchor: middle;
   paint-order: stroke;
-  stroke: white;
-  stroke-width: 2px;
+  stroke: rgba(255, 255, 255, 0.95);
+  stroke-width: 2.5px;
   stroke-linecap: round;
   stroke-linejoin: round;
+  font-variant-numeric: tabular-nums;
+  font-family: "Inter Tight", "Inter", system-ui, sans-serif;
 }
 
 .pointLabels text[data-active="true"] {
   fill: white;
-  font-size: 12px;
-  stroke: #1e40af;
-  stroke-width: 3px;
+  font-size: 13px;
+  stroke: #0c4a6e;
+  stroke-width: 3.4px;
+  font-weight: 800;
 }
 
+/* Floating tooltip */
+.tooltip {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 10px));
+  background: rgba(15, 23, 42, 0.92);
+  backdrop-filter: blur(8px);
+  color: #f8fafc;
+  border-radius: 8px;
+  padding: 5px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.18);
+  font-family: "Inter Tight", "Inter", system-ui, sans-serif;
+}
+
+.tooltipLabel {
+  color: #e2e8f0;
+}
+
+.tooltipBadge {
+  background: #10b981;
+  color: white;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.tooltipBadgeActive {
+  background: #0284c7;
+  color: white;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Face guide styles (kept from original) */
 .faceGuideSvg {
   width: 100%;
   max-width: 220px;
@@ -152,8 +398,9 @@ circle.faceFeature {
     display: none;
   }
 
-  .svg {
-    max-width: 260px;
+  .wrapper {
+    max-width: 100%;
+    padding: 8px 4px 4px;
   }
 
   .faceGuideSvg {

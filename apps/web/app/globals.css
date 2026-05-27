@@ -1,3 +1,58 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand: #b30303;
+  --color-brand-strong: #8f0202;
+  --color-brand-light: rgba(179, 3, 3, 0.1);
+  --color-brand-glow: rgba(179, 3, 3, 0.18);
+
+  --color-clinical-50: #f0f9ff;
+  --color-clinical-100: #e0f2fe;
+  --color-clinical-200: #bae6fd;
+  --color-clinical-300: #7dd3fc;
+  --color-clinical-400: #38bdf8;
+  --color-clinical-500: #0ea5e9;
+  --color-clinical-600: #0284c7;
+  --color-clinical-700: #0369a1;
+  --color-clinical-800: #075985;
+  --color-clinical-900: #0c4a6e;
+
+  --color-mint-50: #f0fdfa;
+  --color-mint-100: #ccfbf1;
+  --color-mint-300: #5eead4;
+  --color-mint-500: #14b8a6;
+  --color-mint-600: #0d9488;
+  --color-mint-700: #0f766e;
+
+  --color-navy: #0f172a;
+  --color-navy-soft: #1e293b;
+
+  --color-surface: #ffffff;
+  --color-surface-soft: #f8fafc;
+  --color-surface-warm: #fefcfb;
+
+  --color-ink: #0f172a;
+  --color-ink-secondary: #475569;
+  --color-ink-muted: #64748b;
+  --color-ink-placeholder: #94a3b8;
+
+  --color-edge: #e2e8f0;
+  --color-edge-strong: #cbd5e1;
+
+  --radius-card: 0.75rem;
+  --radius-pill: 9999px;
+
+  --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.04);
+  --shadow-elevated: 0 8px 24px rgba(15, 23, 42, 0.1);
+  --shadow-clinical: 0 0 0 1px rgba(2, 132, 199, 0.1), 0 4px 16px rgba(2, 132, 199, 0.08);
+
+  --font-sans: var(--font-inter), "SF Pro Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-inter-tight), var(--font-inter), system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), "SF Mono", "Fira Code", monospace;
+
+  --ease-clinical: cubic-bezier(0.32, 0.72, 0.32, 1);
+}
+
 :root {
   --brand: #b30303;
   --brand-strong: #8f0202;
@@ -33,8 +88,8 @@
   --shadow-lg: 0 8px 24px rgba(15, 23, 42, 0.1);
   --shadow-xl: 0 12px 40px rgba(15, 23, 42, 0.12);
 
-  --font-sans: "Inter", "SF Pro Text", "Segoe UI", system-ui, -apple-system, sans-serif;
-  --font-mono: "JetBrains Mono", "SF Mono", "Fira Code", monospace;
+  --font-sans: var(--font-inter), "Inter", "SF Pro Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), "JetBrains Mono", "SF Mono", "Fira Code", monospace;
 }
 
 html {
