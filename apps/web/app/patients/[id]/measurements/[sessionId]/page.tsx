@@ -1,141 +1,125 @@
 import { cookies } from "next/headers";
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import type { ComponentType, ReactElement } from "react";
 
-import { BODY_FIGURE_SEX, BodyHighlight, type BodyFigureSex } from "@/app/_components/body-highlight/body-highlight";
+import { LogoutButton } from "@/app/_components/logout-button";
 import { getSessionCookieName, requireActiveUserFromRequest } from "@/lib/auth";
-import { getDefaultMeasurementsRepository, getMeasurement, type TemplateSnapshot } from "@/lib/measurements";
+import {
+  getDefaultMeasurementsRepository,
+  getMeasurement,
+  type MeasurementSessionDetail,
+} from "@/lib/measurements";
 import { getPatient } from "@/lib/patients";
+import type { Patient } from "@prisma/client";
 
-import styles from "../../../page.module.css";
 import { resolvePatientDetailLoad } from "../../patient-detail-loading";
-import { buildMeasurementTableRows, getFilledZoneIdsFromValues, type MeasurementUiGroup } from "../measurements-ui";
+import {
+  renderMeasurementDetailView,
+  type MeasurementDetailViewMeasurement,
+  type MeasurementDetailViewPatient,
+  type MeasurementDetailViewUser,
+} from "./measurement-detail-view";
 
 type Params = {
   params: Promise<{ id: string; sessionId: string }>;
 };
 
-function formatDateTime(date: Date): string {
-  return new Intl.DateTimeFormat("es-AR", {
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(date);
-}
+export type MeasurementDetailAuthUser = {
+  id: string;
+  role: string;
+  fullName: string | null;
+};
 
-function resolveBodyFigureSex(patientSex: string | null): BodyFigureSex {
-  return patientSex === "MALE" ? BODY_FIGURE_SEX.MALE : BODY_FIGURE_SEX.FEMALE;
-}
+type PatientLoadResult =
+  | { ok: true; value: Patient }
+  | { ok: false; error: "NOT_FOUND" | "UNKNOWN" | "CONFLICT" };
 
-function ReadOnlyMeasurementTable({
-  group,
-  snapshot,
-  values,
-}: {
-  group: MeasurementUiGroup;
-  snapshot: TemplateSnapshot;
-  values: Record<string, number | null>;
-}) {
-  const rows = buildMeasurementTableRows(snapshot, group, values);
-  const title = group === "legs" ? "Piernas" : "Brazos";
+type MeasurementLoadResult =
+  | { ok: true; value: MeasurementSessionDetail }
+  | { ok: false; error: "NOT_FOUND" };
 
-  return (
-    <section className={styles.measurementPanel}>
-      <h3>{title}</h3>
-      <div className={styles.tableWrap}>
-        <table>
-          <thead>
-            <tr>
-              <th>Punto</th>
-              <th>Derecha</th>
-              <th>Izquierda</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={`${group}-${row.point}`}>
-                <td data-label="Punto">{row.point}</td>
-                <td data-label="Derecha">{row.right?.value ?? "—"}</td>
-                <td data-label="Izquierda">{row.left?.value ?? "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-}
+type MeasurementDetailBodyProps = {
+  patient: MeasurementDetailViewPatient;
+  measurement: MeasurementDetailViewMeasurement;
+};
 
-export default async function MeasurementDetailPage({ params }: Params) {
-  const { id, sessionId } = await params;
+export type MeasurementDetailPageDeps = {
+  readUser?: () => Promise<MeasurementDetailAuthUser | null>;
+  loadPatient?: (id: string) => Promise<PatientLoadResult>;
+  loadMeasurement?: (sessionId: string, patientId: string) => Promise<MeasurementLoadResult>;
+  loadBody?: () => Promise<{ default: ComponentType<MeasurementDetailBodyProps> }>;
+};
+
+async function defaultReadUser(
+  id: string,
+  sessionId: string,
+): Promise<MeasurementDetailAuthUser | null> {
   const sessionCookie = (await cookies()).get(getSessionCookieName())?.value;
   const request = new Request(
     `http://localhost/patients/${encodeURIComponent(id)}/measurements/${encodeURIComponent(sessionId)}`,
     {
-      headers: sessionCookie ? { cookie: `${getSessionCookieName()}=${encodeURIComponent(sessionCookie)}` } : undefined,
+      headers: sessionCookie
+        ? { cookie: `${getSessionCookieName()}=${encodeURIComponent(sessionCookie)}` }
+        : undefined,
     },
   );
-  const user = await requireActiveUserFromRequest(request);
-  const patientResult = user ? await getPatient(id) : { ok: false as const, error: "UNKNOWN" as const };
+  return requireActiveUserFromRequest(request);
+}
+
+async function defaultLoadMeasurement(
+  sessionId: string,
+  patientId: string,
+): Promise<MeasurementLoadResult> {
+  const result = await getMeasurement(sessionId, getDefaultMeasurementsRepository());
+  if (!result.ok || result.value.patientId !== patientId) {
+    return { ok: false, error: "NOT_FOUND" };
+  }
+  return { ok: true, value: result.value };
+}
+
+const defaultLoadBody: NonNullable<MeasurementDetailPageDeps["loadBody"]> = () =>
+  import("./measurement-detail-body");
+
+export async function MeasurementDetailPage(
+  { params }: Params,
+  deps: MeasurementDetailPageDeps = {},
+): Promise<ReactElement> {
+  const { id, sessionId } = await params;
+
+  const readUser = deps.readUser ?? (() => defaultReadUser(id, sessionId));
+  const loadPatient = deps.loadPatient ?? getPatient;
+  const loadMeasurement = deps.loadMeasurement ?? defaultLoadMeasurement;
+  const loadBody = deps.loadBody ?? defaultLoadBody;
+
+  const user = await readUser();
+  const patientResult = user
+    ? await loadPatient(id)
+    : ({ ok: false, error: "UNKNOWN" } as const);
   const decision = resolvePatientDetailLoad(user, patientResult);
 
   if (decision.action === "redirect") redirect(decision.location);
   if (decision.action === "notFound") notFound();
   if (decision.action === "throw") throw new Error("Unable to load patient detail");
 
-  const measurementResult = await getMeasurement(sessionId, getDefaultMeasurementsRepository());
-  if (!measurementResult.ok || measurementResult.value.patientId !== id) notFound();
+  const measurementResult = await loadMeasurement(sessionId, id);
+  if (!measurementResult.ok) notFound();
 
-  const measurement = measurementResult.value;
-  const snapshot = measurement.templateSnapshot;
-  const filledZoneIds = snapshot ? getFilledZoneIdsFromValues(snapshot, measurement.values) : undefined;
+  const { default: MeasurementDetailBody } = await loadBody();
 
-  return (
-    <main className={styles.page}>
-      <header className={styles.header}>
-        <div>
-          <p className={styles.kicker}>MEDIASSWINT · Medición Digital</p>
-          <h1>Detalle de medición</h1>
-          <p className={styles.subtitle}>{decision.patient.fullName}</p>
-        </div>
-        <Link className={styles.detailLink} href={`/patients/${encodeURIComponent(id)}`}>
-          Volver al paciente
-        </Link>
-      </header>
+  const viewUser: MeasurementDetailViewUser = { fullName: user!.fullName };
 
-      <section className={styles.card}>
-        <div className={styles.measurementSummaryGrid}>
-          <p><strong>Estado:</strong> {measurement.status}</p>
-          <p><strong>Fecha:</strong> {formatDateTime(measurement.measuredAt)}</p>
-          <p><strong>Prenda:</strong> {measurement.garmentType ?? "—"}</p>
-          <p><strong>Clase:</strong> {measurement.compressionClass ?? "—"}</p>
-          <p><strong>Diagnóstico:</strong> {measurement.diagnosis ?? "—"}</p>
-          <p><strong>Notas:</strong> {measurement.notes ?? "—"}</p>
-        </div>
-      </section>
-
-      {snapshot ? (
-        <section className={styles.card}>
-          <div className={styles.measurementWorkspace}>
-            <aside className={styles.bodyHighlightRail} aria-label="Zonas anatómicas">
-              <BodyHighlight
-                view="full"
-                sex={resolveBodyFigureSex(decision.patient.sex)}
-                activeZoneId={null}
-                filledZoneIds={filledZoneIds}
-                ariaLabel="Resumen anatómico con zonas medidas"
-              />
-            </aside>
-            <div className={styles.measurementTables}>
-              <ReadOnlyMeasurementTable group="legs" snapshot={snapshot} values={measurement.values} />
-              <ReadOnlyMeasurementTable group="arms" snapshot={snapshot} values={measurement.values} />
-            </div>
-          </div>
-        </section>
-      ) : (
-        <section className={styles.card}>
-          <p className={styles.error}>La medición no tiene snapshot de plantilla.</p>
-        </section>
-      )}
-    </main>
-  );
+  return renderMeasurementDetailView({
+    user: viewUser,
+    patient: decision.patient,
+    measurement: measurementResult.value,
+    actions: <LogoutButton />,
+    children: (
+      <MeasurementDetailBody
+        patient={decision.patient}
+        measurement={measurementResult.value}
+      />
+    ),
+  });
 }
+
+export default MeasurementDetailPage;

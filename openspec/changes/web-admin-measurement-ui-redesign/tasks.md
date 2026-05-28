@@ -30,8 +30,8 @@ Chain strategy: pending
 - [x] 1.1 Extend `apps/web/tests/patients-client-navigation.test.ts` for `/patients?q=...` search seeding and preserved create/search actions.
 - [x] 1.2 Extend `apps/web/tests/app-shell-navigation.test.ts` for `/patients`, `/patients/[id]`, `/patients/[id]/measurements/[sessionId]`, and `/admin` context labels.
 - [x] 1.3 Extend `apps/web/tests/patients-detail-page.test.ts` for clinical, commercial/operations, and measurements section grouping plus empty measurement state.
-- [ ] 1.4 Extend `apps/web/tests/admin-page-auth.test.ts` for actionable `/admin` destinations while preserving non-admin protection.
-- [ ] 1.5 Extend `apps/web/tests/measurements-ui.test.ts` or `measurements-route.test.ts` for read-only measurement detail navigation and focused capture boundary.
+- [x] 1.4 Extend `apps/web/tests/admin-page-auth.test.ts` for actionable `/admin` destinations while preserving non-admin protection.
+- [x] 1.5 Extend `apps/web/tests/measurements-ui.test.ts` or `measurements-route.test.ts` for read-only measurement detail navigation and focused capture boundary.
 
 ## Phase 2: PR 1 Shell/Search GREEN
 
@@ -47,9 +47,9 @@ Chain strategy: pending
 
 ## Phase 4: PR 3 Admin + Measurement Detail GREEN
 
-- [ ] 4.1 Modify `apps/web/app/admin/page.tsx` to keep `resolveAdminAccess` and show actionable `/operations` and `/patients` destinations.
-- [ ] 4.2 Modify `apps/web/app/patients/[id]/measurements/[sessionId]/page.tsx` to use `AppShell` around read-only measurement data.
-- [ ] 4.3 Verify `/patients/[id]/measurements/new/page.tsx` stays full-screen; run unit tests, `pnpm lint`, and `pnpm typecheck`.
+- [x] 4.1 Modify `apps/web/app/admin/page.tsx` to keep `resolveAdminAccess` and show actionable `/operations` and `/patients` destinations.
+- [x] 4.2 Modify `apps/web/app/patients/[id]/measurements/[sessionId]/page.tsx` to use `AppShell` around read-only measurement data.
+- [x] 4.3 Verify `/patients/[id]/measurements/new/page.tsx` stays full-screen; run unit tests, `pnpm lint`, and `pnpm typecheck`.
 
 ## Phase 5: REFACTOR / Verify
 
