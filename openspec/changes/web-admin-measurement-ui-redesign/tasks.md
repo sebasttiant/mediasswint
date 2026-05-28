@@ -29,7 +29,7 @@ Chain strategy: pending
 
 - [x] 1.1 Extend `apps/web/tests/patients-client-navigation.test.ts` for `/patients?q=...` search seeding and preserved create/search actions.
 - [x] 1.2 Extend `apps/web/tests/app-shell-navigation.test.ts` for `/patients`, `/patients/[id]`, `/patients/[id]/measurements/[sessionId]`, and `/admin` context labels.
-- [ ] 1.3 Extend `apps/web/tests/patients-detail-page.test.ts` for clinical, commercial/operations, and measurements section grouping plus empty measurement state.
+- [x] 1.3 Extend `apps/web/tests/patients-detail-page.test.ts` for clinical, commercial/operations, and measurements section grouping plus empty measurement state.
 - [ ] 1.4 Extend `apps/web/tests/admin-page-auth.test.ts` for actionable `/admin` destinations while preserving non-admin protection.
 - [ ] 1.5 Extend `apps/web/tests/measurements-ui.test.ts` or `measurements-route.test.ts` for read-only measurement detail navigation and focused capture boundary.
 
@@ -41,9 +41,9 @@ Chain strategy: pending
 
 ## Phase 3: PR 2 Patient Detail GREEN
 
-- [ ] 3.1 Modify `apps/web/app/patients/[id]/page.tsx` to render existing loaded data inside `AppShell` with patient context/actions.
-- [ ] 3.2 Extract section helpers/components from `apps/web/app/patients/[id]/patient-detail-client.tsx` for demographics, clinical timeline, commercial operations, and measurements.
-- [ ] 3.3 Keep API calls and existing types in `patient-detail-client.tsx` unchanged; run unit tests plus `pnpm typecheck`.
+- [x] 3.1 Modify `apps/web/app/patients/[id]/page.tsx` to render existing loaded data inside `AppShell` with patient context/actions.
+- [x] 3.2 Extract section helpers/components from `apps/web/app/patients/[id]/patient-detail-client.tsx` for demographics, clinical timeline, commercial operations, and measurements.
+- [x] 3.3 Keep API calls and existing types in `patient-detail-client.tsx` unchanged; run unit tests plus `pnpm typecheck`.
 
 ## Phase 4: PR 3 Admin + Measurement Detail GREEN
 

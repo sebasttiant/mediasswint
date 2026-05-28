@@ -1,38 +1,79 @@
 import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
+import type { ComponentType, ReactElement } from "react";
 
 import { getSessionCookieName, requireActiveUserFromRequest } from "@/lib/auth";
 import { getDefaultMeasurementsRepository, listPatientMeasurements } from "@/lib/measurements";
 import { buildPatientTimeline } from "@/lib/patient-timeline";
 import { getPatient } from "@/lib/patients";
 
-import PatientDetailClient from "./patient-detail-client";
+import { LogoutButton } from "../../_components/logout-button";
+
+import type {
+  OperationSummary,
+  PatientDetail,
+  PatientMeasurementSummary,
+  PatientTimelineItem,
+} from "./patient-detail-helpers";
 import { resolvePatientDetailLoad } from "./patient-detail-loading";
+import {
+  renderPatientDetailView,
+  type PatientDetailClientProps,
+} from "./patient-detail-view";
+
+export type PatientDetailAuthUser = {
+  id: string;
+  role: string;
+  fullName: string | null;
+};
 
 type Params = {
   params: Promise<{ id: string }>;
 };
 
-export default async function PatientDetailPage({ params }: Params) {
-  const { id } = await params;
+type PatientDetailRenderData = {
+  patient: PatientDetail;
+  recentMeasurements: PatientMeasurementSummary[];
+  timeline: PatientTimelineItem[];
+  operations: OperationSummary[];
+};
+
+export type PatientDetailDataDecision =
+  | { action: "redirect"; location: "/login" }
+  | { action: "notFound" }
+  | { action: "throw" }
+  | { action: "render"; data: PatientDetailRenderData };
+
+export type PatientDetailPageDeps = {
+  readUser?: () => Promise<PatientDetailAuthUser | null>;
+  loadClient?: () => Promise<{ default: ComponentType<PatientDetailClientProps> }>;
+  resolveData?: (
+    id: string,
+    user: PatientDetailAuthUser | null,
+  ) => Promise<PatientDetailDataDecision>;
+};
+
+async function defaultReadUser(id: string): Promise<PatientDetailAuthUser | null> {
   const sessionCookie = (await cookies()).get(getSessionCookieName())?.value;
   const request = new Request(`http://localhost/patients/${encodeURIComponent(id)}`, {
-    headers: sessionCookie ? { cookie: `${getSessionCookieName()}=${encodeURIComponent(sessionCookie)}` } : undefined,
+    headers: sessionCookie
+      ? { cookie: `${getSessionCookieName()}=${encodeURIComponent(sessionCookie)}` }
+      : undefined,
   });
-  const user = await requireActiveUserFromRequest(request);
-  const patientResult = user ? await getPatient(id) : { ok: false as const, error: "UNKNOWN" as const };
+  return requireActiveUserFromRequest(request);
+}
+
+async function defaultResolveData(
+  id: string,
+  user: PatientDetailAuthUser | null,
+): Promise<PatientDetailDataDecision> {
+  const patientResult = user
+    ? await getPatient(id)
+    : ({ ok: false, error: "UNKNOWN" } as const);
   const decision = resolvePatientDetailLoad(user, patientResult);
 
-  if (decision.action === "redirect") {
-    redirect(decision.location);
-  }
-
-  if (decision.action === "notFound") {
-    notFound();
-  }
-
-  if (decision.action === "throw") {
-    throw new Error("Unable to load patient detail");
+  if (decision.action !== "render") {
+    return decision;
   }
 
   const measurementsResult = await listPatientMeasurements(
@@ -62,10 +103,9 @@ export default async function PatientDetailPage({ params }: Params) {
     measurementId: event.measurementId,
   }));
 
-  // Dynamic import to avoid build-time DB connection
   const { listOperations } = await import("@/lib/operations");
   const operationsResult = await listOperations(id);
-  const operations = operationsResult.ok
+  const operations: OperationSummary[] = operationsResult.ok
     ? operationsResult.value.map((op) => ({
         id: op.id,
         status: op.status,
@@ -78,12 +118,54 @@ export default async function PatientDetailPage({ params }: Params) {
       }))
     : [];
 
-  return (
-    <PatientDetailClient
-      initialPatient={decision.patient}
-      recentMeasurements={recentMeasurements}
-      timeline={timeline}
-      operations={operations}
-    />
-  );
+  return {
+    action: "render",
+    data: {
+      patient: decision.patient,
+      recentMeasurements,
+      timeline,
+      operations,
+    },
+  };
 }
+
+const defaultLoadClient: NonNullable<PatientDetailPageDeps["loadClient"]> = () =>
+  import("./patient-detail-client");
+
+export async function PatientDetailPage(
+  { params }: Params,
+  deps: PatientDetailPageDeps = {},
+): Promise<ReactElement> {
+  const { id } = await params;
+
+  const readUser = deps.readUser ?? (() => defaultReadUser(id));
+  const resolveData = deps.resolveData ?? defaultResolveData;
+  const loadClient = deps.loadClient ?? defaultLoadClient;
+
+  const user = await readUser();
+  const decision = await resolveData(id, user);
+
+  if (decision.action === "redirect") {
+    redirect(decision.location);
+  }
+  if (decision.action === "notFound") {
+    notFound();
+  }
+  if (decision.action === "throw") {
+    throw new Error("Unable to load patient detail");
+  }
+
+  const { default: PatientDetailClientComponent } = await loadClient();
+
+  return renderPatientDetailView({
+    user: { fullName: user!.fullName },
+    patient: decision.data.patient,
+    recentMeasurements: decision.data.recentMeasurements,
+    timeline: decision.data.timeline,
+    operations: decision.data.operations,
+    PatientDetailClientComponent,
+    actions: <LogoutButton />,
+  });
+}
+
+export default PatientDetailPage;

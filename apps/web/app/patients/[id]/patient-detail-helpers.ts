@@ -30,6 +30,17 @@ export type PatientTimelineItem = {
   measurementId: string | null;
 };
 
+export type OperationSummary = {
+  id: string;
+  status: string;
+  totalAmount: string | null;
+  depositPaid: string;
+  garmentType: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type PatientFormState = {
   fullName: string;
   sex: string;
