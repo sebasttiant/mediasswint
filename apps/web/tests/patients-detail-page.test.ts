@@ -117,6 +117,12 @@ describe("PATIENT_DETAIL_SECTIONS", () => {
     assert.ok(labels.includes("Operaciones comerciales"));
     assert.ok(labels.includes("Mediciones"));
   });
+
+  it("uses 'Mediciones' (not 'Medidas') as the measurements section label", () => {
+    const measurements = PATIENT_DETAIL_SECTIONS.find((section) => section.key === "measurements");
+    assert.ok(measurements, "measurements section must be declared");
+    assert.equal(measurements!.label, "Mediciones");
+  });
 });
 
 describe("buildMeasurementsSectionViewModel", () => {

@@ -695,7 +695,7 @@ export default function PatientDetailClient({
       <section className={styles.card}>
         <div className={styles.tableHeader}>
           <div>
-            <h2>Medidas</h2>
+            <h2>Mediciones</h2>
             <p className={styles.muted}>Mediciones digitales recientes del paciente</p>
           </div>
           <Link className={styles.primaryButton} href={buildNewMeasurementHref(initialPatient.id)}>
