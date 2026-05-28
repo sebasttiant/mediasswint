@@ -34,10 +34,14 @@ const INITIAL_FORM_STATE: FormState = {
   notes: "",
 };
 
-export default function PatientsClient() {
+type PatientsClientProps = {
+  initialQuery?: string;
+};
+
+export default function PatientsClient({ initialQuery = "" }: PatientsClientProps) {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [form, setForm] = useState<FormState>(INITIAL_FORM_STATE);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +72,7 @@ export default function PatientsClient() {
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadPatients();
+    void loadPatients(initialQuery);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -124,18 +128,6 @@ export default function PatientsClient() {
 
   return (
     <div className={styles.page}>
-      <section className={styles.orientationGrid} aria-label="Orientación de pacientes">
-        <div className={styles.orientationCard}>
-          <span>Ruta actual</span>
-          <strong>Dashboard → Pacientes</strong>
-          <p>Creá, buscá o abrí una ficha para continuar con mediciones y operaciones.</p>
-        </div>
-        <div className={styles.metricCard}>
-          <span>Registros visibles</span>
-          <strong>{patients.length}</strong>
-        </div>
-      </section>
-
       <section className={styles.card}>
         <h2>Nuevo paciente</h2>
         <form onSubmit={onSubmit} className={styles.formGrid}>

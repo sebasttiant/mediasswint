@@ -8,14 +8,9 @@
   --border: #e2e8f0;
   --radius: 0.5rem;
 
-  min-height: 100dvh;
-  background: var(--surface-soft);
   color: var(--text-main);
   display: grid;
   gap: 0;
-  padding: 0;
-  width: 100%;
-  margin: 0;
 }
 
 .page > * {
@@ -64,68 +59,6 @@
   display: flex;
   gap: 0.75rem;
   align-items: center;
-}
-
-.metricCard {
-  background: white;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 1.25rem 1.5rem;
-  text-align: center;
-  transition: all 0.2s ease;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-}
-
-.metricCard:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  border-color: var(--brand);
-}
-
-.metricCard span {
-  display: block;
-  font-size: 0.875rem;
-  color: var(--text-muted);
-  margin-bottom: 0.25rem;
-}
-
-.metricCard strong {
-  display: block;
-  font-size: 1.875rem;
-  font-weight: 700;
-  color: var(--text-main);
-  line-height: 1.2;
-}
-
-.metricCard.metric-brand {
-  border-top: 3px solid var(--brand);
-}
-
-.metricCard.metric-brand strong {
-  color: var(--brand);
-}
-
-.logoutButton {
-  padding: 0.5rem 1rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: white;
-  color: var(--text-main);
-  font-weight: 500;
-  font-size: 0.875rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.logoutButton:hover {
-  background: var(--surface-soft);
-  border-color: var(--brand);
-  color: var(--brand-strong);
-}
-
-.content-wrapper {
-  padding: 2rem;
-  background: var(--surface);
 }
 
 .section {
@@ -927,21 +860,8 @@
 }
 
 @media (max-width: 640px) {
-  .page {
-    width: 100%;
-    padding: max(0.65rem, env(safe-area-inset-top))
-      max(0.65rem, env(safe-area-inset-right))
-      max(0.75rem, env(safe-area-inset-bottom))
-      max(0.65rem, env(safe-area-inset-left));
-  }
-
   .header {
     flex-direction: column;
-  }
-
-  .metricCard {
-    width: 100%;
-    text-align: left;
   }
 
   .tableHeader {

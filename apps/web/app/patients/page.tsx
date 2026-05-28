@@ -1,20 +1,58 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import type { ComponentType, ReactElement } from "react";
 
 import { getSessionCookieName, requireActiveUserFromRequest } from "@/lib/auth";
 
-import PatientsClient from "./patients-client";
+import { LogoutButton } from "../_components/logout-button";
+import {
+  renderPatientsView,
+  resolveInitialPatientQuery,
+  type PatientsViewUser,
+} from "./patient-search-params";
 
-export default async function PatientsPage() {
+type PatientsPageProps = {
+  searchParams?: Promise<{ q?: string | string[] }>;
+};
+
+export type PatientsPageDeps = {
+  readUser?: () => Promise<PatientsViewUser | null>;
+  loadClient?: () => Promise<{ default: ComponentType<{ initialQuery?: string }> }>;
+};
+
+async function defaultReadUser(): Promise<PatientsViewUser | null> {
   const sessionCookie = (await cookies()).get(getSessionCookieName())?.value;
   const request = new Request("http://localhost/patients", {
     headers: sessionCookie ? { cookie: `${getSessionCookieName()}=${encodeURIComponent(sessionCookie)}` } : undefined,
   });
-  const user = await requireActiveUserFromRequest(request);
+  return requireActiveUserFromRequest(request);
+}
+
+const defaultLoadClient: NonNullable<PatientsPageDeps["loadClient"]> = () => import("./patients-client");
+
+export async function PatientsPage(
+  { searchParams }: PatientsPageProps,
+  deps: PatientsPageDeps = {},
+): Promise<ReactElement> {
+  const readUser = deps.readUser ?? defaultReadUser;
+  const user = await readUser();
 
   if (!user) {
     redirect("/login");
   }
 
-  return <PatientsClient />;
+  const resolvedParams = (await searchParams) ?? {};
+  const initialQuery = resolveInitialPatientQuery(resolvedParams.q);
+
+  const loadClient = deps.loadClient ?? defaultLoadClient;
+  const { default: PatientsClientComponent } = await loadClient();
+
+  return renderPatientsView({
+    user,
+    initialQuery,
+    PatientsClientComponent,
+    actions: <LogoutButton />,
+  });
 }
+
+export default PatientsPage;
