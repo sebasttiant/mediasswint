@@ -3,7 +3,7 @@ import { Prisma, type AuditAction } from "@prisma/client";
 import { getAuditUserId } from "@/lib/audit-context";
 import { getPrisma } from "@/lib/prisma";
 
-export type AuditEntityType = "Patient" | "MeasurementSession" | "CommercialOperation";
+export type AuditEntityType = "Patient" | "MeasurementSession" | "CommercialOperation" | "User";
 
 export type AuditDiff = {
   before?: Record<string, unknown> | null;
