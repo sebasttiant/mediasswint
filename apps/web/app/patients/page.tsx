@@ -4,7 +4,6 @@ import type { ComponentType, ReactElement } from "react";
 
 import { getSessionCookieName, requireActiveUserFromRequest } from "@/lib/auth";
 
-import { LogoutButton } from "../_components/logout-button";
 import {
   renderPatientsView,
   resolveInitialPatientQuery,
@@ -51,7 +50,6 @@ export async function PatientsPage(
     user,
     initialQuery,
     PatientsClientComponent,
-    actions: <LogoutButton />,
   });
 }
 
