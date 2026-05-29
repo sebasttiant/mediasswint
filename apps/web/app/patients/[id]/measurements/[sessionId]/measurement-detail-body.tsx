@@ -74,7 +74,7 @@ export default function MeasurementDetailBody({
     : undefined;
 
   return (
-    <>
+    <div className={styles.page}>
       <section className={styles.card}>
         <p className={styles.muted}>
           <Link className={styles.patientNameLink} href={`/patients/${encodeURIComponent(patient.id)}`}>
@@ -114,6 +114,6 @@ export default function MeasurementDetailBody({
           <p className={styles.error}>La medición no tiene snapshot de plantilla.</p>
         </section>
       )}
-    </>
+    </div>
   );
 }

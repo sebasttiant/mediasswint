@@ -77,6 +77,11 @@ export type BodyHighlightProps = {
   // always emits side=null. Internal state still drives rendering; the
   // callback is informative.
   onDetailChange?: (region: DetailRegion | null, side: DetailSide | null) => void;
+  // When the surrounding layout already renders the editable field list
+  // (measurement shell), suppress the internal read-only catalog panel to
+  // avoid showing the same fields twice. Defaults to false so other callers
+  // keep the catalog reference.
+  hideDetailCatalog?: boolean;
 };
 
 function hasFilledZone(
@@ -257,7 +262,10 @@ function getViewBoxForState(
     return { x: 0, y: 0, width: 240, height: 480 };
   }
   if (detail === "head") {
-    return { x: 0, y: 0, width: HEAD_DETAIL_VIEWBOX.width, height: HEAD_DETAIL_VIEWBOX.height };
+    // The reference PNG places the three faces in the upper band and leaves
+    // the bottom ~40% empty. Cropping to the faces band keeps the figure
+    // landscape (uses width) and avoids a tall whitespace letterbox.
+    return { x: 0, y: 0, width: HEAD_DETAIL_VIEWBOX.width, height: 820 };
   }
   if (detail === "hands") {
     // Crop to the column matching the selected side. PNG layout:
@@ -291,6 +299,7 @@ export function BodyHighlight({
   ariaLabel,
   onZoneClick,
   onDetailChange,
+  hideDetailCatalog = false,
 }: BodyHighlightProps) {
   const [tooltip, setTooltip] = useState<TooltipData | null>(null);
   const [detailRegion, setDetailRegionState] = useState<DetailRegion | null>(null);
@@ -331,6 +340,23 @@ export function BodyHighlight({
     return summary.label;
   })();
 
+  // Hand detail renders palm + dorso side by side instead of the single
+  // tall column crop. The reference PNG is a clean 2×2 grid: top row =
+  // palms, bottom row = dorsa; left column = right hand, right column =
+  // left hand. So the chosen side is one vertical half, split 50/50 into
+  // palm (top) / dorso (bottom).
+  const isHandDetail = isDetail && detailRegion === "hands";
+  const handColumnX = detailSide === "left" ? HAND_DETAIL_VIEWBOX.width / 2 : 0;
+  const handColumnWidth = HAND_DETAIL_VIEWBOX.width / 2;
+  const handRowHeight = HAND_DETAIL_VIEWBOX.height / 2;
+  const handCrops = [
+    { label: "Palma", y: 0 },
+    { label: "Dorso", y: handRowHeight },
+  ] as const;
+  const wrapperClassName = [styles.wrapper, isDetail ? styles.wrapperDetail : null]
+    .filter(Boolean)
+    .join(" ");
+
   const sideSummaries = getSideSummaryForView(view);
   // Full view reads side-label positions from the sex-specific calibration
   // (different figures have different head + side margins). Isolated
@@ -357,7 +383,7 @@ export function BodyHighlight({
   const isolatedArticulations = isolatedView ? BODY_HIGHLIGHT_ARTICULATIONS[isolatedView] : null;
 
   return (
-    <div className={styles.wrapper}>
+    <div className={wrapperClassName}>
       {isDetail && summary ? (
         <div className={styles.detailHeader}>
           <button
@@ -375,6 +401,25 @@ export function BodyHighlight({
         </div>
       ) : null}
 
+      {isHandDetail ? (
+        <div className={styles.handSplit}>
+          {handCrops.map(({ label, y }) => (
+            <figure key={label} className={styles.handCrop}>
+              <svg
+                role="img"
+                aria-label={`${detailTitle ?? "Mano"} — ${label}`}
+                viewBox={`${handColumnX} ${y} ${handColumnWidth} ${handRowHeight}`}
+                className={styles.handCropSvg}
+                overflow="hidden"
+                style={{ overflow: "hidden" }}
+              >
+                <DetailLayer region="hands" sex={sex} />
+              </svg>
+              <figcaption className={styles.handCropCaption}>{label}</figcaption>
+            </figure>
+          ))}
+        </div>
+      ) : (
       <svg
         role="img"
         aria-label={
@@ -601,6 +646,7 @@ export function BodyHighlight({
           </>
         ) : null}
       </svg>
+      )}
 
       {/* Floating tooltip — only for measurement zones in full/iso views */}
       <AnimatePresence>
@@ -627,7 +673,7 @@ export function BodyHighlight({
       </AnimatePresence>
 
       {/* Pending-fields panel for detail mode */}
-      {isDetail && detailRegion ? (
+      {isDetail && detailRegion && !hideDetailCatalog ? (
         <DetailRegionPanel region={detailRegion} side={detailSide} />
       ) : null}
     </div>

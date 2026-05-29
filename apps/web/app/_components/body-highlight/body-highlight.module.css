@@ -15,6 +15,45 @@
     0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
+/* Detail mode lets the figure fill the reclaimed width instead of the
+   360px body-map cap, so palm/dorso (or the faces band) read as a clinical
+   reference rather than a thumbnail. */
+.wrapperDetail {
+  max-width: none;
+}
+
+.handSplit {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.handCrop {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.handCropSvg {
+  width: 100%;
+  height: auto;
+  display: block;
+  background: #ffffff;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 14px;
+}
+
+.handCropCaption {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+  font-family: "Inter Tight", "Inter", system-ui, sans-serif;
+}
+
 .detailHeader {
   display: flex;
   align-items: center;
