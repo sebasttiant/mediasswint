@@ -42,6 +42,13 @@ describe("app shell navigation", () => {
     assert.equal(findAppShellActiveItem("/patients/pat-1/measurements/session-1")?.key, "measurements");
   });
 
+  it("exposes a patients context label and description for the shell topbar", () => {
+    const active = findAppShellActiveItem("/patients");
+
+    assert.equal(active?.label, "Pacientes");
+    assert.equal(active?.description, "Alta, búsqueda y ficha clínica");
+  });
+
   it("builds accessible labels that expose active state", () => {
     assert.equal(buildAppShellAriaLabel(APP_SHELL_NAVIGATION[0]!, true), "Dashboard, sección activa");
     assert.equal(buildAppShellAriaLabel(APP_SHELL_NAVIGATION[1]!, false), "Pacientes");

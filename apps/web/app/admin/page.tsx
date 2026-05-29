@@ -1,35 +1,49 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import type { ReactElement } from "react";
 
-import { getSessionCookieName, requireActiveUserFromRequest } from "@/lib/auth";
+import { getSessionCookieName, requireActiveUserFromRequest, type UserRole } from "@/lib/auth";
 
-import { AppShell } from "../_components/app-shell/app-shell";
+import { LogoutButton } from "../_components/logout-button";
+
 import { resolveAdminAccess } from "./admin-access";
+import { renderAdminView, type AdminViewUser } from "./admin-view";
+
+export type AdminAuthUser = {
+  id: string;
+  role: UserRole;
+  fullName: string | null;
+};
+
+export type AdminPageDeps = {
+  readUser?: () => Promise<AdminAuthUser | null>;
+};
 
 function requestFromSessionCookie(sessionCookie: string | undefined) {
   return new Request("http://localhost/admin", {
-    headers: sessionCookie ? { cookie: `${getSessionCookieName()}=${encodeURIComponent(sessionCookie)}` } : undefined,
+    headers: sessionCookie
+      ? { cookie: `${getSessionCookieName()}=${encodeURIComponent(sessionCookie)}` }
+      : undefined,
   });
 }
 
-export default async function AdminPage() {
+async function defaultReadUser(): Promise<AdminAuthUser | null> {
   const sessionCookie = (await cookies()).get(getSessionCookieName())?.value;
-  const user = await requireActiveUserFromRequest(requestFromSessionCookie(sessionCookie));
+  return requireActiveUserFromRequest(requestFromSessionCookie(sessionCookie));
+}
+
+export async function AdminPage(deps: AdminPageDeps = {}): Promise<ReactElement> {
+  const readUser = deps.readUser ?? defaultReadUser;
+  const user = await readUser();
   const access = resolveAdminAccess(user);
 
   if (!access.allowed) {
     redirect(access.redirectTo);
   }
 
-  return (
-    <AppShell
-      currentPath="/admin"
-      description="Panel administrativo disponible para usuarios ADMIN."
-      kicker="MEDIASSWINT · Administración"
-      title="Administración"
-      userLabel={user?.fullName ?? undefined}
-    >
-      <p>Panel administrativo disponible para usuarios ADMIN.</p>
-    </AppShell>
-  );
+  const viewUser: AdminViewUser = { fullName: user?.fullName ?? null };
+
+  return renderAdminView({ user: viewUser, actions: <LogoutButton /> });
 }
+
+export default AdminPage;

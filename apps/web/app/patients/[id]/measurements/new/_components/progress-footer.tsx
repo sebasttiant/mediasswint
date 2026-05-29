@@ -61,7 +61,7 @@ export function ProgressFooter({
             disabled={saving}
             onClick={onComplete}
             className={`flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 lg:w-auto ${
-              isComplete ? "bg-emerald-600 hover:bg-emerald-700" : "bg-blue-600 hover:bg-blue-700"
+              isComplete ? "bg-emerald-600 hover:bg-emerald-700" : "bg-brand hover:bg-brand-strong"
             }`}
           >
             {isComplete ? (

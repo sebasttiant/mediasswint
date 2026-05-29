@@ -166,7 +166,7 @@ export function CommandPalette({ open, onClose, inputRef }: CommandPaletteProps)
                 className="flex-1 bg-transparent text-sm text-ink placeholder-ink-placeholder outline-none"
               />
               {loading && (
-                <span className="h-3 w-3 animate-spin rounded-full border-2 border-edge border-t-clinical-500" aria-hidden="true" />
+                <span className="h-3 w-3 animate-spin rounded-full border-2 border-edge border-t-brand" aria-hidden="true" />
               )}
               <button
                 onClick={onClose}
@@ -239,15 +239,15 @@ function CommandRow({
       role="option"
       aria-selected={active}
       onClick={onClick}
-      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
-        active ? "bg-clinical-50 text-clinical-700" : "text-ink hover:bg-surface-soft"
+      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
+        active ? "bg-brand/5 text-brand" : "text-ink hover:bg-surface-soft"
       }`}
     >
-      <span className={`shrink-0 ${active ? "text-clinical-600" : "text-ink-muted"}`}>{item.icon}</span>
-      <span className="flex-1 truncate">
-        <span className="font-medium">{item.label}</span>
+      <span className={`shrink-0 ${active ? "text-brand" : "text-ink-muted"}`}>{item.icon}</span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate font-medium leading-tight">{item.label}</span>
         {item.description && (
-          <span className="ml-2 text-xs text-ink-muted">{item.description}</span>
+          <span className="truncate text-xs leading-tight text-ink-muted">{item.description}</span>
         )}
       </span>
     </button>

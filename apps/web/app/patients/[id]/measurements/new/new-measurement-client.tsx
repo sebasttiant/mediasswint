@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { User } from "lucide-react";
 
 import { BODY_FIGURE_SEX, type BodyFigureSex } from "@/app/_components/body-highlight/body-highlight";
 import type { TemplateSnapshot } from "@/lib/measurements";
@@ -160,91 +161,146 @@ export default function NewMeasurementClient({ patientId, patientName, patientSe
           saveStatus={saveStatus}
         />
 
-        <main className="flex-1 flex items-start justify-center p-6">
-          <div className="w-full max-w-2xl bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-            <h2 className="text-lg font-semibold text-slate-900 mb-1">Contexto de medición</h2>
-            <p className="text-sm text-slate-500 mb-5">
-              Completá los datos generales para iniciar la sesión de toma de medidas.
-            </p>
-
-            {error ? (
-              <div className="mb-4 px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
-                {error}
+        <main className="flex-1 overflow-y-auto px-4 py-8 sm:px-6">
+          <div className="mx-auto grid w-full max-w-5xl gap-6 lg:grid-cols-[300px_minmax(0,1fr)]">
+            {/* Session context rail — orients the clinician inside the flow */}
+            <aside className="flex h-fit flex-col gap-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center gap-3">
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-700">
+                  <User className="h-5 w-5" />
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-slate-900">{patientName}</p>
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                    Nueva sesión de medición
+                  </p>
+                </div>
               </div>
-            ) : null}
 
-            <form onSubmit={createDraft} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                  Fecha y hora *
-                </span>
-                <input
-                  type="datetime-local"
-                  required
-                  value={measuredAt}
-                  onChange={(event) => setMeasuredAt(event.target.value)}
-                  className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-200 transition"
-                />
-              </label>
+              <ol className="flex flex-col gap-1">
+                {[
+                  { n: 1, label: "Contexto", desc: "Datos de la sesión", active: true },
+                  { n: 2, label: "Medición", desc: "Toma de medidas por zona", active: false },
+                  { n: 3, label: "Cierre", desc: "Guardar borrador o finalizar", active: false },
+                ].map((step) => (
+                  <li key={step.n} className="flex items-start gap-3 px-1 py-1.5">
+                    <span
+                      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                        step.active ? "bg-red-700 text-white" : "bg-slate-100 text-slate-400"
+                      }`}
+                    >
+                      {step.n}
+                    </span>
+                    <div>
+                      <p
+                        className={`text-sm font-semibold ${
+                          step.active ? "text-slate-900" : "text-slate-500"
+                        }`}
+                      >
+                        {step.label}
+                      </p>
+                      <p className="text-xs text-slate-400">{step.desc}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
 
-              <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                  Tipo de prenda
-                </span>
-                <input
-                  value={garmentType}
-                  onChange={(event) => setGarmentType(event.target.value)}
-                  placeholder="Ej: Media hasta rodilla"
-                  className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-200 transition"
-                />
-              </label>
+              <p className="text-xs leading-relaxed text-slate-500">
+                Completá el contexto clínico para iniciar la toma de medidas. Durante la sesión vas
+                a poder guardar borrador o finalizar con pendientes.
+              </p>
+            </aside>
 
-              <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                  Clase de compresión
-                </span>
-                <input
-                  value={compressionClass}
-                  onChange={(event) => setCompressionClass(event.target.value)}
-                  placeholder="Ej: Clase II"
-                  className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-200 transition"
-                />
-              </label>
-
-              <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                  Diagnóstico
-                </span>
-                <input
-                  value={diagnosis}
-                  onChange={(event) => setDiagnosis(event.target.value)}
-                  placeholder="Ej: Insuficiencia venosa"
-                  className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-200 transition"
-                />
-              </label>
-
-              <label className="flex flex-col gap-1.5 sm:col-span-2">
-                <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                  Notas
-                </span>
-                <textarea
-                  value={notes}
-                  onChange={(event) => setNotes(event.target.value)}
-                  rows={3}
-                  className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-200 transition resize-none"
-                />
-              </label>
-
-              <div className="sm:col-span-2 flex justify-end">
-                <button
-                  type="submit"
-                  disabled={saveStatus === "saving"}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-red-700 hover:bg-red-800 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {saveStatus === "saving" ? "Creando..." : "Iniciar toma de medidas →"}
-                </button>
+            {/* Context form */}
+            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="border-b border-slate-100 bg-slate-50 px-6 py-4">
+                <h2 className="text-base font-bold text-slate-900">Contexto de medición</h2>
+                <p className="mt-0.5 text-sm text-slate-500">
+                  Datos generales que encabezan la sesión de toma de medidas.
+                </p>
               </div>
-            </form>
+
+              <form onSubmit={createDraft} className="p-6">
+                {error ? (
+                  <div className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {error}
+                  </div>
+                ) : null}
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                      Fecha y hora *
+                    </span>
+                    <input
+                      type="datetime-local"
+                      required
+                      value={measuredAt}
+                      onChange={(event) => setMeasuredAt(event.target.value)}
+                      className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                    />
+                  </label>
+
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                      Tipo de prenda
+                    </span>
+                    <input
+                      value={garmentType}
+                      onChange={(event) => setGarmentType(event.target.value)}
+                      placeholder="Ej: Media hasta rodilla"
+                      className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                    />
+                  </label>
+
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                      Clase de compresión
+                    </span>
+                    <input
+                      value={compressionClass}
+                      onChange={(event) => setCompressionClass(event.target.value)}
+                      placeholder="Ej: Clase II"
+                      className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                    />
+                  </label>
+
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                      Diagnóstico
+                    </span>
+                    <input
+                      value={diagnosis}
+                      onChange={(event) => setDiagnosis(event.target.value)}
+                      placeholder="Ej: Insuficiencia venosa"
+                      className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                    />
+                  </label>
+
+                  <label className="flex flex-col gap-1.5 sm:col-span-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                      Notas
+                    </span>
+                    <textarea
+                      value={notes}
+                      onChange={(event) => setNotes(event.target.value)}
+                      rows={3}
+                      className="resize-none rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                    />
+                  </label>
+                </div>
+
+                <div className="mt-6 flex justify-end border-t border-slate-100 pt-5">
+                  <button
+                    type="submit"
+                    disabled={saveStatus === "saving"}
+                    className="inline-flex items-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-strong disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {saveStatus === "saving" ? "Creando..." : "Iniciar toma de medidas →"}
+                  </button>
+                </div>
+              </form>
+            </section>
           </div>
         </main>
       </div>

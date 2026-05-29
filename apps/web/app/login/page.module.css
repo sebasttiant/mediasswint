@@ -75,8 +75,21 @@
 }
 
 .brandPanel h1 {
-  font-size: clamp(1.35rem, 3.2vw, 2.25rem);
-  line-height: 1.15;
+  font-family: var(--font-display);
+  font-size: clamp(1.4rem, 3.2vw, 2.3rem);
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  line-height: 1.12;
+}
+
+.card h2 {
+  font-family: var(--font-display);
+  font-size: clamp(1.35rem, 2.4vw, 1.6rem);
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+  color: #0f172a;
+  margin-top: 0.15rem;
 }
 
 .brandPanel p,

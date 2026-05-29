@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 
+import { PageHeader } from "../ui/page-header";
 import { CommandPalette } from "./command-palette";
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
@@ -18,41 +19,26 @@ type AppShellProps = {
   actions?: ReactNode;
 };
 
-export function AppShell({
-  actions,
-  children,
-  description,
-  kicker,
-  title,
-  userLabel,
-}: AppShellProps) {
+export function AppShell({ children, description, title, userLabel }: AppShellProps) {
   const { inputRef, open, setOpen } = useCommandPalette();
   const { items: recentItems } = useRecentItems();
 
   return (
-    <div className="flex min-h-dvh bg-surface-soft">
+    <div className="flex min-h-dvh bg-slate-100">
       <Sidebar recentItems={recentItems} onCommandPaletteOpen={() => setOpen(true)} />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar
-          title={title}
-          kicker={kicker}
-          description={description}
-          actions={actions}
-          userLabel={userLabel}
-          onCommandPaletteOpen={() => setOpen(true)}
-        />
+        <Topbar userLabel={userLabel} />
 
-        <main className="flex-1 p-4 md:p-6">
-          {children}
+        <main className="flex-1">
+          <div className="mx-auto w-full max-w-7xl space-y-8 px-4 py-8 md:px-8">
+            <PageHeader title={title} subtitle={description} />
+            {children}
+          </div>
         </main>
       </div>
 
-      <CommandPalette
-        open={open}
-        onClose={() => setOpen(false)}
-        inputRef={inputRef}
-      />
+      <CommandPalette open={open} onClose={() => setOpen(false)} inputRef={inputRef} />
     </div>
   );
 }

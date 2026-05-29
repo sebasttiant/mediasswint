@@ -1,0 +1,90 @@
+schema: spec-driven
+project: mediasswint
+artifact_store: openspec
+initialized_at: 2026-05-27
+
+context: |
+  Monorepo pnpm 11.2.2 with Node 24.16.0 and app package @mediasswint/web.
+  Web stack: Next.js 16.2.6 App Router, React 19.2.6, TypeScript strict, Tailwind CSS 4 via PostCSS.
+  Data/runtime: Prisma 7.8.0 with PostgreSQL, Redis, argon2 auth, Docker Compose production stack.
+  Architecture observed: apps/web owns app routes, API routes, Prisma schema, tests, dashboard, patient, measurement, and operation UI.
+  Quality gates observed: ESLint 9, TypeScript noEmit, Node test runner with tsx, Prisma validate/generate, Next build, Docker runner build in CI.
+
+strict_tdd: true
+
+testing:
+  detected_at: 2026-05-27
+  strict_tdd: true
+  reason: "Unit test runner is available; no explicit project marker disabled strict TDD."
+  commands:
+    install: "pnpm install --frozen-lockfile"
+    lint: "pnpm lint"
+    typecheck: "pnpm typecheck"
+    unit: "pnpm --filter @mediasswint/web test:unit"
+    prisma_validate: "pnpm --filter @mediasswint/web prisma:validate"
+    prisma_generate: "pnpm --filter @mediasswint/web prisma:generate"
+    build: "pnpm build"
+    docker_build: "docker build -f apps/web/Dockerfile --target runner ."
+  layers:
+    unit:
+      available: true
+      tool: "node --test --import tsx"
+      pattern: "apps/web/tests/**/*.test.ts"
+    integration:
+      available: true
+      tool: "Node test runner against route/domain modules"
+      note: "API route and persistence-adjacent tests exist; no separate integration command detected."
+    e2e:
+      available: false
+      tool: ""
+      note: "No Playwright/Cypress/Selenium config detected."
+  coverage:
+    available: false
+    command: ""
+    threshold: 0
+  quality:
+    linter:
+      available: true
+      command: "pnpm lint"
+    type_checker:
+      available: true
+      command: "pnpm typecheck"
+    formatter:
+      available: false
+      command: ""
+      note: "No dedicated formatter script/config detected."
+
+rules:
+  proposal:
+    - "State user-visible impact, rollback plan, and whether the change can stay under the 400-line review budget."
+    - "Ask before using chained PRs; chained_pr_strategy is ask-always."
+  specs:
+    - "Use RFC 2119 keywords for requirements."
+    - "Use Given/When/Then scenarios for behavioral changes."
+    - "Capture clinical measurement and admin workflow acceptance criteria explicitly when touched."
+  design:
+    - "Document data model, auth/session, and deployment implications for risky changes."
+    - "Prefer existing Next.js App Router, Prisma, and app component patterns over new abstractions."
+  tasks:
+    - "Keep tasks reviewable and split work that is likely to exceed 400 changed lines."
+    - "Keep verification commands attached to implementation tasks."
+  apply:
+    tdd: true
+    test_command: "pnpm --filter @mediasswint/web test:unit"
+    rules:
+      - "Follow existing code patterns and keep changes minimal."
+      - "Do not touch .pi/ or .windsurf/."
+      - "Do not stage, commit, push, merge, or open PRs unless explicitly requested."
+  verify:
+    test_command: "pnpm --filter @mediasswint/web test:unit"
+    build_command: "pnpm build"
+    commands:
+      - "pnpm lint"
+      - "pnpm typecheck"
+      - "pnpm --filter @mediasswint/web prisma:validate"
+      - "pnpm --filter @mediasswint/web test:unit"
+      - "pnpm build"
+    coverage_threshold: 0
+  archive:
+    - "Warn before merging destructive spec deltas."
+    - "Move completed changes to openspec/changes/archive/YYYY-MM-DD-{change-name}/."

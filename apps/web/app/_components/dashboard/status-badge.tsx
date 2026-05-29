@@ -1,15 +1,17 @@
-const OPERATION_BADGE: Record<string, { label: string; className: string }> = {
-  PRESUPUESTO: { label: "Presupuesto", className: "bg-amber-100 text-amber-700" },
-  CONFIRMADO: { label: "Confirmado", className: "bg-emerald-100 text-emerald-700" },
-  EN_PRODUCCION: { label: "En producción", className: "bg-sky-100 text-sky-700" },
-  ENTREGADO: { label: "Entregado", className: "bg-violet-100 text-violet-700" },
-  CANCELADO: { label: "Cancelado", className: "bg-red-100 text-red-700" },
+import { Badge, type BadgeVariant } from "../ui/badge";
+
+const OPERATION_BADGE: Record<string, { label: string; variant: BadgeVariant }> = {
+  PRESUPUESTO: { label: "Presupuesto", variant: "warning" },
+  CONFIRMADO: { label: "Confirmado", variant: "success" },
+  EN_PRODUCCION: { label: "En producción", variant: "info" },
+  ENTREGADO: { label: "Entregado", variant: "violet" },
+  CANCELADO: { label: "Cancelado", variant: "danger" },
 };
 
-const MEASUREMENT_BADGE: Record<string, { label: string; className: string }> = {
-  DRAFT: { label: "Borrador", className: "bg-amber-100 text-amber-700" },
-  COMPLETED: { label: "Completada", className: "bg-emerald-100 text-emerald-700" },
-  VOID: { label: "Anulada", className: "bg-red-100 text-red-700" },
+const MEASUREMENT_BADGE: Record<string, { label: string; variant: BadgeVariant }> = {
+  DRAFT: { label: "Borrador", variant: "warning" },
+  COMPLETED: { label: "Completada", variant: "success" },
+  VOID: { label: "Anulada", variant: "danger" },
 };
 
 type StatusBadgeProps = {
@@ -19,13 +21,7 @@ type StatusBadgeProps = {
 
 export function StatusBadge({ status, variant = "operation" }: StatusBadgeProps) {
   const map = variant === "measurement" ? MEASUREMENT_BADGE : OPERATION_BADGE;
-  const config = map[status] ?? { label: status, className: "bg-slate-100 text-slate-600" };
+  const config = map[status] ?? { label: status, variant: "neutral" as BadgeVariant };
 
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold tracking-wide ${config.className}`}
-    >
-      {config.label}
-    </span>
-  );
+  return <Badge variant={config.variant}>{config.label}</Badge>;
 }

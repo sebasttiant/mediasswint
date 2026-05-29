@@ -184,6 +184,7 @@ export function MeasurementShell({
               ariaLabel={`Figura humana ${sex === "male" ? "masculina" : "femenina"} con zonas activas`}
               onZoneClick={handleZoneClick}
               onDetailChange={handleDetailChange}
+              hideDetailCatalog
             />
           </div>
           {shouldRenderFaceGuide ? <FaceGuide sex={sex} /> : null}
@@ -258,41 +259,42 @@ export function MeasurementShell({
         </MobileStripPanel>
       )}
 
-      {/* Desktop 3-column grid — side panels stretch to fill the viewport
-          so we never leave half the screen empty. Body-map column capped
-          around the figure's natural width. Strip order follows the
-          figure: arms above (anatomy upper body), legs below. */}
-      <div className="hidden lg:grid lg:grid-cols-[minmax(280px,1fr)_minmax(380px,460px)_minmax(280px,1fr)] flex-1 min-h-0 overflow-hidden">
-        {/* Left panel: in body view → right-side limbs (arm above, leg below).
-            In detail view → mano/cabeza derecha (or the single centered
-            column when the region has no laterality, e.g. head). */}
-        <div className="flex flex-col border-r border-slate-200 overflow-hidden">
+      {/* Desktop layout.
+          Body view → 3 columns: right-side limbs | figure | left-side limbs.
+          Detail view → 2 zones: comfortable field panel | wide figure.
+          The figure column (cellB) keeps the SAME position in both modes so
+          BodyHighlight never unmounts and its detail state survives the
+          body↔detail transition. */}
+      <div
+        className={`hidden flex-1 min-h-0 overflow-hidden lg:grid ${
+          detailRegion
+            ? "lg:grid-cols-[minmax(340px,0.5fr)_minmax(0,1.5fr)]"
+            : "lg:grid-cols-[minmax(280px,1fr)_minmax(380px,460px)_minmax(280px,1fr)]"
+        }`}
+      >
+        {/* Cell A — detail: active region fields. body: right-side limbs. */}
+        <div className="flex flex-col overflow-hidden border-r border-slate-200">
           {detailRegion && detailStrips ? (
-            <div className="min-h-0 flex-1 overflow-hidden">
-              {detailStrips.center ? (
-                <DetailFieldStrip
-                  title={detailStrips.center.title}
-                  fields={detailStrips.center.fields}
-                  draftByKey={draftByKey}
-                  onDraftChange={handleDraftChange}
-                  tone="neutral"
-                />
-              ) : detailStrips.right ? (
-                <DetailFieldStrip
-                  title={detailStrips.right.title}
-                  fields={detailStrips.right.fields}
-                  draftByKey={draftByKey}
-                  onDraftChange={handleDraftChange}
-                  tone="right"
-                />
-              ) : (
-                <div className="flex h-full items-center justify-center bg-white p-4 text-center text-xs text-slate-500">
-                  {detailRegion === "hands"
-                    ? "Volvé al cuerpo y elegí la otra mano para medirla."
-                    : "Esta región no tiene mediciones laterales."}
+            (() => {
+              const active =
+                detailStrips.center ?? detailStrips.right ?? detailStrips.left;
+              const tone = detailStrips.center
+                ? "neutral"
+                : detailStrips.right
+                  ? "right"
+                  : "left";
+              return active ? (
+                <div className="min-h-0 flex-1 overflow-hidden">
+                  <DetailFieldStrip
+                    title={active.title}
+                    fields={active.fields}
+                    draftByKey={draftByKey}
+                    onDraftChange={handleDraftChange}
+                    tone={tone}
+                  />
                 </div>
-              )}
-            </div>
+              ) : null;
+            })()
           ) : (
             <>
               <div className="min-h-0 flex-1 overflow-hidden border-b border-slate-100">
@@ -321,30 +323,34 @@ export function MeasurementShell({
           )}
         </div>
 
-        {/* Center: body figure sticky, vertically aligned with the strips. */}
-        <div className="flex flex-col items-stretch justify-start overflow-y-auto bg-slate-50 px-3 py-4">
-          <div className="sticky top-3 flex flex-col items-stretch gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-            <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-center">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Mapa corporal interactivo</p>
-              <p className="mt-1 text-[11px] text-slate-600">Tocá una zona o enfocá un campo para sincronizar la medición.</p>
-            </div>
+        {/* Cell B — body figure. Always mounted here. */}
+        <div className="flex flex-col items-stretch justify-start overflow-y-auto bg-slate-50 px-4 py-4">
+          <div className="sticky top-3 flex flex-col items-stretch gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            {!detailRegion ? (
+              <>
+                <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-center">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Mapa corporal interactivo</p>
+                  <p className="mt-1 text-[11px] text-slate-600">Tocá una zona o enfocá un campo para sincronizar la medición.</p>
+                </div>
 
-            <div className="grid grid-cols-3 gap-1.5 text-[10px] font-medium text-slate-600" aria-label="Leyenda de estados de medición">
-              <div className="rounded-md border border-sky-100 bg-sky-50 px-2 py-1.5 text-center text-sky-700">
-                <span className="mx-auto mb-0.5 block size-1.5 rounded-full bg-sky-500" />
-                Activa
-              </div>
-              <div className="rounded-md border border-emerald-100 bg-emerald-50 px-2 py-1.5 text-center text-emerald-700">
-                <span className="mx-auto mb-0.5 block size-1.5 rounded-full bg-emerald-500" />
-                Medida
-              </div>
-              <div className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-center text-slate-500">
-                <span className="mx-auto mb-0.5 block size-1.5 rounded-full bg-slate-300" />
-                Pendiente
-              </div>
-            </div>
+                <div className="grid grid-cols-3 gap-1.5 text-[10px] font-medium text-slate-600" aria-label="Leyenda de estados de medición">
+                  <div className="rounded-md border border-sky-100 bg-sky-50 px-2 py-1.5 text-center text-sky-700">
+                    <span className="mx-auto mb-0.5 block size-1.5 rounded-full bg-sky-500" />
+                    Activa
+                  </div>
+                  <div className="rounded-md border border-emerald-100 bg-emerald-50 px-2 py-1.5 text-center text-emerald-700">
+                    <span className="mx-auto mb-0.5 block size-1.5 rounded-full bg-emerald-500" />
+                    Medida
+                  </div>
+                  <div className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-center text-slate-500">
+                    <span className="mx-auto mb-0.5 block size-1.5 rounded-full bg-slate-300" />
+                    Pendiente
+                  </div>
+                </div>
+              </>
+            ) : null}
 
-            <div className="mx-auto w-full max-w-[360px]">
+            <div className={detailRegion ? "w-full" : "mx-auto w-full max-w-[360px]"}>
               <BodyHighlight
                 view="full"
                 sex={sex}
@@ -353,10 +359,11 @@ export function MeasurementShell({
                 ariaLabel={`Figura humana ${sex === "male" ? "masculina" : "femenina"} con zonas activas`}
                 onZoneClick={handleZoneClick}
                 onDetailChange={handleDetailChange}
+                hideDetailCatalog
               />
             </div>
 
-            {shouldRenderFaceGuide ? (
+            {!detailRegion && shouldRenderFaceGuide ? (
               <div className="mx-auto w-full max-w-[180px]">
                 <FaceGuide sex={sex} />
               </div>
@@ -364,54 +371,34 @@ export function MeasurementShell({
           </div>
         </div>
 
-        {/* Right panel: in body view → left-side limbs. In detail view →
-            mano izquierda (head only fills the left panel, so this stays
-            empty for head and shows the spacer message). */}
-        <div className="flex flex-col border-l border-slate-200 overflow-hidden">
-          {detailRegion && detailStrips ? (
-            <div className="min-h-0 flex-1 overflow-hidden">
-              {detailStrips.left ? (
-                <DetailFieldStrip
-                  title={detailStrips.left.title}
-                  fields={detailStrips.left.fields}
-                  draftByKey={draftByKey}
-                  onDraftChange={handleDraftChange}
-                  tone="left"
-                />
-              ) : (
-                <div className="flex h-full items-center justify-center bg-white p-4 text-center text-xs text-slate-500">
-                  {detailRegion === "hands"
-                    ? "Volvé al cuerpo y elegí la otra mano para medirla."
-                    : "Esta región no tiene mediciones laterales."}
-                </div>
-              )}
-            </div>
-          ) : (
-            <>
-              <div className="min-h-0 flex-1 overflow-hidden border-b border-slate-100">
-                <ZoneStrip
-                  side="left"
-                  limb="arm"
-                  fields={leftArmFields}
-                  valuesByKey={valuesByKey}
-                  activeZoneId={activeZoneId}
-                  onFocus={handleFocus}
-                  onChange={onValueChange}
-                />
-              </div>
-              <div className="min-h-0 flex-1 overflow-hidden">
-                <ZoneStrip
-                  side="left"
-                  limb="leg"
-                  fields={leftLegFields}
-                  valuesByKey={valuesByKey}
-                  activeZoneId={activeZoneId}
-                  onFocus={handleFocus}
-                  onChange={onValueChange}
-                />
-              </div>
-            </>
-          )}
+        {/* Cell C — body: left-side limbs. Hidden in detail (2-zone layout). */}
+        <div
+          className={`flex-col overflow-hidden border-l border-slate-200 ${
+            detailRegion ? "hidden" : "flex"
+          }`}
+        >
+          <div className="min-h-0 flex-1 overflow-hidden border-b border-slate-100">
+            <ZoneStrip
+              side="left"
+              limb="arm"
+              fields={leftArmFields}
+              valuesByKey={valuesByKey}
+              activeZoneId={activeZoneId}
+              onFocus={handleFocus}
+              onChange={onValueChange}
+            />
+          </div>
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <ZoneStrip
+              side="left"
+              limb="leg"
+              fields={leftLegFields}
+              valuesByKey={valuesByKey}
+              activeZoneId={activeZoneId}
+              onFocus={handleFocus}
+              onChange={onValueChange}
+            />
+          </div>
         </div>
       </div>
 

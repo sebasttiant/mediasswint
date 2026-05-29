@@ -20,12 +20,14 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# IDE
+# IDE / AI tooling
 .vscode/
 .idea/
 *.swp
 *.swo
 .atl/
+.pi/
+.windsurf/
 
 # OS
 .DS_Store

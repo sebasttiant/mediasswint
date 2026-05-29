@@ -14,11 +14,13 @@ import {
   executePatientSaveNavigation,
   PATIENT_SEX_OPTIONS,
   patientToFormState,
+  type OperationSummary,
   type PatientDetail,
   type PatientFormState,
   type PatientMeasurementSummary,
   type PatientTimelineItem,
 } from "./patient-detail-helpers";
+import { buildMeasurementsSectionViewModel } from "./patient-detail-view";
 
 function getTimelineBadgeLabel(type: string): string {
   if (type === PATIENT_TIMELINE_EVENT_TYPE.MEASUREMENT_CREATED) return "Medición creada";
@@ -27,17 +29,6 @@ function getTimelineBadgeLabel(type: string): string {
   if (type === PATIENT_TIMELINE_EVENT_TYPE.PATIENT_UPDATED) return "Paciente actualizado";
   return "Evento clínico";
 }
-
-export type OperationSummary = {
-  id: string;
-  status: string;
-  totalAmount: string | null;
-  depositPaid: string;
-  garmentType: string | null;
-  notes: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
 
 type StatusInfo = { label: string; color: string; bg: string };
 
@@ -280,16 +271,13 @@ export default function PatientDetailClient({
     }
   }
 
+  const measurementsViewModel = buildMeasurementsSectionViewModel({
+    recentMeasurements,
+    patientId: initialPatient.id,
+  });
+
   return (
     <div className={styles.page}>
-      <section className={styles.orientationGrid} aria-label="Orientación de ficha del paciente">
-        <div className={styles.orientationCard}>
-          <span>Ruta actual</span>
-          <strong>Dashboard → Pacientes → Ficha</strong>
-          <p>Desde esta ficha podés actualizar datos, iniciar mediciones y avanzar operaciones.</p>
-        </div>
-      </section>
-
       <section className={styles.card}>
         <h2>Datos demográficos</h2>
         {error ? <p className={styles.error}>{error}</p> : null}
@@ -707,52 +695,45 @@ export default function PatientDetailClient({
       <section className={styles.card}>
         <div className={styles.tableHeader}>
           <div>
-            <h2>Medidas</h2>
+            <h2>Mediciones</h2>
             <p className={styles.muted}>Mediciones digitales recientes del paciente</p>
           </div>
           <Link className={styles.primaryButton} href={buildNewMeasurementHref(initialPatient.id)}>
             Nueva medición
           </Link>
         </div>
-        <div className={styles.tableWrap}>
-          <table>
-            <thead>
-              <tr>
-                <th>Fecha</th>
-                <th>Estado</th>
-                <th>Prenda</th>
-                <th>Clase</th>
-                <th>Diagnóstico</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recentMeasurements.length > 0 ? (
-                recentMeasurements.map((measurement) => (
-                  <tr key={measurement.id}>
+        {measurementsViewModel.kind === "empty" ? (
+          <p className={styles.muted}>{measurementsViewModel.message}</p>
+        ) : (
+          <div className={styles.tableWrap}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Estado</th>
+                  <th>Prenda</th>
+                  <th>Clase</th>
+                  <th>Diagnóstico</th>
+                </tr>
+              </thead>
+              <tbody>
+                {measurementsViewModel.rows.map((row) => (
+                  <tr key={row.id}>
                     <td data-label="Fecha">
-                      <Link
-                        className={styles.patientNameLink}
-                        href={buildMeasurementDetailHref(initialPatient.id, measurement.id)}
-                      >
-                        {new Date(measurement.measuredAt).toLocaleString("es-AR")}
+                      <Link className={styles.patientNameLink} href={row.href}>
+                        {new Date(row.measuredAt).toLocaleString("es-AR")}
                       </Link>
                     </td>
-                    <td data-label="Estado">{measurement.status}</td>
-                    <td data-label="Prenda">{measurement.garmentType ?? "—"}</td>
-                    <td data-label="Clase">{measurement.compressionClass ?? "—"}</td>
-                    <td data-label="Diagnóstico">{measurement.diagnosis ?? "—"}</td>
+                    <td data-label="Estado">{row.status}</td>
+                    <td data-label="Prenda">{row.garmentType ?? "—"}</td>
+                    <td data-label="Clase">{row.compressionClass ?? "—"}</td>
+                    <td data-label="Diagnóstico">{row.diagnosis ?? "—"}</td>
                   </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={5} className={styles.muted}>
-                    Todavía no hay mediciones cargadas.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
     </div>
   );
