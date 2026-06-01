@@ -3,34 +3,31 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { ChevronRight, LogOut, Menu, Search, Settings, X } from "lucide-react";
+import { ChevronRight, LogOut, Menu, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { APP_SHELL_NAVIGATION, buildAppShellAriaLabel, findAppShellActiveItem } from "./navigation";
+import type { UserRole } from "@/lib/auth-edge";
+
+import {
+  APP_SHELL_NAVIGATION,
+  buildAppShellAriaLabel,
+  buildAppShellNavGroups,
+  findAppShellActiveItem,
+} from "./navigation";
 import { RecentItems } from "./recent-items";
 import type { RecentItem } from "./use-recent-items";
 
 type SidebarProps = {
   recentItems: RecentItem[];
   onCommandPaletteOpen: () => void;
+  role?: UserRole;
 };
 
-// Presentational grouping of the flat navigation (no data/route changes) so
-// the modules read as distinct blocks instead of one undifferentiated list.
-const NAV_GROUPS = [
-  { label: "Principal", items: APP_SHELL_NAVIGATION.filter((i) => i.key === "dashboard") },
-  {
-    label: "Gestión",
-    items: APP_SHELL_NAVIGATION.filter((i) =>
-      ["patients", "measurements", "operations"].includes(i.key),
-    ),
-  },
-];
-
-export function Sidebar({ onCommandPaletteOpen, recentItems }: SidebarProps) {
+export function Sidebar({ onCommandPaletteOpen, recentItems, role }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const activeItem = findAppShellActiveItem(pathname) ?? APP_SHELL_NAVIGATION[0]!;
+  const navGroups = buildAppShellNavGroups(role);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   // Close mobile drawer on navigation
@@ -74,7 +71,7 @@ export function Sidebar({ onCommandPaletteOpen, recentItems }: SidebarProps) {
 
       {/* Navigation */}
       <nav aria-label="Módulos" className="flex-1 overflow-y-auto px-3 py-4">
-        {NAV_GROUPS.map((group) => (
+        {navGroups.map((group) => (
           <div key={group.label} className="mb-6 last:mb-0">
             <p className="px-3 pb-2 text-[10px] font-black uppercase tracking-widest text-white/45">
               {group.label}
@@ -121,13 +118,6 @@ export function Sidebar({ onCommandPaletteOpen, recentItems }: SidebarProps) {
 
       {/* Footer */}
       <div className="space-y-1 border-t border-white/10 p-3">
-        <Link
-          href="/admin"
-          className="flex min-h-[40px] items-center gap-3 rounded-xl px-3 py-2 text-sm text-slate-300 transition-colors hover:bg-white/5 hover:text-white"
-        >
-          <Settings size={16} className="shrink-0" aria-hidden="true" />
-          <span>Administración</span>
-        </Link>
         <button
           onClick={handleLogout}
           className="flex min-h-[40px] w-full items-center gap-3 rounded-xl px-3 py-2 text-sm font-semibold text-red-400 transition-colors hover:bg-red-500/10 hover:text-red-300"

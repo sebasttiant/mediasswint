@@ -1,7 +1,16 @@
 import type { LucideIcon } from "lucide-react";
-import { Briefcase, Home, Stethoscope, Users } from "lucide-react";
+import { Briefcase, Home, LayoutDashboard, ScrollText, ShieldCheck, Stethoscope, Users } from "lucide-react";
 
-export type AppShellNavKey = "dashboard" | "patients" | "measurements" | "operations";
+import type { UserRole } from "@/lib/auth-edge";
+
+export type AppShellNavKey =
+  | "dashboard"
+  | "patients"
+  | "measurements"
+  | "operations"
+  | "admin"
+  | "admin-users"
+  | "admin-audit";
 
 export type AppShellNavItem = {
   key: AppShellNavKey;
@@ -66,12 +75,81 @@ export const APP_SHELL_NAVIGATION: AppShellNavItem[] = [
   },
 ];
 
+// Admin module navigation. Kept separate from APP_SHELL_NAVIGATION so the core
+// modules stay role-agnostic; surfaced only to ADMIN via buildAppShellNavGroups.
+export const ADMIN_NAVIGATION: AppShellNavItem[] = [
+  {
+    key: "admin",
+    label: "Panel",
+    href: "/admin",
+    description: "Accesos administrativos",
+    dashboardHref: "/",
+    icon: LayoutDashboard,
+  },
+  {
+    key: "admin-users",
+    label: "Usuarios",
+    href: "/admin/users",
+    description: "Gestión de cuentas y roles",
+    dashboardHref: "/",
+    icon: ShieldCheck,
+  },
+  {
+    key: "admin-audit",
+    label: "Auditoría",
+    href: "/admin/audit-log",
+    description: "Historial de acciones administrativas",
+    dashboardHref: "/",
+    icon: ScrollText,
+  },
+];
+
+export type AppShellNavGroup = {
+  label: string;
+  items: AppShellNavItem[];
+};
+
+/**
+ * Build the sidebar groups for a given role. Core modules are always present;
+ * the Administración group is appended only for ADMIN so STAFF never sees the
+ * admin tools in navigation.
+ */
+export function buildAppShellNavGroups(role?: UserRole): AppShellNavGroup[] {
+  const groups: AppShellNavGroup[] = [
+    {
+      label: "Principal",
+      items: APP_SHELL_NAVIGATION.filter((item) => item.key === "dashboard"),
+    },
+    {
+      label: "Gestión",
+      items: APP_SHELL_NAVIGATION.filter((item) =>
+        ["patients", "measurements", "operations"].includes(item.key),
+      ),
+    },
+  ];
+
+  if (role === "ADMIN") {
+    groups.push({ label: "Administración", items: ADMIN_NAVIGATION });
+  }
+
+  return groups;
+}
+
 export function getDashboardNavigationItem(): AppShellNavItem {
   return APP_SHELL_NAVIGATION[0]!;
 }
 
 export function findAppShellActiveItem(pathname: string): AppShellNavItem | null {
   if (pathname === "/") return getDashboardNavigationItem();
+  if (pathname.startsWith("/admin/users")) {
+    return ADMIN_NAVIGATION.find((item) => item.key === "admin-users") ?? null;
+  }
+  if (pathname.startsWith("/admin/audit-log")) {
+    return ADMIN_NAVIGATION.find((item) => item.key === "admin-audit") ?? null;
+  }
+  if (pathname.startsWith("/admin")) {
+    return ADMIN_NAVIGATION.find((item) => item.key === "admin") ?? null;
+  }
   if (pathname.includes("/measurements")) {
     return APP_SHELL_NAVIGATION.find((item) => item.key === "measurements") ?? null;
   }

@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import type { ComponentType, ReactElement } from "react";
 
 import { getSessionCookieName, requireActiveUserFromRequest } from "@/lib/auth";
+import type { UserRole } from "@/lib/auth-edge";
 import { getDefaultMeasurementsRepository, listPatientMeasurements } from "@/lib/measurements";
 import { buildPatientTimeline } from "@/lib/patient-timeline";
 import { getPatient } from "@/lib/patients";
@@ -158,7 +159,7 @@ export async function PatientDetailPage(
   const { default: PatientDetailClientComponent } = await loadClient();
 
   return renderPatientDetailView({
-    user: { fullName: user!.fullName },
+    user: { fullName: user!.fullName, role: user!.role as UserRole },
     patient: decision.data.patient,
     recentMeasurements: decision.data.recentMeasurements,
     timeline: decision.data.timeline,

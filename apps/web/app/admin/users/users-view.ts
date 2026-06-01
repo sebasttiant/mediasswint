@@ -86,6 +86,7 @@ export function renderUsersView({
   // eslint-disable-next-line react/no-children-prop -- AppShellProps.children is required, so createElement needs it in props
   return createElement(AppShell, {
     actions,
+    role: "ADMIN",
     currentPath: "/admin/users",
     description: "Alta, roles y estado de las cuentas.",
     kicker: "MEDIASSWINT · Usuarios",

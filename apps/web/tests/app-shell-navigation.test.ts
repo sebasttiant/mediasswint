@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  ADMIN_NAVIGATION,
   APP_SHELL_NAVIGATION,
   buildAppShellAriaLabel,
+  buildAppShellNavGroups,
   findAppShellActiveItem,
   getDashboardNavigationItem,
 } from "../app/_components/app-shell/navigation";
@@ -52,5 +54,45 @@ describe("app shell navigation", () => {
   it("builds accessible labels that expose active state", () => {
     assert.equal(buildAppShellAriaLabel(APP_SHELL_NAVIGATION[0]!, true), "Dashboard, sección activa");
     assert.equal(buildAppShellAriaLabel(APP_SHELL_NAVIGATION[1]!, false), "Pacientes");
+  });
+});
+
+describe("admin navigation", () => {
+  it("resolves /admin/* to the admin section instead of falling back to dashboard", () => {
+    assert.equal(findAppShellActiveItem("/admin")?.key, "admin");
+    assert.equal(findAppShellActiveItem("/admin/users")?.key, "admin-users");
+    assert.equal(findAppShellActiveItem("/admin/users/new")?.key, "admin-users");
+    assert.equal(findAppShellActiveItem("/admin/audit-log")?.key, "admin-audit");
+  });
+
+  it("exposes Usuarios and Auditoría as admin destinations", () => {
+    const hrefs = ADMIN_NAVIGATION.map((item) => item.href);
+    assert.ok(hrefs.includes("/admin/users"), "must offer /admin/users");
+    assert.ok(hrefs.includes("/admin/audit-log"), "must offer /admin/audit-log");
+  });
+});
+
+describe("buildAppShellNavGroups role gating", () => {
+  it("hides the Administración group for STAFF and anonymous users", () => {
+    for (const role of ["STAFF", undefined] as const) {
+      const labels = buildAppShellNavGroups(role).map((group) => group.label);
+      assert.ok(!labels.includes("Administración"), `role ${role} must NOT see the admin group`);
+    }
+  });
+
+  it("shows the Administración group with Usuarios and Auditoría for ADMIN", () => {
+    const adminGroup = buildAppShellNavGroups("ADMIN").find(
+      (group) => group.label === "Administración",
+    );
+    assert.ok(adminGroup, "ADMIN must see the admin group");
+    const itemLabels = adminGroup!.items.map((item) => item.label);
+    assert.ok(itemLabels.includes("Usuarios"));
+    assert.ok(itemLabels.includes("Auditoría"));
+  });
+
+  it("always includes the core Principal and Gestión groups regardless of role", () => {
+    const labels = buildAppShellNavGroups("STAFF").map((group) => group.label);
+    assert.ok(labels.includes("Principal"));
+    assert.ok(labels.includes("Gestión"));
   });
 });

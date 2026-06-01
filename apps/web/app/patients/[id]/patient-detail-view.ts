@@ -5,6 +5,8 @@ import {
   type ReactNode,
 } from "react";
 
+import type { UserRole } from "@/lib/auth-edge";
+
 import { AppShell } from "../../_components/app-shell/app-shell";
 
 import {
@@ -15,7 +17,7 @@ import {
   type PatientTimelineItem,
 } from "./patient-detail-helpers";
 
-export type PatientDetailViewUser = { fullName: string | null };
+export type PatientDetailViewUser = { fullName: string | null; role?: UserRole };
 
 export type PatientDetailSectionKey =
   | "demographics"
@@ -108,6 +110,7 @@ export function renderPatientDetailView({
   // eslint-disable-next-line react/no-children-prop -- AppShellProps.children is required, so createElement needs it in props
   return createElement(AppShell, {
     actions,
+    role: user.role,
     currentPath: `/patients/${patient.id}`,
     description: buildPatientDetailDescription(),
     kicker: PATIENT_DETAIL_VIEW_KICKER,

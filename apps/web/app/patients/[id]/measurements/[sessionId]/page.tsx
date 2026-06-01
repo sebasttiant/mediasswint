@@ -4,6 +4,7 @@ import type { ComponentType, ReactElement } from "react";
 
 import { LogoutButton } from "@/app/_components/logout-button";
 import { getSessionCookieName, requireActiveUserFromRequest } from "@/lib/auth";
+import type { UserRole } from "@/lib/auth-edge";
 import {
   getDefaultMeasurementsRepository,
   getMeasurement,
@@ -106,7 +107,10 @@ export async function MeasurementDetailPage(
 
   const { default: MeasurementDetailBody } = await loadBody();
 
-  const viewUser: MeasurementDetailViewUser = { fullName: user!.fullName };
+  const viewUser: MeasurementDetailViewUser = {
+    fullName: user!.fullName,
+    role: user!.role as UserRole,
+  };
 
   return renderMeasurementDetailView({
     user: viewUser,
