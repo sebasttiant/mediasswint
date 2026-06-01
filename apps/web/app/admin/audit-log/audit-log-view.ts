@@ -3,6 +3,7 @@ import type { AuditAction } from "@prisma/client";
 import { Calendar, Filter, ScrollText, Search } from "lucide-react";
 
 import type { AuditLogRow, ListAuditFilters } from "@/lib/audit-log";
+import { formatClinicDateTime } from "@/lib/datetime";
 
 import { AppShell } from "../../_components/app-shell/app-shell";
 import { Badge, type BadgeVariant } from "../../_components/ui/badge";
@@ -355,10 +356,7 @@ function buildList(viewModel: AuditListViewModel): ReactElement {
                     "span",
                     { className: "inline-flex items-center gap-2" },
                     createElement(Calendar, { size: 14, className: "text-slate-400", "aria-hidden": true }),
-                    new Intl.DateTimeFormat("es-CO", {
-                      dateStyle: "medium",
-                      timeStyle: "short",
-                    }).format(new Date(row.createdAt)),
+                    formatClinicDateTime(row.createdAt),
                   ),
                 ),
                 createElement("td", { className: "px-5 py-4 font-medium text-slate-800" }, row.actorLabel),

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 
 import { getSessionCookieName, requireActiveUserFromRequest } from "@/lib/auth";
 import { fetchOperationalPendingQueue, type OperationalQueueItem } from "@/lib/operations";
+import { formatClinicDate } from "@/lib/datetime";
 
 import { AppShell } from "../_components/app-shell/app-shell";
 import { StatusBadge } from "../_components/dashboard/status-badge";
@@ -56,7 +57,7 @@ function QueueTable({ emptyMessage, items }: { emptyMessage: string; items: Oper
               <td className="px-4 py-3 font-medium text-slate-700">{formatCurrency(item.totalAmount)}</td>
               <td className="px-4 py-3 text-slate-400">{formatCurrency(item.depositPaid)}</td>
               <td className="px-4 py-3 font-medium text-slate-700">{formatCurrency(item.pendingBalance)}</td>
-              <td className="px-4 py-3 text-slate-400">{item.updatedAt.toLocaleDateString("es-AR")}</td>
+              <td className="px-4 py-3 text-slate-400">{formatClinicDate(item.updatedAt)}</td>
               <td className="px-4 py-3">
                 <Link className="font-semibold text-brand hover:underline" href={item.actionHref}>
                   Abrir paciente

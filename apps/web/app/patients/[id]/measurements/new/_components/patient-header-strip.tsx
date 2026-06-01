@@ -4,6 +4,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, User, Calendar, CheckCircle2, Save } from "lucide-react";
 import Link from "next/link";
 
+import { formatWallClockLong } from "@/lib/datetime";
+
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 
 type PatientHeaderStripProps = {
@@ -50,15 +52,7 @@ export function PatientHeaderStrip({
   measuredAt,
   saveStatus,
 }: PatientHeaderStripProps) {
-  const formattedDate = measuredAt
-    ? new Date(measuredAt).toLocaleDateString("es-AR", {
-        day: "2-digit",
-        month: "long",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : null;
+  const formattedDate = measuredAt ? formatWallClockLong(measuredAt) : null;
 
   return (
     <header className="sticky top-0 z-20 bg-white border-b border-slate-200 shadow-sm">

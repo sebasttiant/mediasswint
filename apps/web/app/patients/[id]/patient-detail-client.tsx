@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { PATIENT_TIMELINE_EVENT_TYPE } from "@/lib/patient-timeline";
+import { formatClinicDate, formatClinicDateTime } from "@/lib/datetime";
 
 import styles from "../page.module.css";
 import {
@@ -376,7 +377,7 @@ export default function PatientDetailClient({
                   <div className={styles.timelineHeader}>
                     <span className={styles.timelineBadge}>{getTimelineBadgeLabel(event.type)}</span>
                     <time dateTime={event.occurredAt} className={styles.muted}>
-                      {new Date(event.occurredAt).toLocaleString("es-AR")}
+                      {formatClinicDateTime(event.occurredAt)}
                     </time>
                   </div>
                   <h3>{event.title}</h3>
@@ -607,7 +608,7 @@ export default function PatientDetailClient({
                           </h3>
                         </div>
                         <time className={styles.operationDate}>
-                          {new Date(op.createdAt).toLocaleDateString("es-AR")}
+                          {formatClinicDate(op.createdAt)}
                         </time>
                       </div>
                       <div className={styles.operationCardBody}>
@@ -721,7 +722,7 @@ export default function PatientDetailClient({
                   <tr key={row.id}>
                     <td data-label="Fecha">
                       <Link className={styles.patientNameLink} href={row.href}>
-                        {new Date(row.measuredAt).toLocaleString("es-AR")}
+                        {formatClinicDateTime(row.measuredAt)}
                       </Link>
                     </td>
                     <td data-label="Estado">{row.status}</td>
