@@ -3,7 +3,7 @@ import type { Prisma } from "@prisma/client";
 import type { AuditAction } from "@prisma/client";
 
 import { listAuditLog, type ListAuditFilters } from "@/lib/audit-log";
-import type { AuditLogRow } from "@/lib/audit-log";
+import type { AuditLogPage } from "@/lib/audit-log";
 import { withAdminAuth } from "@/lib/with-auth";
 import type { AuthUser } from "@/lib/auth";
 
@@ -33,7 +33,7 @@ function isAuditAction(value: unknown): value is AuditAction {
 }
 
 export type AuditLogRouteDeps = {
-  list(filters: ListAuditFilters): Promise<AuditLogRow[]>;
+  list(filters: ListAuditFilters): Promise<AuditLogPage>;
 };
 
 const defaultDeps: AuditLogRouteDeps = {
@@ -97,6 +97,8 @@ export async function handleGetAuditLogRequest(
   const userId = searchParams.get("userId") ?? undefined;
 
   try {
+    const skip = (page - 1) * limit;
+
     const filters: ListAuditFilters = {
       entityType: entityType as ListAuditFilters["entityType"],
       entityId,
@@ -105,15 +107,15 @@ export async function handleGetAuditLogRequest(
       from,
       to,
       limit,
+      skip,
     };
 
-    const rows = await deps.list(filters);
-    const skip = (page - 1) * limit;
+    const { rows, total } = await deps.list(filters);
 
     const auditLogs: AuditLogWithUser[] = rows.map((row) => ({
       id: row.id,
       userId: row.userId,
-      user: null,
+      user: row.user ?? null,
       action: row.action,
       entityType: row.entityType,
       entityId: row.entityId,
@@ -123,10 +125,10 @@ export async function handleGetAuditLogRequest(
 
     const response: GetAuditLogsResponse = {
       auditLogs,
-      total: rows.length,
+      total,
       page,
       limit,
-      hasMore: skip + limit < rows.length,
+      hasMore: skip + rows.length < total,
     };
 
     return NextResponse.json(response);
