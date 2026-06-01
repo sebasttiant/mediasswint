@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
-import type { Prisma } from '@prisma/client';
+import type { Prisma } from "@prisma/client";
+import type { AuditAction } from "@prisma/client";
 
-import { getPrisma } from "@/lib/prisma";
+import { listAuditLog, type ListAuditFilters } from "@/lib/audit-log";
+import type { AuditLogPage } from "@/lib/audit-log";
 import { withAdminAuth } from "@/lib/with-auth";
+import type { AuthUser } from "@/lib/auth";
 
 export type AuditLogWithUser = {
   id: string;
@@ -23,102 +26,118 @@ export type GetAuditLogsResponse = {
   hasMore: boolean;
 };
 
-async function handleGetAuditLogsRequest(
+const AUDIT_ACTIONS = ["CREATE", "UPDATE", "DELETE"] as const;
+
+function isAuditAction(value: unknown): value is AuditAction {
+  return typeof value === "string" && (AUDIT_ACTIONS as readonly string[]).includes(value);
+}
+
+export type AuditLogRouteDeps = {
+  list(filters: ListAuditFilters): Promise<AuditLogPage>;
+};
+
+const defaultDeps: AuditLogRouteDeps = {
+  list: listAuditLog,
+};
+
+export async function handleGetAuditLogRequest(
   request: Request,
-  user: { id: string; email: string; fullName: string | null }
+  _user: AuthUser,
+  deps: AuditLogRouteDeps = defaultDeps,
 ): Promise<Response> {
-  // User is available for auditing who accessed the audit logs (if needed in future)
-  // For now we ensure the parameter is used to avoid lint warnings
-  if (!user.email) {
-    // This is a guard clause - admin users should always have email
-    return NextResponse.json(
-      { error: "FORBIDDEN" },
-      { status: 403 }
-    );
-  }
   const { searchParams } = new URL(request.url);
-  
-  // Parse query parameters
+
+  const errors: Array<{ field: string; message: string }> = [];
+
+  // Parse page / limit
   const page = Math.max(1, Number(searchParams.get("page") ?? "1"));
   const limit = Math.min(100, Math.max(1, Number(searchParams.get("limit") ?? "20")));
+
+  // Parse from
+  let from: Date | undefined;
+  const rawFrom = searchParams.get("from");
+  if (rawFrom !== null) {
+    const parsed = new Date(rawFrom);
+    if (Number.isNaN(parsed.getTime())) {
+      errors.push({ field: "from", message: "must be a valid ISO 8601 date string" });
+    } else {
+      from = parsed;
+    }
+  }
+
+  // Parse to
+  let to: Date | undefined;
+  const rawTo = searchParams.get("to");
+  if (rawTo !== null) {
+    const parsed = new Date(rawTo);
+    if (Number.isNaN(parsed.getTime())) {
+      errors.push({ field: "to", message: "must be a valid ISO 8601 date string" });
+    } else {
+      to = parsed;
+    }
+  }
+
+  // Parse action — guarded (spec: invalid → 400)
+  let action: AuditAction | undefined;
+  const rawAction = searchParams.get("action");
+  if (rawAction !== null) {
+    if (isAuditAction(rawAction)) {
+      action = rawAction;
+    } else {
+      errors.push({ field: "action", message: `must be one of ${AUDIT_ACTIONS.join(", ")}` });
+    }
+  }
+
+  if (errors.length > 0) {
+    return NextResponse.json({ errors }, { status: 400 });
+  }
+
   const entityType = searchParams.get("entityType") ?? undefined;
   const entityId = searchParams.get("entityId") ?? undefined;
   const userId = searchParams.get("userId") ?? undefined;
-  const action = searchParams.get("action") as "CREATE" | "UPDATE" | "DELETE" | undefined;
-  
-  const skip = (page - 1) * limit;
-  
-  const prisma = getPrisma();
-  
-  // Build where clause
-  const where: Prisma.AuditLogWhereInput = {};
-  
-  if (entityType) where.entityType = entityType;
-  if (entityId) where.entityId = entityId;
-  if (userId) where.userId = userId;
-  if (action) where.action = action;
-  
+
   try {
-    // Get total count
-    const total = await prisma.auditLog.count({ where });
-    
-    // Get paginated results
-    const auditLogs = await prisma.auditLog.findMany({
-      where,
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            fullName: true,
-          }
-        }
-      },
-      orderBy: {
-        createdAt: "desc"
-      },
+    const skip = (page - 1) * limit;
+
+    const filters: ListAuditFilters = {
+      entityType: entityType as ListAuditFilters["entityType"],
+      entityId,
+      userId,
+      action,
+      from,
+      to,
+      limit,
       skip,
-      take: limit,
-    });
-    
-    // Transform to response format
-    const formattedLogs: AuditLogWithUser[] = auditLogs.map(log => ({
-      id: log.id,
-      userId: log.userId,
-      user: log.user ? {
-        id: log.user.id,
-        email: log.user.email,
-        fullName: log.user.fullName
-      } : null,
-      action: log.action,
-      entityType: log.entityType,
-      entityId: log.entityId,
-      diff: log.diff,
-      createdAt: log.createdAt
+    };
+
+    const { rows, total } = await deps.list(filters);
+
+    const auditLogs: AuditLogWithUser[] = rows.map((row) => ({
+      id: row.id,
+      userId: row.userId,
+      user: row.user ?? null,
+      action: row.action,
+      entityType: row.entityType,
+      entityId: row.entityId,
+      diff: row.diff as Prisma.JsonValue,
+      createdAt: row.createdAt,
     }));
-    
+
     const response: GetAuditLogsResponse = {
-      auditLogs: formattedLogs,
+      auditLogs,
       total,
       page,
       limit,
-      hasMore: skip + limit < total
+      hasMore: skip + rows.length < total,
     };
-    
+
     return NextResponse.json(response);
   } catch (error) {
     console.error("[audit-log:get]", error);
-    return NextResponse.json(
-      { error: "INTERNAL_ERROR" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "INTERNAL_ERROR" }, { status: 500 });
   }
 }
 
-export const GET = withAdminAuth(async (request, _ctx, { user }) => {
-  return handleGetAuditLogsRequest(request, {
-    id: user.id,
-    email: user.email,
-    fullName: user.fullName
-  });
-});
+export const GET = withAdminAuth(async (request, _ctx, { user }) =>
+  handleGetAuditLogRequest(request, user),
+);

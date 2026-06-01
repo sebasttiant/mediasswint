@@ -3,7 +3,7 @@ import { Prisma, type AuditAction } from "@prisma/client";
 import { getAuditUserId } from "@/lib/audit-context";
 import { getPrisma } from "@/lib/prisma";
 
-export type AuditEntityType = "Patient" | "MeasurementSession" | "CommercialOperation";
+export type AuditEntityType = "Patient" | "MeasurementSession" | "CommercialOperation" | "User";
 
 export type AuditDiff = {
   before?: Record<string, unknown> | null;
@@ -20,6 +20,7 @@ export type AuditEntry = {
 export type AuditLogRow = {
   id: string;
   userId: string | null;
+  user: { id: string; email: string; fullName: string | null } | null;
   action: AuditAction;
   entityType: string;
   entityId: string;
@@ -35,11 +36,17 @@ export type ListAuditFilters = {
   from?: Date;
   to?: Date;
   limit: number;
+  skip?: number;
+};
+
+export type AuditLogPage = {
+  rows: AuditLogRow[];
+  total: number;
 };
 
 export type AuditRepository = {
   record(entry: AuditEntry & { userId: string | null }): Promise<void>;
-  list(filters: ListAuditFilters): Promise<AuditLogRow[]>;
+  list(filters: ListAuditFilters): Promise<AuditLogPage>;
 };
 
 /**
@@ -86,21 +93,33 @@ const defaultRepository: AuditRepository = {
       if (filters.to) where.createdAt.lte = filters.to;
     }
 
-    const rows = await prisma.auditLog.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      take: filters.limit,
-    });
+    const [total, rawRows] = await Promise.all([
+      prisma.auditLog.count({ where }),
+      prisma.auditLog.findMany({
+        where,
+        include: {
+          user: {
+            select: { id: true, email: true, fullName: true },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        skip: filters.skip ?? 0,
+        take: filters.limit,
+      }),
+    ]);
 
-    return rows.map((row) => ({
+    const rows: AuditLogRow[] = rawRows.map((row) => ({
       id: row.id,
       userId: row.userId,
+      user: row.user ?? null,
       action: row.action,
       entityType: row.entityType,
       entityId: row.entityId,
       diff: (row.diff as AuditDiff) ?? {},
       createdAt: row.createdAt,
     }));
+
+    return { rows, total };
   },
 };
 
@@ -128,6 +147,6 @@ export async function recordAudit(
 export async function listAuditLog(
   filters: ListAuditFilters,
   repository: AuditRepository = defaultRepository,
-): Promise<AuditLogRow[]> {
+): Promise<AuditLogPage> {
   return repository.list(filters);
 }
