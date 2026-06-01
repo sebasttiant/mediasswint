@@ -4,7 +4,7 @@ import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { User } from "lucide-react";
 
-import { BODY_FIGURE_SEX, type BodyFigureSex } from "@/app/_components/body-highlight/body-highlight";
+import { normalizePatientSex, resolveBodyFigureSex } from "@/lib/body-figure-sex";
 import type { TemplateSnapshot } from "@/lib/measurements";
 import { toClinicDatetimeLocal } from "@/lib/datetime";
 
@@ -39,12 +39,9 @@ type NewMeasurementClientProps = {
     compressionClass: string | null;
     diagnosis: string | null;
     notes: string | null;
+    patientSex?: string | null;
   };
 };
-
-function toBodyFigureSex(patientSex: string | null): BodyFigureSex {
-  return patientSex === "MALE" ? BODY_FIGURE_SEX.MALE : BODY_FIGURE_SEX.FEMALE;
-}
 
 function toDatetimeLocalValue(date: Date): string {
   // Clinic-timezone, deterministic across server/client (no getTimezoneOffset).
@@ -98,7 +95,8 @@ export default function NewMeasurementClient({ patientId, patientName, patientSe
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [error, setError] = useState<string | null>(null);
 
-  const bodyFigureSex = toBodyFigureSex(patientSex);
+  const patientSexSnapshot = initialDraft?.patientSex ?? patientSex;
+  const bodyFigureSex = resolveBodyFigureSex(patientSexSnapshot);
 
   const filledCount = draft
     ? getFilledZoneIdsFromValues(draft.templateSnapshot, draft.valuesByKey).size
@@ -122,6 +120,7 @@ export default function NewMeasurementClient({ patientId, patientName, patientSe
           diagnosis,
           notes,
           productFlags: null,
+          patientSex: normalizePatientSex(patientSex),
         }),
       });
 

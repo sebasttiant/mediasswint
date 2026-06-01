@@ -24,20 +24,24 @@
 
 .handSplit {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 14px;
   align-items: start;
+  min-width: 0;
 }
 
 .handCrop {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .handCropSvg {
   width: 100%;
   height: auto;
+  max-height: min(52dvh, 520px);
   display: block;
   background: #ffffff;
   border: 1px solid rgba(148, 163, 184, 0.35);

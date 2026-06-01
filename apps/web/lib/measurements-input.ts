@@ -2,6 +2,7 @@ import {
   COMPRESSION_MEASUREMENTS,
   type CompressionMeasurementKey,
 } from "./compression-measurements";
+import { normalizePatientSex, type PatientSex } from "./body-figure-sex";
 
 type ValidationError = {
   field: string;
@@ -19,6 +20,7 @@ export type CreateMeasurementInput = {
   compressionClass: string | null;
   diagnosis: string | null;
   productFlags: ProductFlags | null;
+  patientSex: PatientSex | null;
 };
 
 export type UpdateMeasurementValuesInput = {
@@ -153,6 +155,7 @@ export function parseCreateMeasurementInput(body: unknown): ValidationResult<Cre
   const compressionClass = parseNullableText(source.compressionClass, "compressionClass", MAX_SHORT_TEXT_LENGTH, errors);
   const diagnosis = parseNullableText(source.diagnosis, "diagnosis", MAX_DIAGNOSIS_LENGTH, errors);
   const productFlags = parseProductFlags(source.productFlags, errors);
+  const patientSex = normalizePatientSex(typeof source.patientSex === "string" ? source.patientSex : null);
 
   if (errors.length > 0 || !measuredAt) {
     return { ok: false, errors };
@@ -167,6 +170,7 @@ export function parseCreateMeasurementInput(body: unknown): ValidationResult<Cre
       compressionClass,
       diagnosis,
       productFlags,
+      patientSex,
     },
   };
 }

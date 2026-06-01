@@ -65,7 +65,7 @@ export async function handlePostMeasurementRequest(
       garmentType: parsed.value.garmentType,
       compressionClass: parsed.value.compressionClass,
       productFlags: parsed.value.productFlags,
-      metadata: null,
+      metadata: parsed.value.patientSex ? { patientSex: parsed.value.patientSex } : null,
     },
     deps.repository,
   );
