@@ -1,11 +1,9 @@
 import { createElement, type ReactElement } from "react";
-import { UserPlus } from "lucide-react";
 
 import type { SafeUser } from "@/lib/users";
 
 import { AppShell } from "../../_components/app-shell/app-shell";
 import type { BadgeVariant } from "../../_components/ui/badge";
-import { Button } from "../../_components/ui/button";
 
 import { UsersClient } from "./users-client";
 
@@ -71,17 +69,6 @@ export function renderUsersView({
     kicker: "MEDIASSWINT · Usuarios",
     title: "Usuarios",
     userLabel: user.fullName ? `Bienvenido, ${user.fullName}` : "Bienvenido",
-    // eslint-disable-next-line react/no-children-prop -- createElement needs children in props for the Button overload
-    actions: createElement(Button, {
-      href: "/admin/users/new",
-      variant: "primary",
-      children: createElement(
-        "span",
-        { className: "inline-flex items-center gap-2" },
-        createElement(UserPlus, { size: 16, "aria-hidden": true }),
-        "Nuevo usuario",
-      ),
-    }),
     children: createElement(UsersClient, {
       viewModel: buildUsersListViewModel(users),
       total: users.length,

@@ -135,7 +135,7 @@ export function buildPendingWork(
     kind: PENDING_WORK_KIND.MEASUREMENT,
     title: `Continuar medición: ${measurement.patientName ?? "Paciente sin nombre"}`,
     description: `${measurement.garmentType ?? "Medición"}${measurement.compressionClass ? ` · ${measurement.compressionClass}` : ""}.`,
-    href: measurement.patientId ? `/patients/${measurement.patientId}/measurements/${measurement.id}` : "/patients",
+    href: measurement.patientId ? `/patients/${measurement.patientId}/measurements/${measurement.id}/edit` : "/patients",
     actionLabel: measurement.patientId ? "Continuar medición" : "Buscar paciente",
     createdAt: measurement.measuredAt,
   }));

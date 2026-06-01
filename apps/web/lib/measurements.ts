@@ -47,6 +47,13 @@ export type CreateMeasurementInput = {
 
 export type UpdateMeasurementValuesInput = {
   valuesByKey: Record<string, number | null>;
+  measuredAt?: Date;
+  notes?: string | null;
+  diagnosis?: string | null;
+  garmentType?: string | null;
+  compressionClass?: string | null;
+  productFlags?: Record<string, boolean> | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 export type MeasurementSessionDetail = {
@@ -111,6 +118,17 @@ export type ReplaceValuesRepositoryInput = {
   values: ReadonlyArray<{ fieldId: string; valueNumber: number | null }>;
 };
 
+export type UpdateContextRepositoryInput = {
+  sessionId: string;
+  measuredAt?: Date;
+  notes?: string | null;
+  diagnosis?: string | null;
+  garmentType?: string | null;
+  compressionClass?: string | null;
+  productFlags?: Record<string, boolean> | null;
+  metadata?: Record<string, unknown> | null;
+};
+
 export type MarkCompletedResult =
   | { status: "COMPLETED" }
   | { status: "NOT_FOUND" }
@@ -123,8 +141,22 @@ export type MeasurementsRepository = {
   getDetail(id: string): Promise<MeasurementSessionDetail | null>;
   listByPatient(patientId: string, limit: number): Promise<MeasurementSessionSummary[]>;
   replaceValues(input: ReplaceValuesRepositoryInput): Promise<{ ok: boolean; status: MeasurementSessionStatus | null }>;
+  updateContext(input: UpdateContextRepositoryInput): Promise<{ ok: boolean; status: MeasurementSessionStatus | null }>;
   markCompleted(id: string): Promise<MarkCompletedResult>;
+  reopenToDraft(id: string): Promise<{ ok: boolean; status: MeasurementSessionStatus | null }>;
 };
+
+function hasContextChanges(input: UpdateMeasurementValuesInput): boolean {
+  return (
+    input.measuredAt !== undefined ||
+    input.notes !== undefined ||
+    input.diagnosis !== undefined ||
+    input.garmentType !== undefined ||
+    input.compressionClass !== undefined ||
+    input.productFlags !== undefined ||
+    input.metadata !== undefined
+  );
+}
 
 function indexFieldsByKey(snapshot: TemplateSnapshot): Map<string, TemplateSnapshotField> {
   const map = new Map<string, TemplateSnapshotField>();
@@ -214,6 +246,24 @@ export async function updateMeasurementValues(
       beforeValues[key] = value;
     }
 
+    if (hasContextChanges(input)) {
+      const contextResult = await repository.updateContext({
+        sessionId,
+        measuredAt: input.measuredAt,
+        notes: input.notes,
+        diagnosis: input.diagnosis,
+        garmentType: input.garmentType,
+        compressionClass: input.compressionClass,
+        productFlags: input.productFlags,
+        metadata: input.metadata,
+      });
+      if (!contextResult.ok) {
+        if (contextResult.status === null) return { ok: false, error: "NOT_FOUND" };
+        if (contextResult.status !== "DRAFT") return { ok: false, error: "INVALID_STATE" };
+        return { ok: false, error: "UNKNOWN" };
+      }
+    }
+
     const result = await repository.replaceValues({ sessionId, values: resolved });
     if (!result.ok) {
       if (result.status === null) return { ok: false, error: "NOT_FOUND" };
@@ -241,16 +291,20 @@ export async function updateMeasurementValues(
           diagnosis: detail.diagnosis,
           garmentType: detail.garmentType,
           compressionClass: detail.compressionClass,
+          productFlags: detail.productFlags,
+          metadata: detail.metadata,
         }),
         after: toAuditPayload({
           id: sessionId,
           valuesByKey: afterValues,
           status: detail.status, // status doesn't change in this operation
-          measuredAt: detail.measuredAt,
-          notes: detail.notes,
-          diagnosis: detail.diagnosis,
-          garmentType: detail.garmentType,
-          compressionClass: detail.compressionClass,
+          measuredAt: input.measuredAt ?? detail.measuredAt,
+          notes: input.notes !== undefined ? input.notes : detail.notes,
+          diagnosis: input.diagnosis !== undefined ? input.diagnosis : detail.diagnosis,
+          garmentType: input.garmentType !== undefined ? input.garmentType : detail.garmentType,
+          compressionClass: input.compressionClass !== undefined ? input.compressionClass : detail.compressionClass,
+          productFlags: input.productFlags !== undefined ? input.productFlags : detail.productFlags,
+          metadata: input.metadata !== undefined ? input.metadata : detail.metadata,
         })
       },
     });
@@ -258,6 +312,93 @@ export async function updateMeasurementValues(
     return { ok: true, value: { updated: resolved.length } };
   } catch (error) {
     console.error("[measurements:updateValues]", error);
+    return { ok: false, error: "UNKNOWN" };
+  }
+}
+
+export async function duplicateCompletedMeasurement(
+  sessionId: string,
+  repository: MeasurementsRepository,
+): Promise<ServiceResult<{ id: string }>> {
+  try {
+    const detail = await repository.getDetail(sessionId);
+    if (!detail) return { ok: false, error: "NOT_FOUND" };
+    if (detail.status !== "COMPLETED") return { ok: false, error: "INVALID_STATE" };
+    if (!detail.templateId || !detail.templateSnapshot) return { ok: false, error: "TEMPLATE_NOT_FOUND" };
+
+    const created = await repository.createDraft({
+      patientId: detail.patientId,
+      templateId: detail.templateId,
+      measuredAt: detail.measuredAt,
+      notes: detail.notes,
+      diagnosis: detail.diagnosis,
+      garmentType: detail.garmentType,
+      compressionClass: detail.compressionClass,
+      productFlags: detail.productFlags,
+      metadata: detail.metadata,
+      templateSnapshot: detail.templateSnapshot,
+    });
+
+    const fieldsByKey = indexFieldsByKey(detail.templateSnapshot);
+    const values: Array<{ fieldId: string; valueNumber: number | null }> = [];
+    for (const [key, valueNumber] of Object.entries(detail.values)) {
+      const field = fieldsByKey.get(key);
+      if (field) values.push({ fieldId: field.id, valueNumber });
+    }
+
+    const copied = await repository.replaceValues({ sessionId: created.id, values });
+    if (!copied.ok) return { ok: false, error: "UNKNOWN" };
+
+    await recordAudit({
+      action: "CREATE",
+      entityType: "MeasurementSession",
+      entityId: created.id,
+      diff: { after: toAuditPayload({ id: created.id, copiedFrom: sessionId, status: "DRAFT" }) },
+    });
+
+    return { ok: true, value: { id: created.id } };
+  } catch (error) {
+    console.error("[measurements:duplicate]", error);
+    return { ok: false, error: "UNKNOWN" };
+  }
+}
+
+/**
+ * Admin-only correction path: reopen a COMPLETED session back to DRAFT so the
+ * existing edit/finalize pipeline can fix a data-entry mistake. The completed
+ * state is immutable by design, so this transition is explicit and audited
+ * rather than mutating a COMPLETED record in place. VOID stays protected; a
+ * session already in DRAFT is returned as-is (idempotent).
+ */
+export async function reopenMeasurementForCorrection(
+  sessionId: string,
+  repository: MeasurementsRepository,
+): Promise<ServiceResult<{ id: string; status: "DRAFT" }>> {
+  try {
+    const detail = await repository.getDetail(sessionId);
+    if (!detail) return { ok: false, error: "NOT_FOUND" };
+    if (detail.status === "DRAFT") return { ok: true, value: { id: sessionId, status: "DRAFT" } };
+    if (detail.status !== "COMPLETED") return { ok: false, error: "INVALID_STATE" };
+
+    const result = await repository.reopenToDraft(sessionId);
+    if (!result.ok) {
+      if (result.status === null) return { ok: false, error: "NOT_FOUND" };
+      return { ok: false, error: "INVALID_STATE" };
+    }
+
+    await recordAudit({
+      action: "UPDATE",
+      entityType: "MeasurementSession",
+      entityId: sessionId,
+      diff: {
+        before: toAuditPayload({ id: sessionId, status: "COMPLETED" }),
+        after: toAuditPayload({ id: sessionId, status: "DRAFT", reopenedForCorrection: true }),
+      },
+    });
+
+    return { ok: true, value: { id: sessionId, status: "DRAFT" } };
+  } catch (error) {
+    console.error("[measurements:reopen]", error);
     return { ok: false, error: "UNKNOWN" };
   }
 }
@@ -520,6 +661,33 @@ const defaultRepository: MeasurementsRepository = {
     });
   },
 
+  async updateContext(input) {
+    const prisma = getPrisma();
+    const data: Prisma.MeasurementSessionUpdateInput = {};
+    if (input.measuredAt !== undefined) data.measuredAt = input.measuredAt;
+    if (input.notes !== undefined) data.notes = input.notes;
+    if (input.diagnosis !== undefined) data.diagnosis = input.diagnosis;
+    if (input.garmentType !== undefined) data.garmentType = input.garmentType;
+    if (input.compressionClass !== undefined) data.compressionClass = input.compressionClass;
+    if (input.productFlags !== undefined) data.productFlags = input.productFlags as Prisma.InputJsonValue;
+    if (input.metadata !== undefined) data.metadata = input.metadata as Prisma.InputJsonValue;
+
+    return prisma.$transaction(async (tx) => {
+      const session = await tx.measurementSession.findUnique({
+        where: { id: input.sessionId },
+        select: { status: true },
+      });
+      if (!session) return { ok: false, status: null };
+      if (session.status !== "DRAFT") return { ok: false, status: session.status };
+
+      await tx.measurementSession.update({
+        where: { id: input.sessionId },
+        data,
+      });
+      return { ok: true, status: "DRAFT" };
+    });
+  },
+
   async markCompleted(id) {
     const prisma = getPrisma();
     return prisma.$transaction(async (tx) => {
@@ -535,6 +703,26 @@ const defaultRepository: MeasurementsRepository = {
         data: { status: "COMPLETED" },
       });
       return { status: "COMPLETED" } as const;
+    });
+  },
+
+  async reopenToDraft(id) {
+    const prisma = getPrisma();
+    return prisma.$transaction(async (tx) => {
+      const session = await tx.measurementSession.findUnique({
+        where: { id },
+        select: { status: true },
+      });
+      if (!session) return { ok: false, status: null };
+      // Only a COMPLETED session can be reopened; DRAFT needs no change and VOID
+      // must never become editable.
+      if (session.status !== "COMPLETED") return { ok: false, status: session.status };
+
+      await tx.measurementSession.update({
+        where: { id },
+        data: { status: "DRAFT" },
+      });
+      return { ok: true, status: "DRAFT" };
     });
   },
 };

@@ -9,7 +9,9 @@ import {
 } from "../app/api/patients/[id]/measurements/route";
 import {
   handleGetMeasurementRequest,
+  handleDuplicateMeasurementRequest,
   handlePatchMeasurementRequest,
+  handleReopenMeasurementRequest,
   type MeasurementSessionDeps,
 } from "../app/api/patients/[id]/measurements/[sessionId]/route";
 import {
@@ -138,12 +140,35 @@ function buildInMemoryRepository(options: {
       sessions.set(input.sessionId, { ...session, values: next });
       return { ok: true, status: "DRAFT" };
     },
+    async updateContext(input) {
+      const session = sessions.get(input.sessionId);
+      if (!session) return { ok: false, status: null };
+      if (session.status !== "DRAFT") return { ok: false, status: session.status };
+      sessions.set(input.sessionId, {
+        ...session,
+        measuredAt: input.measuredAt ?? session.measuredAt,
+        notes: input.notes !== undefined ? input.notes : session.notes,
+        diagnosis: input.diagnosis !== undefined ? input.diagnosis : session.diagnosis,
+        garmentType: input.garmentType !== undefined ? input.garmentType : session.garmentType,
+        compressionClass: input.compressionClass !== undefined ? input.compressionClass : session.compressionClass,
+        productFlags: input.productFlags !== undefined ? input.productFlags : session.productFlags,
+        metadata: input.metadata !== undefined ? input.metadata : session.metadata,
+      });
+      return { ok: true, status: "DRAFT" };
+    },
     async markCompleted(id) {
       const session = sessions.get(id);
       if (!session) return { status: "NOT_FOUND" };
       if (session.status !== "DRAFT") return { status: "INVALID_STATE" };
       sessions.set(id, { ...session, status: "COMPLETED" as MeasurementSessionStatus });
       return { status: "COMPLETED" };
+    },
+    async reopenToDraft(id) {
+      const session = sessions.get(id);
+      if (!session) return { ok: false, status: null };
+      if (session.status !== "COMPLETED") return { ok: false, status: session.status };
+      sessions.set(id, { ...session, status: "DRAFT" as MeasurementSessionStatus });
+      return { ok: true, status: "DRAFT" };
     },
   };
 
@@ -404,6 +429,40 @@ describe("PATCH /api/patients/[id]/measurements/[sessionId]", () => {
     assert.equal(json.values.legRight1, 24.5);
   });
 
+  it("updates DRAFT context fields when provided", async () => {
+    const repo = buildInMemoryRepository();
+    const created = await repo.repository.createDraft({
+      patientId: "pat-1",
+      templateId: "tpl-1",
+      measuredAt: new Date("2026-04-29T10:00:00Z"),
+      notes: "old",
+      diagnosis: null,
+      garmentType: null,
+      compressionClass: null,
+      productFlags: null,
+      metadata: null,
+      templateSnapshot: buildSnapshot(),
+    });
+    const deps = sessionDeps({ repository: repo.repository });
+    const response = await handlePatchMeasurementRequest(
+      patchRequest(`/api/patients/pat-1/measurements/${created.id}`, {
+        valuesByKey: { legRight1: 24.5 },
+        measuredAt: "2026-05-01T10:00:00Z",
+        garmentType: "Media larga",
+        notes: null,
+      }),
+      { params: Promise.resolve({ id: "pat-1", sessionId: created.id }) },
+      staffUser,
+      deps,
+    );
+
+    assert.equal(response.status, 200);
+    const stored = repo.sessions.get(created.id);
+    assert.equal(stored?.measuredAt.toISOString(), "2026-05-01T10:00:00.000Z");
+    assert.equal(stored?.garmentType, "Media larga");
+    assert.equal(stored?.notes, null);
+  });
+
   it("upserts and completes when complete=true", async () => {
     const repo = buildInMemoryRepository();
     const created = await repo.repository.createDraft({
@@ -485,5 +544,141 @@ describe("PATCH /api/patients/[id]/measurements/[sessionId]", () => {
       deps,
     );
     assert.equal(response.status, 400);
+  });
+});
+
+describe("POST /api/patients/[id]/measurements/[sessionId]/duplicate", () => {
+  it("duplicates a completed measurement and returns the edit href", async () => {
+    const repo = buildInMemoryRepository();
+    const created = await repo.repository.createDraft({
+      patientId: "pat-1",
+      templateId: "tpl-1",
+      measuredAt: new Date("2026-04-29T10:00:00Z"),
+      notes: null,
+      diagnosis: null,
+      garmentType: "Media corta",
+      compressionClass: "II",
+      productFlags: null,
+      metadata: null,
+      templateSnapshot: buildSnapshot(),
+    });
+    await repo.repository.replaceValues({
+      sessionId: created.id,
+      values: [{ fieldId: "fld-1", valueNumber: 24.5 }],
+    });
+    await repo.repository.markCompleted(created.id);
+
+    const response = await handleDuplicateMeasurementRequest(
+      new Request(`http://localhost/api/patients/pat-1/measurements/${created.id}/duplicate`, { method: "POST" }),
+      { params: Promise.resolve({ id: "pat-1", sessionId: created.id }) },
+      staffUser,
+      sessionDeps({ repository: repo.repository }),
+    );
+
+    assert.equal(response.status, 201);
+    const json = (await response.json()) as { id: string; editHref: string };
+    assert.equal(json.editHref, `/patients/pat-1/measurements/${json.id}/edit`);
+    assert.equal(repo.sessions.get(json.id)?.status, "DRAFT");
+    assert.equal(repo.sessions.get(json.id)?.values.legRight1, 24.5);
+  });
+
+  it("rejects draft measurements", async () => {
+    const repo = buildInMemoryRepository();
+    const created = await repo.repository.createDraft({
+      patientId: "pat-1",
+      templateId: "tpl-1",
+      measuredAt: new Date("2026-04-29T10:00:00Z"),
+      notes: null,
+      diagnosis: null,
+      garmentType: null,
+      compressionClass: null,
+      productFlags: null,
+      metadata: null,
+      templateSnapshot: buildSnapshot(),
+    });
+
+    const response = await handleDuplicateMeasurementRequest(
+      new Request(`http://localhost/api/patients/pat-1/measurements/${created.id}/duplicate`, { method: "POST" }),
+      { params: Promise.resolve({ id: "pat-1", sessionId: created.id }) },
+      staffUser,
+      sessionDeps({ repository: repo.repository }),
+    );
+
+    assert.equal(response.status, 409);
+  });
+});
+
+describe("POST /api/patients/[id]/measurements/[sessionId]/reopen", () => {
+  async function completedSession() {
+    const repo = buildInMemoryRepository();
+    const created = await repo.repository.createDraft({
+      patientId: "pat-1",
+      templateId: "tpl-1",
+      measuredAt: new Date("2026-04-29T10:00:00Z"),
+      notes: null,
+      diagnosis: null,
+      garmentType: "Media corta",
+      compressionClass: "II",
+      productFlags: null,
+      metadata: null,
+      templateSnapshot: buildSnapshot(),
+    });
+    await repo.repository.replaceValues({
+      sessionId: created.id,
+      values: [{ fieldId: "fld-1", valueNumber: 24.5 }],
+    });
+    await repo.repository.markCompleted(created.id);
+    return { repo, id: created.id };
+  }
+
+  function reopenRequest(id: string) {
+    return new Request(`http://localhost/api/patients/pat-1/measurements/${id}/reopen`, { method: "POST" });
+  }
+
+  it("reopens a completed measurement to DRAFT and returns its edit href", async () => {
+    const { repo, id } = await completedSession();
+
+    const response = await handleReopenMeasurementRequest(
+      reopenRequest(id),
+      { params: Promise.resolve({ id: "pat-1", sessionId: id }) },
+      staffUser,
+      sessionDeps({ repository: repo.repository }),
+    );
+
+    assert.equal(response.status, 200);
+    const json = (await response.json()) as { id: string; editHref: string };
+    assert.equal(json.editHref, `/patients/pat-1/measurements/${id}/edit`);
+    assert.equal(repo.sessions.get(id)?.status, "DRAFT");
+    // The same session is corrected — values are preserved.
+    assert.equal(repo.sessions.get(id)?.values.legRight1, 24.5);
+  });
+
+  it("returns 409 for a VOID measurement (never reopened)", async () => {
+    const { repo, id } = await completedSession();
+    const session = repo.sessions.get(id)!;
+    repo.sessions.set(id, { ...session, status: "VOID" as MeasurementSessionStatus });
+
+    const response = await handleReopenMeasurementRequest(
+      reopenRequest(id),
+      { params: Promise.resolve({ id: "pat-1", sessionId: id }) },
+      staffUser,
+      sessionDeps({ repository: repo.repository }),
+    );
+
+    assert.equal(response.status, 409);
+    assert.equal(repo.sessions.get(id)?.status, "VOID");
+  });
+
+  it("returns 404 when the measurement belongs to a different patient", async () => {
+    const { repo, id } = await completedSession();
+
+    const response = await handleReopenMeasurementRequest(
+      reopenRequest(id),
+      { params: Promise.resolve({ id: "other-patient", sessionId: id }) },
+      staffUser,
+      sessionDeps({ repository: repo.repository }),
+    );
+
+    assert.equal(response.status, 404);
   });
 });

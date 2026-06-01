@@ -8,6 +8,7 @@ import { Card, CardBody, CardHeader } from "../_components/ui/card";
 import { cn } from "../_components/ui/cn";
 import { DataTable, type DataTableColumn } from "../_components/dashboard/data-table";
 import { buildPatientDetailHref, DOCUMENT_TYPE_OPTIONS, PATIENT_SEX_OPTIONS } from "./[id]/patient-detail-helpers";
+import { formatClinicDate } from "@/lib/datetime";
 
 type Patient = {
   id: string;
@@ -189,7 +190,7 @@ export default function PatientsClient({ initialQuery = "" }: PatientsClientProp
       align: "right",
       render: (patient) => (
         <span className="tabular-nums text-slate-400">
-          {new Date(patient.createdAt).toLocaleDateString("es-AR")}
+          {formatClinicDate(patient.createdAt)}
         </span>
       ),
     },

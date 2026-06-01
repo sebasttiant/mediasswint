@@ -24,6 +24,12 @@ export type CreateMeasurementInput = {
 export type UpdateMeasurementValuesInput = {
   valuesByKey: Partial<Record<CompressionMeasurementKey, number | null>>;
   complete: boolean;
+  measuredAt?: Date;
+  notes?: string | null;
+  garmentType?: string | null;
+  compressionClass?: string | null;
+  diagnosis?: string | null;
+  productFlags?: ProductFlags | null;
 };
 
 export type ListMeasurementsQuery = {
@@ -174,6 +180,12 @@ export function parseUpdateMeasurementValuesInput(
 
   const source = body as Record<string, unknown>;
   const errors: ValidationError[] = [];
+  const measuredAt = source.measuredAt === undefined ? undefined : parseStrictIsoInstant(source.measuredAt, errors);
+  const notes = source.notes === undefined ? undefined : parseNullableText(source.notes, "notes", MAX_NOTES_LENGTH, errors);
+  const garmentType = source.garmentType === undefined ? undefined : parseNullableText(source.garmentType, "garmentType", MAX_SHORT_TEXT_LENGTH, errors);
+  const compressionClass = source.compressionClass === undefined ? undefined : parseNullableText(source.compressionClass, "compressionClass", MAX_SHORT_TEXT_LENGTH, errors);
+  const diagnosis = source.diagnosis === undefined ? undefined : parseNullableText(source.diagnosis, "diagnosis", MAX_DIAGNOSIS_LENGTH, errors);
+  const productFlags = source.productFlags === undefined ? undefined : parseProductFlags(source.productFlags, errors);
 
   const rawValues = source.valuesByKey;
   if (rawValues === undefined || rawValues === null) {
@@ -222,6 +234,12 @@ export function parseUpdateMeasurementValuesInput(
     value: {
       valuesByKey: result,
       complete: complete === true,
+      ...(measuredAt !== undefined && measuredAt !== null ? { measuredAt } : {}),
+      ...(notes !== undefined ? { notes } : {}),
+      ...(garmentType !== undefined ? { garmentType } : {}),
+      ...(compressionClass !== undefined ? { compressionClass } : {}),
+      ...(diagnosis !== undefined ? { diagnosis } : {}),
+      ...(productFlags !== undefined ? { productFlags } : {}),
     },
   };
 }

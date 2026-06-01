@@ -42,6 +42,7 @@ type MeasurementLoadResult =
 type MeasurementDetailBodyProps = {
   patient: MeasurementDetailViewPatient;
   measurement: MeasurementDetailViewMeasurement;
+  isAdmin?: boolean;
 };
 
 export type MeasurementDetailPageDeps = {
@@ -121,6 +122,7 @@ export async function MeasurementDetailPage(
       <MeasurementDetailBody
         patient={decision.patient}
         measurement={measurementResult.value}
+        isAdmin={user!.role === "ADMIN"}
       />
     ),
   });

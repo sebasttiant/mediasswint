@@ -18,10 +18,10 @@
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
     "docker:ps": "docker compose ps",
-    "infra:dev": "docker compose -f docker/docker-compose.dev.yml up -d --build",
-    "infra:dev:down": "docker compose -f docker/docker-compose.dev.yml down",
-    "infra:dev:logs": "docker compose -f docker/docker-compose.dev.yml logs -f",
-    "infra:dev:ps": "docker compose -f docker/docker-compose.dev.yml ps"
+    "infra:dev": "docker compose --env-file .env -f docker/docker-compose.dev.yml up -d --build",
+    "infra:dev:down": "docker compose --env-file .env -f docker/docker-compose.dev.yml down",
+    "infra:dev:logs": "docker compose --env-file .env -f docker/docker-compose.dev.yml logs -f",
+    "infra:dev:ps": "docker compose --env-file .env -f docker/docker-compose.dev.yml ps"
   },
   "devDependencies": {
     "husky": "^9.1.7"

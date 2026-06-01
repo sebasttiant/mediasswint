@@ -6,6 +6,7 @@ import { User } from "lucide-react";
 
 import { BODY_FIGURE_SEX, type BodyFigureSex } from "@/app/_components/body-highlight/body-highlight";
 import type { TemplateSnapshot } from "@/lib/measurements";
+import { toClinicDatetimeLocal } from "@/lib/datetime";
 
 import {
   getFilledZoneIdsFromValues,
@@ -29,6 +30,16 @@ type NewMeasurementClientProps = {
   patientId: string;
   patientName: string;
   patientSex: string | null;
+  initialDraft?: {
+    id: string;
+    templateSnapshot: TemplateSnapshot;
+    valuesByKey: Record<string, number | null>;
+    measuredAt: Date;
+    garmentType: string | null;
+    compressionClass: string | null;
+    diagnosis: string | null;
+    notes: string | null;
+  };
 };
 
 function toBodyFigureSex(patientSex: string | null): BodyFigureSex {
@@ -36,8 +47,8 @@ function toBodyFigureSex(patientSex: string | null): BodyFigureSex {
 }
 
 function toDatetimeLocalValue(date: Date): string {
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 16);
+  // Clinic-timezone, deterministic across server/client (no getTimezoneOffset).
+  return toClinicDatetimeLocal(date);
 }
 
 function toIsoInstant(datetimeLocal: string): string {
@@ -54,6 +65,14 @@ function valuesPayload(valuesByKey: Record<string, string>): Record<string, numb
   return payload;
 }
 
+function stringsFromSavedValues(valuesByKey: Record<string, number | null>): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(valuesByKey)) {
+    if (value !== null) result[key] = String(value);
+  }
+  return result;
+}
+
 function countTotalZones(templateSnapshot: TemplateSnapshot): number {
   let total = 0;
   for (const section of templateSnapshot.sections) {
@@ -62,14 +81,20 @@ function countTotalZones(templateSnapshot: TemplateSnapshot): number {
   return total;
 }
 
-export default function NewMeasurementClient({ patientId, patientName, patientSex }: NewMeasurementClientProps) {
+export default function NewMeasurementClient({ patientId, patientName, patientSex, initialDraft }: NewMeasurementClientProps) {
   const router = useRouter();
-  const [measuredAt, setMeasuredAt] = useState(() => toDatetimeLocalValue(new Date()));
-  const [garmentType, setGarmentType] = useState("");
-  const [compressionClass, setCompressionClass] = useState("");
-  const [diagnosis, setDiagnosis] = useState("");
-  const [notes, setNotes] = useState("");
-  const [draft, setDraft] = useState<DraftState | null>(null);
+  const [measuredAt, setMeasuredAt] = useState(() => toDatetimeLocalValue(initialDraft?.measuredAt ?? new Date()));
+  const [garmentType, setGarmentType] = useState(initialDraft?.garmentType ?? "");
+  const [compressionClass, setCompressionClass] = useState(initialDraft?.compressionClass ?? "");
+  const [diagnosis, setDiagnosis] = useState(initialDraft?.diagnosis ?? "");
+  const [notes, setNotes] = useState(initialDraft?.notes ?? "");
+  const [draft, setDraft] = useState<DraftState | null>(() => initialDraft
+    ? {
+        id: initialDraft.id,
+        templateSnapshot: initialDraft.templateSnapshot,
+        valuesByKey: stringsFromSavedValues(initialDraft.valuesByKey),
+      }
+    : null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [error, setError] = useState<string | null>(null);
 
@@ -126,7 +151,16 @@ export default function NewMeasurementClient({ patientId, patientName, patientSe
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ valuesByKey: valuesPayload(draft.valuesByKey), complete }),
+          body: JSON.stringify({
+            valuesByKey: valuesPayload(draft.valuesByKey),
+            complete,
+            measuredAt: toIsoInstant(measuredAt),
+            garmentType,
+            compressionClass,
+            diagnosis,
+            notes,
+            productFlags: null,
+          }),
         },
       );
 

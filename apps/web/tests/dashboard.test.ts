@@ -286,6 +286,8 @@ describe("buildPendingWork", () => {
       pendingWork.items.map((item) => item.id),
       ["production-op_2", "measurement-measurement_1", "payment-op_1"],
     );
+    const measurementItem = pendingWork.items.find((item) => item.id === "measurement-measurement_1");
+    assert.equal(measurementItem?.href, "/patients/pat_1/measurements/measurement_1/edit");
   });
 
   it("does not flag cancelled, delivered, or fully paid operations as pending", () => {

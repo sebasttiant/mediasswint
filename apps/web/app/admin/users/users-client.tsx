@@ -1,20 +1,16 @@
 "use client";
 
-import { useActionState } from "react";
-import { AlertTriangle, CheckCircle2, Search, Users as UsersIcon } from "lucide-react";
+import { useState } from "react";
+import { Pencil, Search, UserPlus, Users as UsersIcon } from "lucide-react";
 
 import { Avatar } from "../../_components/dashboard/avatar";
 import { Badge } from "../../_components/ui/badge";
+import { Button } from "../../_components/ui/button";
 import { Card, CardBody, CardHeader } from "../../_components/ui/card";
 import { DataTable, type DataTableColumn } from "../../_components/dashboard/data-table";
 
-import {
-  setUserActiveAction,
-  updateUserFullNameAction,
-  updateUserPasswordAction,
-  updateUserRoleAction,
-} from "./actions";
-import { INITIAL_USER_ACTION_STATE, type UserActionState } from "./user-actions-core";
+import { CreateUserModal } from "./new/create-user-modal";
+import { EditUserModal } from "./edit-user-modal";
 import {
   roleBadgeVariant,
   statusBadgeVariant,
@@ -29,41 +25,9 @@ type UsersClientProps = {
   currentUserId: string;
 };
 
-function FeedbackBanner({ state }: { state: UserActionState }) {
-  if (state.status === "idle" || !state.message) return null;
-  const isError = state.status === "error";
-  return (
-    <div
-      role={isError ? "alert" : "status"}
-      className={`mb-4 flex items-center gap-2 rounded-xl border px-4 py-3 text-sm ${
-        isError
-          ? "border-red-200 bg-red-50 text-red-700"
-          : "border-emerald-200 bg-emerald-50 text-emerald-700"
-      }`}
-    >
-      {isError ? <AlertTriangle size={16} aria-hidden="true" /> : <CheckCircle2 size={16} aria-hidden="true" />}
-      <span>{state.message}</span>
-    </div>
-  );
-}
-
 export function UsersClient({ viewModel, total, query, currentUserId }: UsersClientProps) {
-  const [roleState, roleAction, rolePending] = useActionState(
-    updateUserRoleAction,
-    INITIAL_USER_ACTION_STATE,
-  );
-  const [activeState, activeAction, activePending] = useActionState(
-    setUserActiveAction,
-    INITIAL_USER_ACTION_STATE,
-  );
-  const [nameState, nameAction, namePending] = useActionState(
-    updateUserFullNameAction,
-    INITIAL_USER_ACTION_STATE,
-  );
-  const [passwordState, passwordAction, passwordPending] = useActionState(
-    updateUserPasswordAction,
-    INITIAL_USER_ACTION_STATE,
-  );
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<UsersRow | null>(null);
 
   const rows = viewModel.kind === "list" ? viewModel.rows : [];
 
@@ -81,62 +45,6 @@ export function UsersClient({ viewModel, total, query, currentUserId }: UsersCli
             </p>
             <p className="truncate text-xs text-slate-400">{row.email}</p>
           </div>
-        </div>
-      ),
-    },
-    {
-      key: "profile",
-      header: "Perfil",
-      render: (row) => (
-        <div className="space-y-3">
-          <form action={nameAction} className="flex flex-wrap items-center gap-2">
-            <input type="hidden" name="userId" value={row.id} />
-            <label className="sr-only" htmlFor={`fullName-${row.id}`}>
-              Editar nombre de {row.fullName ?? row.email}
-            </label>
-            <input
-              id={`fullName-${row.id}`}
-              name="fullName"
-              defaultValue={row.fullName ?? ""}
-              maxLength={120}
-              required
-              disabled={namePending}
-              className="h-8 min-w-44 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 outline-none transition-colors placeholder:text-slate-400 focus:border-brand/40 focus:ring-2 focus:ring-brand/10 disabled:opacity-50"
-              placeholder="Nombre completo"
-            />
-            <button
-              type="submit"
-              disabled={namePending}
-              className="h-8 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50"
-            >
-              Guardar nombre
-            </button>
-          </form>
-
-          <form action={passwordAction} className="flex flex-wrap items-center gap-2">
-            <input type="hidden" name="userId" value={row.id} />
-            <label className="sr-only" htmlFor={`password-${row.id}`}>
-              Cambiar contraseña de {row.fullName ?? row.email}
-            </label>
-            <input
-              id={`password-${row.id}`}
-              name="password"
-              type="password"
-              minLength={8}
-              required
-              autoComplete="new-password"
-              disabled={passwordPending}
-              className="h-8 min-w-44 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 outline-none transition-colors placeholder:text-slate-400 focus:border-brand/40 focus:ring-2 focus:ring-brand/10 disabled:opacity-50"
-              placeholder="Nueva contraseña"
-            />
-            <button
-              type="submit"
-              disabled={passwordPending}
-              className="h-8 rounded-lg border border-amber-200 px-3 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-50 disabled:opacity-50"
-            >
-              Cambiar contraseña
-            </button>
-          </form>
         </div>
       ),
     },
@@ -161,40 +69,15 @@ export function UsersClient({ viewModel, total, query, currentUserId }: UsersCli
       header: "Acciones",
       align: "right",
       render: (row) => (
-        <div className="flex items-center justify-end gap-2">
-          <form action={roleAction} className="flex items-center">
-            <input type="hidden" name="userId" value={row.id} />
-            <label className="sr-only" htmlFor={`role-${row.id}`}>
-              Cambiar rol de {row.fullName ?? row.email}
-            </label>
-            <select
-              id={`role-${row.id}`}
-              name="role"
-              defaultValue={row.role}
-              disabled={rolePending}
-              onChange={(event) => event.currentTarget.form?.requestSubmit()}
-              className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-none transition-colors hover:border-slate-300 focus:border-brand/40 focus:ring-2 focus:ring-brand/10 disabled:opacity-50"
-            >
-              <option value="STAFF">Staff</option>
-              <option value="ADMIN">Administrador</option>
-            </select>
-          </form>
-
-          <form action={activeAction}>
-            <input type="hidden" name="userId" value={row.id} />
-            <input type="hidden" name="isActive" value={String(!row.isActive)} />
-            <button
-              type="submit"
-              disabled={activePending}
-              className={`h-8 rounded-lg border px-3 text-xs font-semibold transition-colors disabled:opacity-50 ${
-                row.isActive
-                  ? "border-red-200 text-red-600 hover:bg-red-50"
-                  : "border-emerald-200 text-emerald-700 hover:bg-emerald-50"
-              }`}
-            >
-              {row.isActive ? "Desactivar" : "Activar"}
-            </button>
-          </form>
+        <div className="flex items-center justify-end">
+          <button
+            type="button"
+            onClick={() => setEditingUser(row)}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
+          >
+            <Pencil size={13} aria-hidden="true" />
+            Editar
+          </button>
         </div>
       ),
     },
@@ -211,31 +94,33 @@ export function UsersClient({ viewModel, total, query, currentUserId }: UsersCli
             </span>
           }
           action={
-            <form method="get" role="search" className="relative">
-              <Search
-                size={14}
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                aria-hidden="true"
-              />
-              <label htmlFor="users-search" className="sr-only">
-                Buscar por email o nombre
-              </label>
-              <input
-                id="users-search"
-                type="search"
-                name="q"
-                defaultValue={query}
-                placeholder="Buscar usuario…"
-                className="h-9 w-48 rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm text-slate-800 placeholder-slate-400 outline-none transition-all focus:border-brand/40 focus:bg-white focus:ring-2 focus:ring-brand/10"
-              />
-            </form>
+            <div className="flex items-center gap-2">
+              <form method="get" role="search" className="relative">
+                <Search
+                  size={14}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                  aria-hidden="true"
+                />
+                <label htmlFor="users-search" className="sr-only">
+                  Buscar por email o nombre
+                </label>
+                <input
+                  id="users-search"
+                  type="search"
+                  name="q"
+                  defaultValue={query}
+                  placeholder="Buscar usuario…"
+                  className="h-9 w-48 rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm text-slate-800 placeholder-slate-400 outline-none transition-all focus:border-brand/40 focus:bg-white focus:ring-2 focus:ring-brand/10"
+                />
+              </form>
+              <Button variant="primary" size="sm" onClick={() => setCreateOpen(true)}>
+                <UserPlus size={15} aria-hidden="true" />
+                Nuevo usuario
+              </Button>
+            </div>
           }
         />
         <CardBody>
-          <FeedbackBanner state={roleState} />
-          <FeedbackBanner state={activeState} />
-          <FeedbackBanner state={nameState} />
-          <FeedbackBanner state={passwordState} />
           <DataTable
             columns={columns}
             rows={rows}
@@ -260,6 +145,14 @@ export function UsersClient({ viewModel, total, query, currentUserId }: UsersCli
           </p>
         </CardBody>
       </Card>
+
+      <CreateUserModal open={createOpen} onClose={() => setCreateOpen(false)} />
+      <EditUserModal
+        key={editingUser?.id ?? "none"}
+        user={editingUser}
+        isCurrentUser={editingUser?.id === currentUserId}
+        onClose={() => setEditingUser(null)}
+      />
     </div>
   );
 }
