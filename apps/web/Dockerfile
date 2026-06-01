@@ -63,11 +63,22 @@ RUN pnpm --filter @mediasswint/web build
 
 # ---------- dev (bind mount + hot reload) ----------
 FROM base AS dev
+# The dev compose bind-mounts only ../apps/web -> /app/apps/web, so the monorepo
+# root (package.json + pnpm-workspace.yaml + lockfile) is NOT provided at runtime.
+# Bake them into the image so `pnpm --filter` can resolve the workspace at /app;
+# without this pnpm fails with "No package.json found in /app" and crash-loops.
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
+COPY apps/web/package.json ./apps/web/package.json
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
+# verify-deps-before-run=false: skip pnpm's pre-run dependency check. Deps are
+# baked from the `deps` stage; the bind mount only swaps source, so re-verifying
+# (and attempting an install) against the live tree at start-up is wasteful and
+# can fail offline. Hot reload is handled by Next, not by reinstalling.
 ENV NODE_ENV=development \
     PORT=3131 \
-    HOSTNAME=0.0.0.0
+    HOSTNAME=0.0.0.0 \
+    npm_config_verify_deps_before_run=false
 EXPOSE 3131
 CMD ["pnpm", "--filter", "@mediasswint/web", "dev"]
 

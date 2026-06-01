@@ -58,13 +58,19 @@ services:
     image: mediasswint/web:dev
     container_name: mediasswint-web-dev
     restart: unless-stopped
+    # Dedicated dev port (default 3132) so the dev stack can run alongside the
+    # prod-like stack (which uses APP_PORT, default 3133) without colliding on
+    # the same host port. Override with DEV_APP_PORT if needed.
     ports:
-      - "${APP_PORT:-3131}:3131"
+      - "${DEV_APP_PORT:-3132}:3131"
     environment:
       NODE_ENV: development
       DATABASE_URL: postgresql://mediass:mediass@postgres:5432/mediass
       REDIS_URL: redis://redis:6379
       WATCHPACK_POLLING: "true"
+      # Required at runtime by getAuthSecret() on every login/session verify.
+      # Mirrors the prod web service; sourced from the root .env via compose.
+      AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required (>=32 bytes)}
     volumes:
       - ../apps/web:/app/apps/web
       - web_node_modules:/app/apps/web/node_modules
