@@ -1,61 +1,41 @@
 "use client";
 
 import { useActionState } from "react";
+import { UserPlus } from "lucide-react";
 
 import { createUserAction } from "./actions";
-import { errorFor, INITIAL_CREATE_USER_STATE } from "./create-user-state";
+import { CreateUserFields } from "./create-user-fields";
+import { INITIAL_CREATE_USER_STATE } from "./create-user-state";
 
-const ROLE_OPTIONS = [
-  { value: "STAFF", label: "Staff" },
-  { value: "ADMIN", label: "Administrador" },
-] as const;
-
+/**
+ * Standalone create-user screen for deep links to /admin/users/new. Mirrors the
+ * in-list modal: a centered card with the same iconed fields, so the route and
+ * the overlay are visually equivalent. The "Nuevo usuario" button on the list
+ * opens the modal; this page is the no-JS / direct-navigation fallback.
+ */
 export function CreateUserForm() {
-  const [state, formAction, isPending] = useActionState(
-    createUserAction,
-    INITIAL_CREATE_USER_STATE,
-  );
-
-  const formError = errorFor(state, "form");
+  const [state, formAction, isPending] = useActionState(createUserAction, INITIAL_CREATE_USER_STATE);
 
   return (
-    <form action={formAction} aria-label="Crear usuario">
-      {formError ? <p role="alert">{formError}</p> : null}
+    <div className="mx-auto w-full max-w-md">
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex items-start gap-3 border-b border-slate-100 px-6 pb-5 pt-6">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-brand">
+            <UserPlus size={20} aria-hidden="true" />
+          </span>
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-widest text-brand">
+              Acceso al panel administrativo
+            </p>
+            <h2 className="mt-1 text-xl font-bold tracking-tight text-slate-900">Nuevo Usuario</h2>
+          </div>
+        </div>
 
-      <label>
-        Email
-        <input type="email" name="email" required defaultValue="" />
-      </label>
-      {errorFor(state, "email") ? <p role="alert">{errorFor(state, "email")}</p> : null}
-
-      <label>
-        Nombre completo
-        <input type="text" name="fullName" required defaultValue="" />
-      </label>
-      {errorFor(state, "fullName") ? <p role="alert">{errorFor(state, "fullName")}</p> : null}
-
-      <label>
-        Rol
-        <select name="role" defaultValue="STAFF">
-          {ROLE_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      {errorFor(state, "role") ? <p role="alert">{errorFor(state, "role")}</p> : null}
-
-      <label>
-        Contraseña
-        <input type="password" name="password" required defaultValue="" />
-      </label>
-      {errorFor(state, "password") ? <p role="alert">{errorFor(state, "password")}</p> : null}
-
-      <button type="submit" disabled={isPending}>
-        {isPending ? "Creando…" : "Crear usuario"}
-      </button>
-    </form>
+        <form action={formAction} aria-label="Crear usuario" className="px-6 pb-6 pt-5">
+          <CreateUserFields state={state} isPending={isPending} />
+        </form>
+      </div>
+    </div>
   );
 }
 
