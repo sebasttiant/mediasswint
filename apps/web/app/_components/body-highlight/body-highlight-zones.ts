@@ -5,11 +5,15 @@ import {
 } from "@/lib/compression-measurements";
 
 import {
+  getFullBodyCalibration,
   MALE_FULL_BODY,
   getMarkerRect,
   markerRectToPath,
   type FigureCalibration,
+  type FullBodySex,
 } from "./body-highlight-calibration";
+import { getFemaleZonePath } from "./zones-female";
+import { getMaleZonePath } from "./zones-male";
 
 export type BodyView = "full" | "legs" | "arms";
 export type IsolatedBodyView = Exclude<BodyView, "full">;
@@ -355,4 +359,15 @@ export function getFullMarkerForSex(
     centerX: rect.x + rect.width / 2,
     centerY: rect.y + rect.height / 2,
   };
+}
+
+export function getFullZonePathForSex(sex: FullBodySex, zone: BodyZoneShape): string {
+  const tracedPath =
+    sex === "female"
+      ? getFemaleZonePath(zone.zoneId)
+      : zone.view === "legs"
+        ? getMaleZonePath(zone.zoneId)
+        : undefined;
+
+  return tracedPath ?? getFullMarkerForSex(getFullBodyCalibration(sex), zone).path;
 }

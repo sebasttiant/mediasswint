@@ -8,6 +8,8 @@ import {
   findMeasurementKeyForZone,
   findZoneShape,
   findViewForZone,
+  getFullMarkerForSex,
+  getFullZonePathForSex,
   getSideSummaryForView,
   getZoneA11yLabel,
   getZoneLabel,
@@ -16,6 +18,9 @@ import {
   getZonesForView,
   hasZone,
 } from "../app/_components/body-highlight/body-highlight-zones";
+import { MALE_FULL_BODY } from "../app/_components/body-highlight/body-highlight-calibration";
+import { getFemaleZonePath } from "../app/_components/body-highlight/zones-female";
+import { getMaleZonePath } from "../app/_components/body-highlight/zones-male";
 import { COMPRESSION_MEASUREMENTS } from "../lib/compression-measurements";
 
 describe("BODY_HIGHLIGHT_ZONES — derived from the catalog", () => {
@@ -207,6 +212,28 @@ describe("zone visual metadata", () => {
       { side: "right", label: "Brazo derecho", points: 19 },
       { side: "left", label: "Brazo izquierdo", points: 19 },
     ]);
+  });
+});
+
+describe("sex-specific full-body zone paths", () => {
+  it("uses calibrated markers for male arm zones to keep highlights inside the arm", () => {
+    const zone = findZoneShape("arms.right.18");
+    assert.ok(zone);
+
+    const calibratedMarker = getFullMarkerForSex(MALE_FULL_BODY, zone).path;
+
+    assert.equal(getFullZonePathForSex("male", zone), calibratedMarker);
+    assert.notEqual(getFullZonePathForSex("male", zone), getMaleZonePath(zone.zoneId));
+  });
+
+  it("preserves traced full-body paths for female arm zones and male leg zones", () => {
+    const femaleArmZone = findZoneShape("arms.left.18");
+    const maleLegZone = findZoneShape("legs.right.18");
+    assert.ok(femaleArmZone);
+    assert.ok(maleLegZone);
+
+    assert.equal(getFullZonePathForSex("female", femaleArmZone), getFemaleZonePath(femaleArmZone.zoneId));
+    assert.equal(getFullZonePathForSex("male", maleLegZone), getMaleZonePath(maleLegZone.zoneId));
   });
 });
 

@@ -12,14 +12,13 @@ import {
   type FigureCalibration,
   type FullBodySex,
 } from "./body-highlight-calibration";
-import { getFemaleZonePath } from "./zones-female";
-import { getMaleZonePath } from "./zones-male";
 import {
   BODY_CLIP_PATHS,
   BODY_HIGHLIGHT_ARTICULATIONS,
   BODY_HIGHLIGHT_OUTLINES,
   SIDE_LABEL_POSITIONS,
   getFullMarkerForSex,
+  getFullZonePathForSex,
   getSideSummaryForView,
   getZoneA11yLabel,
   getZoneLabel,
@@ -529,17 +528,8 @@ export function BodyHighlight({
                     {zones.map((zone) => {
                       const isActive = zone.zoneId === activeZoneId;
                       const isFilled = hasFilledZone(filledZoneIds, zone.zoneId);
-                      // Full-body uses the auto-generated anatomical zone
-                      // polygon (entire limb section fills) for each sex.
-                      // Any zone missing from the per-sex map falls back to
-                      // a bounded marker so the figure keeps rendering.
-                      const zonedFullPath = isFull
-                        ? sex === BODY_FIGURE_SEX.MALE
-                          ? getMaleZonePath(zone.zoneId)
-                          : getFemaleZonePath(zone.zoneId)
-                        : undefined;
                       const zonePath = isFull
-                        ? (zonedFullPath ?? getFullMarkerForSex(fullBodyCalibration, zone).path)
+                        ? getFullZonePathForSex(toFullBodySex(sex), zone)
                         : zone.d;
                       const clipPath = isFull ? undefined : `url(#${defsId}-${side})`;
                       return (
