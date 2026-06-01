@@ -5,7 +5,7 @@ import { AppShell } from "../_components/app-shell/app-shell";
 
 export type AdminViewUser = { fullName: string | null };
 
-export type AdminDestinationKey = "patients" | "operations";
+export type AdminDestinationKey = "patients" | "operations" | "users" | "audit-log";
 
 export type AdminDestination = {
   key: AdminDestinationKey;
@@ -26,6 +26,18 @@ export const ADMIN_DESTINATIONS: readonly AdminDestination[] = [
     label: "Operaciones",
     href: "/operations",
     description: "Presupuestos, producción y entregas.",
+  },
+  {
+    key: "users",
+    label: "Usuarios",
+    href: "/admin/users",
+    description: "Alta, roles y estado de las cuentas.",
+  },
+  {
+    key: "audit-log",
+    label: "Auditoría",
+    href: "/admin/audit-log",
+    description: "Historial de acciones administrativas.",
   },
 ] as const;
 

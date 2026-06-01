@@ -66,6 +66,15 @@ describe("ADMIN_DESTINATIONS", () => {
     assert.ok(hrefs.includes("/operations"), "must offer /operations as a destination");
   });
 
+  it("declares /admin/users and /admin/audit-log as actionable destinations", () => {
+    const hrefs = ADMIN_DESTINATIONS.map((destination: AdminDestination) => destination.href);
+    assert.ok(hrefs.includes("/admin/users"), "must offer /admin/users as a destination");
+    assert.ok(
+      hrefs.includes("/admin/audit-log"),
+      "must offer /admin/audit-log as a destination",
+    );
+  });
+
   it("provides Spanish labels and descriptions for every destination", () => {
     for (const destination of ADMIN_DESTINATIONS) {
       assert.ok(destination.label.length > 0, `destination ${destination.key} must have a label`);
