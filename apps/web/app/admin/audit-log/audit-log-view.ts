@@ -1,9 +1,12 @@
 import { createElement, type ReactElement, type ReactNode } from "react";
 import type { AuditAction } from "@prisma/client";
+import { Calendar, Filter, ScrollText, Search } from "lucide-react";
 
 import type { AuditLogRow, ListAuditFilters } from "@/lib/audit-log";
 
 import { AppShell } from "../../_components/app-shell/app-shell";
+import { Badge, type BadgeVariant } from "../../_components/ui/badge";
+import { Card, CardBody, CardHeader } from "../../_components/ui/card";
 
 export type AuditLogViewUser = { fullName: string | null };
 
@@ -152,6 +155,25 @@ export function buildAuditListViewModel(rows: AuditLogRow[]): AuditListViewModel
   };
 }
 
+export function auditActionBadgeVariant(actionLabel: string): BadgeVariant {
+  if (actionLabel === "Creación") return "success";
+  if (actionLabel === "Actualización") return "info";
+  if (actionLabel === "Eliminación") return "danger";
+  return "neutral";
+}
+
+function buildFilterField(label: string, control: ReactElement): ReactElement {
+  return createElement(
+    "label",
+    { className: "space-y-1.5 text-xs font-bold uppercase tracking-wider text-slate-500" },
+    label,
+    control,
+  );
+}
+
+const FILTER_INPUT_CLASS =
+  "h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-800 placeholder-slate-400 outline-none transition-all focus:border-brand/40 focus:bg-white focus:ring-2 focus:ring-brand/10";
+
 function buildFilterForm(formValues: AuditFormValues): ReactElement {
   const actionOptions = [
     { value: "", label: "Todas las acciones" },
@@ -161,58 +183,204 @@ function buildFilterForm(formValues: AuditFormValues): ReactElement {
   ];
 
   return createElement(
-    "form",
-    { method: "get", role: "search", "aria-label": "Filtrar auditoría" },
-    createElement("input", {
-      type: "text",
-      name: "entityType",
-      defaultValue: formValues.entityType,
-      placeholder: "Tipo de entidad",
-      "aria-label": "Tipo de entidad",
-    }),
-    createElement("input", {
-      type: "text",
-      name: "userId",
-      defaultValue: formValues.userId,
-      placeholder: "ID de usuario",
-      "aria-label": "ID de usuario",
+    Card,
+    null,
+    createElement(CardHeader, {
+      title: createElement(
+        "span",
+        { className: "flex items-center gap-2" },
+        createElement(Search, { size: 18, className: "text-brand", "aria-hidden": true }),
+        "Filtros de auditoría",
+      ),
     }),
     createElement(
-      "select",
-      { name: "action", defaultValue: formValues.action, "aria-label": "Acción" },
-      actionOptions.map((option) =>
-        createElement("option", { key: option.value, value: option.value }, option.label),
+      CardBody,
+      null,
+      createElement(
+        "form",
+        {
+          method: "get",
+          role: "search",
+          "aria-label": "Filtrar auditoría",
+          className: "grid gap-4 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_0.8fr_0.8fr_auto] xl:items-end",
+        },
+        buildFilterField(
+          "Tipo de entidad",
+          createElement("input", {
+            className: FILTER_INPUT_CLASS,
+            type: "text",
+            name: "entityType",
+            defaultValue: formValues.entityType,
+            placeholder: "Ej: Patient, User",
+            "aria-label": "Tipo de entidad",
+          }),
+        ),
+        buildFilterField(
+          "ID de usuario",
+          createElement("input", {
+            className: FILTER_INPUT_CLASS,
+            type: "text",
+            name: "userId",
+            defaultValue: formValues.userId,
+            placeholder: "Usuario o sistema",
+            "aria-label": "ID de usuario",
+          }),
+        ),
+        buildFilterField(
+          "Acción",
+          createElement(
+            "select",
+            {
+              className: FILTER_INPUT_CLASS,
+              name: "action",
+              defaultValue: formValues.action,
+              "aria-label": "Acción",
+            },
+            actionOptions.map((option) =>
+              createElement("option", { key: option.value, value: option.value }, option.label),
+            ),
+          ),
+        ),
+        buildFilterField(
+          "Desde",
+          createElement("input", {
+            className: FILTER_INPUT_CLASS,
+            type: "date",
+            name: "from",
+            defaultValue: formValues.from,
+            "aria-label": "Desde",
+          }),
+        ),
+        buildFilterField(
+          "Hasta",
+          createElement("input", {
+            className: FILTER_INPUT_CLASS,
+            type: "date",
+            name: "to",
+            defaultValue: formValues.to,
+            "aria-label": "Hasta",
+          }),
+        ),
+        createElement(
+          "button",
+          {
+            type: "submit",
+            className:
+              "inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-brand px-4 text-sm font-bold text-white shadow-sm transition-all hover:bg-brand-strong hover:shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 focus-visible:ring-offset-1",
+          },
+          createElement(Filter, { size: 16, "aria-hidden": true }),
+          "Filtrar",
+        ),
       ),
     ),
-    createElement("input", {
-      type: "date",
-      name: "from",
-      defaultValue: formValues.from,
-      "aria-label": "Desde",
-    }),
-    createElement("input", {
-      type: "date",
-      name: "to",
-      defaultValue: formValues.to,
-      "aria-label": "Hasta",
-    }),
-    createElement("button", { type: "submit" }, "Filtrar"),
   );
 }
 
 function buildList(viewModel: AuditListViewModel): ReactElement {
   if (viewModel.kind === "empty") {
-    return createElement("p", { role: "status" }, viewModel.message);
+    return createElement(
+      Card,
+      null,
+      createElement(CardHeader, {
+        title: createElement(
+          "span",
+          { className: "flex items-center gap-2" },
+          createElement(ScrollText, { size: 18, className: "text-brand", "aria-hidden": true }),
+          "Registros",
+        ),
+      }),
+      createElement(
+        CardBody,
+        null,
+        createElement("p", { role: "status", className: "text-sm text-slate-500" }, viewModel.message),
+      ),
+    );
   }
 
   return createElement(
-    "ul",
-    { "aria-label": "Registros de auditoría" },
-    viewModel.rows.map((row) =>
+    Card,
+    null,
+    createElement(CardHeader, {
+      title: createElement(
+        "span",
+        { className: "flex items-center gap-2" },
+        createElement(ScrollText, { size: 18, className: "text-brand", "aria-hidden": true }),
+        `${viewModel.rows.length} ${viewModel.rows.length === 1 ? "registro" : "registros"}`,
+      ),
+    }),
+    createElement(
+      CardBody,
+      null,
       createElement(
-        "li",
-        { key: row.id },
-        `${row.createdAt} · ${row.actorLabel} · ${row.actionLabel} · ${row.entityType} (${row.entityId})`,
+        "div",
+        { className: "overflow-x-auto rounded-xl border border-slate-200" },
+        createElement(
+          "table",
+          { className: "w-full border-collapse text-sm", "aria-label": "Registros de auditoría" },
+          createElement(
+            "thead",
+            null,
+            createElement(
+              "tr",
+              { className: "bg-slate-50" },
+              ["Fecha", "Usuario", "Acción", "Entidad", "ID"].map((header) =>
+                createElement(
+                  "th",
+                  {
+                    key: header,
+                    className:
+                      "border-b border-slate-200 px-5 py-3.5 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400",
+                  },
+                  header,
+                ),
+              ),
+            ),
+          ),
+          createElement(
+            "tbody",
+            null,
+            viewModel.rows.map((row, index) =>
+              createElement(
+                "tr",
+                {
+                  key: row.id,
+                  className: `transition-colors hover:bg-slate-50/70 ${
+                    index !== viewModel.rows.length - 1 ? "border-b border-slate-100" : ""
+                  }`,
+                },
+                createElement(
+                  "td",
+                  { className: "whitespace-nowrap px-5 py-4 text-slate-600" },
+                  createElement(
+                    "span",
+                    { className: "inline-flex items-center gap-2" },
+                    createElement(Calendar, { size: 14, className: "text-slate-400", "aria-hidden": true }),
+                    new Intl.DateTimeFormat("es-CO", {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                    }).format(new Date(row.createdAt)),
+                  ),
+                ),
+                createElement("td", { className: "px-5 py-4 font-medium text-slate-800" }, row.actorLabel),
+                createElement(
+                  "td",
+                  { className: "px-5 py-4" },
+                  // eslint-disable-next-line react/no-children-prop -- Badge's createElement overload requires children in props in this .ts view module
+                  createElement(Badge, {
+                    variant: auditActionBadgeVariant(row.actionLabel),
+                    children: row.actionLabel,
+                  }),
+                ),
+                createElement("td", { className: "px-5 py-4 text-slate-700" }, row.entityType),
+                createElement(
+                  "td",
+                  { className: "max-w-[280px] truncate px-5 py-4 font-mono text-xs text-slate-500" },
+                  row.entityId,
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     ),
   );
@@ -256,6 +424,16 @@ function buildPaginationNav(pagination: AuditPagination, formValues: AuditFormVa
   return createElement("nav", { "aria-label": "Paginación" }, links);
 }
 
+function buildPaginationCard(pagination: AuditPagination, formValues: AuditFormValues): ReactElement | null {
+  if (!pagination.hasPrev && !pagination.hasNext) return null;
+
+  return createElement(
+    "div",
+    { className: "flex justify-end" },
+    buildPaginationNav(pagination, formValues),
+  );
+}
+
 export type RenderAuditLogViewArgs = {
   user: AuditLogViewUser;
   rows: AuditLogRow[];
@@ -276,6 +454,7 @@ export function renderAuditLogView({
   // eslint-disable-next-line react/no-children-prop -- AppShellProps.children is required, so createElement needs it in props
   return createElement(AppShell, {
     actions,
+    role: "ADMIN",
     currentPath: "/admin/audit-log",
     description: "Historial de acciones administrativas.",
     kicker: "MEDIASSWINT · Auditoría",
@@ -283,10 +462,10 @@ export function renderAuditLogView({
     userLabel: user.fullName ? `Bienvenido, ${user.fullName}` : "Bienvenido",
     children: createElement(
       "div",
-      { "aria-label": "Visor de auditoría" },
+      { "aria-label": "Visor de auditoría", className: "space-y-6" },
       buildFilterForm(formValues),
       buildList(viewModel),
-      buildPaginationNav(pagination, formValues),
+      buildPaginationCard(pagination, formValues),
     ),
   });
 }

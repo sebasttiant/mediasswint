@@ -89,6 +89,7 @@ export default async function OperationsQueuePage() {
       description="Saldos, producción y entrega para trabajar desde la ficha del paciente."
       kicker="MEDIASSWINT · Operación"
       title="Cola de operaciones pendientes"
+      role={user.role}
       userLabel={user.fullName ?? undefined}
     >
       <div className="max-w-7xl mx-auto space-y-6">

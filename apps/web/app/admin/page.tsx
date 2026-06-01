@@ -43,7 +43,7 @@ export async function AdminPage(deps: AdminPageDeps = {}): Promise<ReactElement>
 
   const viewUser: AdminViewUser = { fullName: user?.fullName ?? null };
 
-  return renderAdminView({ user: viewUser, actions: <LogoutButton /> });
+  return renderAdminView({ user: viewUser, role: user?.role, actions: <LogoutButton /> });
 }
 
 export default AdminPage;

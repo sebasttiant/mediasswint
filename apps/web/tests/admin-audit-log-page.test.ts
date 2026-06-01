@@ -5,6 +5,7 @@ import { describe, it } from "node:test";
 import { AppShell } from "../app/_components/app-shell/app-shell";
 import type { AuditLogRow, ListAuditFilters } from "../lib/audit-log";
 import {
+  auditActionBadgeVariant,
   buildAuditListViewModel,
   buildAuditPageHref,
   buildAuditPagination,
@@ -27,8 +28,23 @@ function readViewProps(view: ReactElement): AuditViewProps {
   return view.props as AuditViewProps;
 }
 
+function isReactElement(value: unknown): value is ReactElement {
+  return typeof value === "object" && value !== null && "props" in value && "type" in value;
+}
+
 function childrenOf(element: ReactElement): ReactElement[] {
-  return (element.props as { children: ReactElement[] }).children;
+  const children = (element.props as { children?: ReactElement | ReactElement[] | null }).children;
+  if (Array.isArray(children)) return children.filter(isReactElement);
+  return isReactElement(children) ? [children] : [];
+}
+
+function findChildByType(element: ReactElement, type: unknown): ReactElement | null {
+  if (element.type === type) return element;
+  for (const child of childrenOf(element)) {
+    const found = findChildByType(child, type);
+    if (found) return found;
+  }
+  return null;
 }
 
 function auditRowFixture(overrides: Partial<AuditLogRow> = {}): AuditLogRow {
@@ -163,6 +179,14 @@ describe("buildAuditListViewModel", () => {
   });
 });
 
+describe("audit action badges", () => {
+  it("maps audit actions to semantic badge variants", () => {
+    assert.equal(auditActionBadgeVariant("Creación"), "success");
+    assert.equal(auditActionBadgeVariant("Actualización"), "info");
+    assert.equal(auditActionBadgeVariant("Eliminación"), "danger");
+  });
+});
+
 describe("renderAuditLogView composition", () => {
   function viewArgs(overrides: Record<string, unknown> = {}) {
     return {
@@ -190,9 +214,9 @@ describe("renderAuditLogView composition", () => {
       viewArgs({ formValues: { entityType: "", userId: "", action: "UPDATE", from: "", to: "" } }),
     );
     const props = readViewProps(view);
-    const [form] = childrenOf(props.children);
+    const form = findChildByType(props.children, "form");
 
-    assert.equal(form!.type, "form");
+    assert.ok(form, "expected a filter form inside the audit card");
     assert.equal((form!.props as { method?: string }).method, "get");
   });
 
@@ -204,7 +228,8 @@ describe("renderAuditLogView composition", () => {
       }),
     );
     const props = readViewProps(view);
-    const [, , nav] = childrenOf(props.children);
+    const nav = findChildByType(props.children, "nav");
+    assert.ok(nav, "expected pagination nav when previous and next pages exist");
     const links = childrenOf(nav!);
 
     for (const link of links) {

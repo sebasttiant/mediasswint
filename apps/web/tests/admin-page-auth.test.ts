@@ -5,6 +5,7 @@ import { describe, it } from "node:test";
 import { AppShell } from "../app/_components/app-shell/app-shell";
 import { AdminPage } from "../app/admin/page";
 import { resolveAdminAccess, type AdminAccessUser } from "../app/admin/admin-access";
+import { AdminDashboard } from "../app/admin/admin-dashboard";
 import {
   ADMIN_DESTINATIONS,
   renderAdminView,
@@ -21,24 +22,8 @@ type AdminAppShellProps = {
   children: ReactElement;
 };
 
-type AdminDestinationLinkProps = {
-  href: string;
-  children?: unknown;
-};
-
-type AdminDestinationsRootProps = {
-  "aria-label"?: string;
-  children: ReactElement<AdminDestinationLinkProps>[];
-};
-
 function readAdminViewProps(view: ReactElement): AdminAppShellProps {
   return view.props as AdminAppShellProps;
-}
-
-function readAdminDestinationsList(
-  children: ReactElement,
-): ReactElement<AdminDestinationLinkProps>[] {
-  return (children.props as AdminDestinationsRootProps).children;
 }
 
 describe("admin page access", () => {
@@ -87,9 +72,9 @@ describe("ADMIN_DESTINATIONS", () => {
 });
 
 describe("renderAdminView composition", () => {
-  it("wraps the destinations list inside AppShell with admin context", () => {
+  it("wraps the AdminDashboard inside AppShell with admin context", () => {
     const user: AdminViewUser = { fullName: "Ada Lovelace" };
-    const view = renderAdminView({ user });
+    const view = renderAdminView({ user, role: "ADMIN" });
 
     assert.equal(view.type, AppShell);
     const props = readAdminViewProps(view);
@@ -97,21 +82,11 @@ describe("renderAdminView composition", () => {
     assert.equal(props.kicker, "MEDIASSWINT · Administración");
     assert.equal(props.title, "Administración");
     assert.equal(props.userLabel, "Bienvenido, Ada Lovelace");
-  });
-
-  it("renders one link per ADMIN_DESTINATIONS entry, in order", () => {
-    const view = renderAdminView({ user: { fullName: null } });
-    const props = readAdminViewProps(view);
-    const links = readAdminDestinationsList(props.children);
-
-    assert.equal(links.length, ADMIN_DESTINATIONS.length);
-    for (const [index, destination] of ADMIN_DESTINATIONS.entries()) {
-      assert.equal(links[index]!.props.href, destination.href);
-    }
+    assert.equal(props.children.type, AdminDashboard);
   });
 
   it("falls back to a neutral userLabel when fullName is missing", () => {
-    const view = renderAdminView({ user: { fullName: null } });
+    const view = renderAdminView({ user: { fullName: null }, role: "ADMIN" });
     const props = readAdminViewProps(view);
     assert.equal(props.userLabel, "Bienvenido");
   });
@@ -122,16 +97,13 @@ describe("AdminPage route", () => {
     return { id: "admin-1", role: "ADMIN" as const, fullName: "Ada Lovelace" };
   }
 
-  it("renders AppShell with actionable destinations for ADMIN users", async () => {
+  it("renders AppShell with the AdminDashboard for ADMIN users", async () => {
     const view = await AdminPage({
       readUser: async () => adminUser(),
     });
 
     assert.equal(view.type, AppShell);
     const props = readAdminViewProps(view);
-    const links = readAdminDestinationsList(props.children);
-    const hrefs = links.map((link) => link.props.href);
-    assert.ok(hrefs.includes("/patients"));
-    assert.ok(hrefs.includes("/operations"));
+    assert.equal(props.children.type, AdminDashboard);
   });
 });

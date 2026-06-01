@@ -5,11 +5,13 @@ import {
   type ReactNode,
 } from "react";
 
+import type { UserRole } from "@/lib/auth-edge";
+
 import { AppShell } from "../_components/app-shell/app-shell";
 
 export type PatientSearchParamValue = string | string[] | null | undefined;
 
-export type PatientsViewUser = { fullName: string | null };
+export type PatientsViewUser = { fullName: string | null; role?: UserRole };
 
 export type RenderPatientsViewArgs = {
   user: PatientsViewUser;
@@ -45,6 +47,7 @@ export function renderPatientsView({
   // eslint-disable-next-line react/no-children-prop -- AppShellProps.children is required, so createElement needs it in props
   return createElement(AppShell, {
     actions,
+    role: user.role,
     currentPath: "/patients",
     description: "Alta, búsqueda y ficha clínica.",
     kicker: "MEDIASSWINT · Pacientes",

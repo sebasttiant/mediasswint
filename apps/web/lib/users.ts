@@ -4,7 +4,7 @@ import type { UserRole } from "@prisma/client";
 import { recordAudit, toAuditPayload, type AuditEntry } from "@/lib/audit-log";
 import { hashPassword } from "@/lib/auth";
 import { getPrisma } from "@/lib/prisma";
-import type { CreateUserInput, ListUsersQuery } from "@/lib/users-input";
+import type { CreateUserInput, ListUsersQuery, UpdateUserFullNameInput, UpdateUserPasswordInput } from "@/lib/users-input";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -48,6 +48,8 @@ export type UsersRepository = {
   countActiveAdmins(tx?: TxHandle): Promise<number>;
   updateRole(tx: TxHandle, id: string, role: UserRole): Promise<FullUser>;
   setActive(tx: TxHandle, id: string, isActive: boolean): Promise<FullUser>;
+  updateFullName(id: string, fullName: string): Promise<FullUser>;
+  updatePasswordHash(id: string, passwordHash: string): Promise<FullUser>;
 };
 
 // ---------------------------------------------------------------------------
@@ -105,6 +107,16 @@ const defaultRepository: UsersRepository = {
   async setActive(_tx, id, isActive) {
     const prisma = getPrisma();
     return prisma.user.update({ where: { id }, data: { isActive } });
+  },
+
+  async updateFullName(id, fullName) {
+    const prisma = getPrisma();
+    return prisma.user.update({ where: { id }, data: { fullName } });
+  },
+
+  async updatePasswordHash(id, passwordHash) {
+    const prisma = getPrisma();
+    return prisma.user.update({ where: { id }, data: { passwordHash } });
   },
 };
 
@@ -375,6 +387,77 @@ export async function setUserActive(
     return { ok: true, value: safe };
   } catch (error) {
     console.error("[users:setActive]", error);
+    return { ok: false, error: "UNKNOWN" };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// updateUserFullName
+// ---------------------------------------------------------------------------
+
+export async function updateUserFullName(
+  id: string,
+  input: UpdateUserFullNameInput,
+  repository: UsersRepository = defaultRepository,
+  auditFn: AuditFn = recordAudit,
+): Promise<ServiceResult<SafeUser>> {
+  try {
+    const existing = await repository.getById(id);
+    if (!existing) {
+      return { ok: false, error: "NOT_FOUND" };
+    }
+
+    const updated = await repository.updateFullName(id, input.fullName);
+    const { passwordHash: _ph, ...safe } = updated;
+
+    await auditFn({
+      action: "UPDATE",
+      entityType: "User",
+      entityId: id,
+      diff: {
+        before: { fullName: existing.fullName },
+        after: { fullName: updated.fullName },
+      },
+    });
+
+    return { ok: true, value: safe };
+  } catch (error) {
+    console.error("[users:updateFullName]", error);
+    return { ok: false, error: "UNKNOWN" };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// updateUserPassword
+// ---------------------------------------------------------------------------
+
+export async function updateUserPassword(
+  id: string,
+  input: UpdateUserPasswordInput,
+  repository: UsersRepository = defaultRepository,
+  hashFn: (password: string) => Promise<string> = hashPassword,
+  auditFn: AuditFn = recordAudit,
+): Promise<ServiceResult<SafeUser>> {
+  try {
+    const existing = await repository.getById(id);
+    if (!existing) {
+      return { ok: false, error: "NOT_FOUND" };
+    }
+
+    const passwordHash = await hashFn(input.password);
+    const updated = await repository.updatePasswordHash(id, passwordHash);
+    const { passwordHash: _ph, ...safe } = updated;
+
+    await auditFn({
+      action: "UPDATE",
+      entityType: "User",
+      entityId: id,
+      diff: { after: { passwordChanged: true } },
+    });
+
+    return { ok: true, value: safe };
+  } catch (error) {
+    console.error("[users:updatePassword]", error);
     return { ok: false, error: "UNKNOWN" };
   }
 }

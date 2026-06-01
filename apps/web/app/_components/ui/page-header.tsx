@@ -5,11 +5,13 @@ import { cn } from "./cn";
 export function PageHeader({
   title,
   subtitle,
+  kicker,
   actions,
   className,
 }: {
   title: string;
   subtitle?: string;
+  kicker?: string;
   actions?: ReactNode;
   className?: string;
 }) {
@@ -21,6 +23,11 @@ export function PageHeader({
       )}
     >
       <div className="min-w-0">
+        {kicker ? (
+          <p className="mb-1 text-[11px] font-bold uppercase tracking-widest text-brand/70">
+            {kicker}
+          </p>
+        ) : null}
         <h1 className="font-display text-2xl font-bold tracking-tight text-slate-900 md:text-[1.7rem]">
           {title}
         </h1>

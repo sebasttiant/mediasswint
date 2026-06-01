@@ -169,6 +169,7 @@ export default async function DashboardPage() {
       description="Resumen operativo del día."
       kicker="MEDIASSWINT · Gestión Interna"
       title="Panel de gestión"
+      role={user.role}
       userLabel={user.fullName ? `Bienvenido, ${user.fullName}` : "Bienvenido"}
     >
       <div className="space-y-6">
