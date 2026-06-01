@@ -138,16 +138,19 @@ describe("buildMeasurementsSectionViewModel", () => {
     }
   });
 
-  it("returns the list kind with measurement detail hrefs when measurements exist", () => {
+  it("routes draft rows to edit and completed rows to detail", () => {
     const viewModel = buildMeasurementsSectionViewModel({
-      recentMeasurements: [measurementFixture({ id: "m-1" }), measurementFixture({ id: "m-2" })],
+      recentMeasurements: [
+        measurementFixture({ id: "m-1", status: "DRAFT" }),
+        measurementFixture({ id: "m-2", status: "COMPLETED" }),
+      ],
       patientId: "pat-1",
     });
 
     assert.equal(viewModel.kind, "list");
     if (viewModel.kind === "list") {
       assert.equal(viewModel.rows.length, 2);
-      assert.equal(viewModel.rows[0]!.href, "/patients/pat-1/measurements/m-1");
+      assert.equal(viewModel.rows[0]!.href, "/patients/pat-1/measurements/m-1/edit");
       assert.equal(viewModel.rows[1]!.href, "/patients/pat-1/measurements/m-2");
     }
   });

@@ -10,6 +10,7 @@ import type { UserRole } from "@/lib/auth-edge";
 import { AppShell } from "../../_components/app-shell/app-shell";
 
 import {
+  buildMeasurementEditHref,
   buildMeasurementDetailHref,
   type OperationSummary,
   type PatientDetail,
@@ -65,7 +66,9 @@ export function buildMeasurementsSectionViewModel(args: {
     kind: "list",
     rows: args.recentMeasurements.map((measurement) => ({
       id: measurement.id,
-      href: buildMeasurementDetailHref(args.patientId, measurement.id),
+      href: measurement.status === "DRAFT"
+        ? buildMeasurementEditHref(args.patientId, measurement.id)
+        : buildMeasurementDetailHref(args.patientId, measurement.id),
       status: measurement.status,
       measuredAt: measurement.measuredAt,
       garmentType: measurement.garmentType,

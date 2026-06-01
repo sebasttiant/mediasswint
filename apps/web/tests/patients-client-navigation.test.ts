@@ -5,6 +5,7 @@ import { describe, it } from "node:test";
 import { AppShell } from "../app/_components/app-shell/app-shell";
 import {
   buildMeasurementDetailHref,
+  buildMeasurementEditHref,
   buildNewMeasurementHref,
   buildPatientDetailHref,
   executePatientSaveNavigation,
@@ -70,6 +71,10 @@ describe("patient detail client helpers", () => {
     assert.equal(
       buildMeasurementDetailHref("pat with space", "sess/1"),
       "/patients/pat%20with%20space/measurements/sess%2F1",
+    );
+    assert.equal(
+      buildMeasurementEditHref("pat with space", "sess/1"),
+      "/patients/pat%20with%20space/measurements/sess%2F1/edit",
     );
   });
 

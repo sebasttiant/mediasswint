@@ -6,7 +6,9 @@ import {
   completeMeasurement,
   createDraftMeasurement,
   getMeasurement,
+  duplicateCompletedMeasurement,
   listPatientMeasurements,
+  reopenMeasurementForCorrection,
   updateMeasurementValues,
   type MeasurementSessionDetail,
   type MeasurementSessionStatus,
@@ -146,12 +148,37 @@ function createInMemoryRepository(options?: {
       return { ok: true, status: "DRAFT" };
     },
 
+    async updateContext(input) {
+      const stored = sessions.get(input.sessionId);
+      if (!stored) return { ok: false, status: null };
+      if (stored.detail.status !== "DRAFT") return { ok: false, status: stored.detail.status };
+      stored.detail = {
+        ...stored.detail,
+        measuredAt: input.measuredAt ?? stored.detail.measuredAt,
+        notes: input.notes !== undefined ? input.notes : stored.detail.notes,
+        diagnosis: input.diagnosis !== undefined ? input.diagnosis : stored.detail.diagnosis,
+        garmentType: input.garmentType !== undefined ? input.garmentType : stored.detail.garmentType,
+        compressionClass: input.compressionClass !== undefined ? input.compressionClass : stored.detail.compressionClass,
+        productFlags: input.productFlags !== undefined ? input.productFlags : stored.detail.productFlags,
+        metadata: input.metadata !== undefined ? input.metadata : stored.detail.metadata,
+      };
+      return { ok: true, status: "DRAFT" };
+    },
+
     async markCompleted(id) {
       const stored = sessions.get(id);
       if (!stored) return { status: "NOT_FOUND" };
       if (stored.detail.status !== "DRAFT") return { status: "INVALID_STATE" };
       setStatus(id, "COMPLETED");
       return { status: "COMPLETED" };
+    },
+
+    async reopenToDraft(id) {
+      const stored = sessions.get(id);
+      if (!stored) return { ok: false, status: null };
+      if (stored.detail.status !== "COMPLETED") return { ok: false, status: stored.detail.status };
+      setStatus(id, "DRAFT");
+      return { ok: true, status: "DRAFT" };
     },
   };
 
@@ -281,6 +308,61 @@ describe("updateMeasurementValues", () => {
 
     assert.deepEqual(result, { ok: false, error: "INVALID_STATE" });
   });
+
+  it("updates draft context fields with values", async () => {
+    const store = createInMemoryRepository();
+    const created = await createDraftMeasurement(baseInput, store.repository);
+    if (!created.ok) throw new Error("setup failed");
+
+    const result = await updateMeasurementValues(
+      created.value.id,
+      {
+        valuesByKey: { legRight1: 24.5 },
+        measuredAt: new Date("2026-05-01T10:00:00Z"),
+        garmentType: "Media larga",
+        notes: null,
+      },
+      store.repository,
+    );
+
+    assert.equal(result.ok, true);
+    const detail = store.sessions.get(created.value.id)?.detail;
+    assert.equal(detail?.measuredAt.toISOString(), "2026-05-01T10:00:00.000Z");
+    assert.equal(detail?.garmentType, "Media larga");
+    assert.equal(detail?.notes, null);
+    assert.equal(detail?.values.legRight1, 24.5);
+  });
+});
+
+describe("duplicateCompletedMeasurement", () => {
+  it("copies a COMPLETED measurement into a new DRAFT preserving snapshot and values", async () => {
+    const store = createInMemoryRepository();
+    const created = await createDraftMeasurement(baseInput, store.repository);
+    if (!created.ok) throw new Error("setup failed");
+    await updateMeasurementValues(created.value.id, { valuesByKey: { legRight1: 24.5 } }, store.repository);
+    await completeMeasurement(created.value.id, store.repository);
+
+    const result = await duplicateCompletedMeasurement(created.value.id, store.repository);
+
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    const copy = store.sessions.get(result.value.id)?.detail;
+    assert.ok(copy);
+    assert.notEqual(copy.id, created.value.id);
+    assert.equal(copy.status, "DRAFT");
+    assert.equal(copy.templateSnapshot, store.sessions.get(created.value.id)?.detail.templateSnapshot);
+    assert.equal(copy.values.legRight1, 24.5);
+  });
+
+  it("rejects DRAFT measurements", async () => {
+    const store = createInMemoryRepository();
+    const created = await createDraftMeasurement(baseInput, store.repository);
+    if (!created.ok) throw new Error("setup failed");
+
+    const result = await duplicateCompletedMeasurement(created.value.id, store.repository);
+
+    assert.deepEqual(result, { ok: false, error: "INVALID_STATE" });
+  });
 });
 
 describe("completeMeasurement", () => {
@@ -308,6 +390,54 @@ describe("completeMeasurement", () => {
 
     const result = await completeMeasurement(created.value.id, store.repository);
     assert.deepEqual(result, { ok: false, error: "INVALID_STATE" });
+  });
+});
+
+describe("reopenMeasurementForCorrection", () => {
+  it("reopens a COMPLETED session back to DRAFT so admins can correct it", async () => {
+    const store = createInMemoryRepository();
+    const created = await createDraftMeasurement(baseInput, store.repository);
+    if (!created.ok) throw new Error("setup failed");
+    await updateMeasurementValues(created.value.id, { valuesByKey: { legRight1: 24.5 } }, store.repository);
+    await completeMeasurement(created.value.id, store.repository);
+
+    const result = await reopenMeasurementForCorrection(created.value.id, store.repository);
+
+    assert.deepEqual(result, { ok: true, value: { id: created.value.id, status: "DRAFT" } });
+    assert.equal(store.sessions.get(created.value.id)?.detail.status, "DRAFT");
+    // Existing values are preserved — correction edits the same session.
+    assert.equal(store.sessions.get(created.value.id)?.detail.values.legRight1, 24.5);
+  });
+
+  it("is idempotent for a session already in DRAFT", async () => {
+    const store = createInMemoryRepository();
+    const created = await createDraftMeasurement(baseInput, store.repository);
+    if (!created.ok) throw new Error("setup failed");
+
+    const result = await reopenMeasurementForCorrection(created.value.id, store.repository);
+
+    assert.deepEqual(result, { ok: true, value: { id: created.value.id, status: "DRAFT" } });
+    assert.equal(store.sessions.get(created.value.id)?.detail.status, "DRAFT");
+  });
+
+  it("never reopens a VOID session", async () => {
+    const store = createInMemoryRepository();
+    const created = await createDraftMeasurement(baseInput, store.repository);
+    if (!created.ok) throw new Error("setup failed");
+    // Force VOID directly in the store to assert the guard.
+    const stored = store.sessions.get(created.value.id)!;
+    stored.detail = { ...stored.detail, status: "VOID" };
+
+    const result = await reopenMeasurementForCorrection(created.value.id, store.repository);
+
+    assert.deepEqual(result, { ok: false, error: "INVALID_STATE" });
+    assert.equal(store.sessions.get(created.value.id)?.detail.status, "VOID");
+  });
+
+  it("returns NOT_FOUND for a missing session", async () => {
+    const store = createInMemoryRepository();
+    const result = await reopenMeasurementForCorrection("missing", store.repository);
+    assert.deepEqual(result, { ok: false, error: "NOT_FOUND" });
   });
 });
 

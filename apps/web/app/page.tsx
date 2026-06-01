@@ -14,6 +14,7 @@ import { DataTable, type DataTableColumn } from "./_components/dashboard/data-ta
 import { PendingTimeline } from "./_components/dashboard/pending-timeline";
 import { StatusBadge } from "./_components/dashboard/status-badge";
 import type { DashboardMeasurement, DashboardOperation, DashboardPatient } from "@/lib/dashboard";
+import { formatClinicDate } from "@/lib/datetime";
 
 function formatCurrency(value: string | number): string {
   const num = typeof value === "string" ? Number(value) : value;
@@ -46,7 +47,7 @@ const MEASUREMENT_COLUMNS: DataTableColumn<DashboardMeasurement>[] = [
     key: "date",
     header: "Fecha",
     render: (row) => (
-      <span className="text-slate-400">{row.measuredAt.toLocaleDateString("es-AR")}</span>
+      <span className="text-slate-400">{formatClinicDate(row.measuredAt)}</span>
     ),
   },
   {
@@ -64,7 +65,7 @@ const MEASUREMENT_COLUMNS: DataTableColumn<DashboardMeasurement>[] = [
     header: "Acción",
     render: (row) => {
       const href = row.patientId
-        ? `/patients/${row.patientId}/measurements/${row.id}`
+        ? `/patients/${row.patientId}/measurements/${row.id}${row.status === "DRAFT" ? "/edit" : ""}`
         : null;
       return href ? (
         <Link className="font-semibold text-brand hover:underline" href={href}>
@@ -103,7 +104,7 @@ const PATIENT_COLUMNS: DataTableColumn<DashboardPatient>[] = [
     key: "since",
     header: "Alta",
     render: (row) => (
-      <span className="text-slate-400">{row.createdAt.toLocaleDateString("es-AR")}</span>
+      <span className="text-slate-400">{formatClinicDate(row.createdAt)}</span>
     ),
   },
 ];

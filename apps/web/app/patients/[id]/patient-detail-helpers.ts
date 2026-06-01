@@ -69,6 +69,10 @@ export function buildMeasurementDetailHref(patientId: string, sessionId: string)
   return `/patients/${encodeURIComponent(patientId)}/measurements/${encodeURIComponent(sessionId)}`;
 }
 
+export function buildMeasurementEditHref(patientId: string, sessionId: string): string {
+  return `/patients/${encodeURIComponent(patientId)}/measurements/${encodeURIComponent(sessionId)}/edit`;
+}
+
 export function executePatientSaveNavigation(router: NavigationRouter): void {
   router.refresh();
   router.push("/patients");
