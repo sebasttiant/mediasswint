@@ -6,7 +6,6 @@ import { getSessionCookieName, requireActiveUserFromRequest, type UserRole } fro
 import { listUsers, type SafeUser } from "@/lib/users";
 import { parseListUsersQuery, type ListUsersQuery } from "@/lib/users-input";
 
-import { LogoutButton } from "../../_components/logout-button";
 import { resolveAdminAccess } from "../admin-access";
 
 import { renderUsersView, type UsersViewUser } from "./users-view";
@@ -88,7 +87,7 @@ export async function UsersPage(
     user: viewUser,
     users: result.value,
     query: query.q ?? "",
-    actions: <LogoutButton />,
+    currentUserId: user?.id ?? "",
   });
 }
 
