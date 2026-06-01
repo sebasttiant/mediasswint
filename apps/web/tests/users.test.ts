@@ -6,6 +6,8 @@ import {
   createUser,
   updateUserRole,
   setUserActive,
+  updateUserFullName,
+  updateUserPassword,
   type UsersRepository,
   type SafeUser,
 } from "@/lib/users";
@@ -51,6 +53,8 @@ function createRepo(overrides: Partial<UsersRepository> = {}): UsersRepository {
     countActiveAdmins: async () => 2,
     updateRole: async (_tx, _id, role) => makeFullUser({ role }),
     setActive: async (_tx, _id, isActive) => makeFullUser({ isActive }),
+    updateFullName: async (_id, fullName) => makeFullUser({ fullName }),
+    updatePasswordHash: async (_id, passwordHash) => makeFullUser({ passwordHash }),
     ...overrides,
   };
 }
@@ -291,6 +295,114 @@ describe("setUserActive", () => {
     const after = audit.calls[0]!.diff.after as Record<string, unknown>;
     assert.equal("passwordHash" in before, false);
     assert.equal("passwordHash" in after, false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// updateUserFullName
+// ---------------------------------------------------------------------------
+
+describe("updateUserFullName", () => {
+  it("updates fullName and audits only the name change", async () => {
+    const audit = makeAuditSpy();
+    const repo = createRepo({
+      getById: async () => makeFullUser({ fullName: "Old Name", passwordHash: "old-hash" }),
+      updateFullName: async (_id, fullName) => makeFullUser({ fullName, passwordHash: "old-hash" }),
+    });
+
+    const result = await updateUserFullName("user-1", { fullName: "New Name" }, repo, audit.fn);
+
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.value.fullName, "New Name");
+    assert.equal("passwordHash" in result.value, false);
+    assert.equal(audit.calls.length, 1);
+    assert.deepEqual(audit.calls[0]!.diff, {
+      before: { fullName: "Old Name" },
+      after: { fullName: "New Name" },
+    });
+  });
+
+  it("returns NOT_FOUND without writing or auditing when the user does not exist", async () => {
+    const audit = makeAuditSpy();
+    let updateCalled = false;
+    const repo = createRepo({
+      getById: async () => null,
+      updateFullName: async () => {
+        updateCalled = true;
+        return makeFullUser();
+      },
+    });
+
+    const result = await updateUserFullName("missing", { fullName: "New Name" }, repo, audit.fn);
+
+    assert.deepEqual(result, { ok: false, error: "NOT_FOUND" });
+    assert.equal(updateCalled, false);
+    assert.equal(audit.calls.length, 0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// updateUserPassword
+// ---------------------------------------------------------------------------
+
+describe("updateUserPassword", () => {
+  it("hashes the new password and audits only that the password changed", async () => {
+    const audit = makeAuditSpy();
+    let capturedHash: string | undefined;
+    const repo = createRepo({
+      getById: async () => makeFullUser({ passwordHash: "old-hash" }),
+      updatePasswordHash: async (_id, passwordHash) => {
+        capturedHash = passwordHash;
+        return makeFullUser({ passwordHash });
+      },
+    });
+
+    const result = await updateUserPassword(
+      "user-1",
+      { password: "new-secret-123" },
+      repo,
+      async () => "new-hash",
+      audit.fn,
+    );
+
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(capturedHash, "new-hash");
+    assert.equal("passwordHash" in result.value, false);
+    assert.equal(audit.calls.length, 1);
+    assert.deepEqual(audit.calls[0]!.diff, { after: { passwordChanged: true } });
+    assert.equal(JSON.stringify(audit.calls[0]).includes("new-secret-123"), false);
+    assert.equal(JSON.stringify(audit.calls[0]).includes("new-hash"), false);
+  });
+
+  it("does not hash, write, or audit when the user does not exist", async () => {
+    const audit = makeAuditSpy();
+    let hashCalled = false;
+    let updateCalled = false;
+    const repo = createRepo({
+      getById: async () => null,
+      updatePasswordHash: async () => {
+        updateCalled = true;
+        return makeFullUser();
+      },
+    });
+
+    const result = await updateUserPassword(
+      "missing",
+      { password: "new-secret-123" },
+      repo,
+      async () => {
+        hashCalled = true;
+        return "new-hash";
+      },
+      audit.fn,
+    );
+
+    assert.deepEqual(result, { ok: false, error: "NOT_FOUND" });
+    assert.equal(hashCalled, false);
+    assert.equal(updateCalled, false);
+    assert.equal(audit.calls.length, 0);
   });
 });
 

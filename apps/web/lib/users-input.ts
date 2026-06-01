@@ -42,6 +42,14 @@ export type UpdateUserPatchInput = {
   isActive?: boolean;
 };
 
+export type UpdateUserFullNameInput = {
+  fullName: string;
+};
+
+export type UpdateUserPasswordInput = {
+  password: string;
+};
+
 export type ListUsersQuery = {
   q: string | null;
   limit: number;
@@ -51,8 +59,8 @@ export type ListUsersQuery = {
 // Constants
 // ---------------------------------------------------------------------------
 
-const MAX_FULL_NAME_LENGTH = 120;
-const MIN_PASSWORD_LENGTH = 8;
+export const MAX_FULL_NAME_LENGTH = 120;
+export const MIN_PASSWORD_LENGTH = 8;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 
@@ -209,6 +217,56 @@ export function parseUpdateUserPatchInput(body: unknown): ValidationResult<Updat
   }
 
   return { ok: true, value: result };
+}
+
+// ---------------------------------------------------------------------------
+// parseUpdateUserFullNameInput
+// ---------------------------------------------------------------------------
+
+export function parseUpdateUserFullNameInput(body: unknown): ValidationResult<UpdateUserFullNameInput> {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return { ok: false, errors: [{ field: "body", message: "must be a JSON object" }] };
+  }
+
+  const source = body as Record<string, unknown>;
+  const fullName = asTrimmedString(source.fullName);
+  if (!fullName) {
+    return { ok: false, errors: [{ field: "fullName", message: "is required" }] };
+  }
+
+  if (fullName.length > MAX_FULL_NAME_LENGTH) {
+    return {
+      ok: false,
+      errors: [{ field: "fullName", message: `must be at most ${MAX_FULL_NAME_LENGTH} characters` }],
+    };
+  }
+
+  return { ok: true, value: { fullName } };
+}
+
+// ---------------------------------------------------------------------------
+// parseUpdateUserPasswordInput
+// ---------------------------------------------------------------------------
+
+export function parseUpdateUserPasswordInput(body: unknown): ValidationResult<UpdateUserPasswordInput> {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return { ok: false, errors: [{ field: "body", message: "must be a JSON object" }] };
+  }
+
+  const source = body as Record<string, unknown>;
+  const password = source.password;
+  if (typeof password !== "string" || password.length === 0) {
+    return { ok: false, errors: [{ field: "password", message: "is required" }] };
+  }
+
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return {
+      ok: false,
+      errors: [{ field: "password", message: `must be at least ${MIN_PASSWORD_LENGTH} characters` }],
+    };
+  }
+
+  return { ok: true, value: { password } };
 }
 
 // ---------------------------------------------------------------------------

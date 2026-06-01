@@ -8,7 +8,12 @@ import { Badge } from "../../_components/ui/badge";
 import { Card, CardBody, CardHeader } from "../../_components/ui/card";
 import { DataTable, type DataTableColumn } from "../../_components/dashboard/data-table";
 
-import { setUserActiveAction, updateUserRoleAction } from "./actions";
+import {
+  setUserActiveAction,
+  updateUserFullNameAction,
+  updateUserPasswordAction,
+  updateUserRoleAction,
+} from "./actions";
 import { INITIAL_USER_ACTION_STATE, type UserActionState } from "./user-actions-core";
 import {
   roleBadgeVariant,
@@ -51,6 +56,14 @@ export function UsersClient({ viewModel, total, query, currentUserId }: UsersCli
     setUserActiveAction,
     INITIAL_USER_ACTION_STATE,
   );
+  const [nameState, nameAction, namePending] = useActionState(
+    updateUserFullNameAction,
+    INITIAL_USER_ACTION_STATE,
+  );
+  const [passwordState, passwordAction, passwordPending] = useActionState(
+    updateUserPasswordAction,
+    INITIAL_USER_ACTION_STATE,
+  );
 
   const rows = viewModel.kind === "list" ? viewModel.rows : [];
 
@@ -68,6 +81,62 @@ export function UsersClient({ viewModel, total, query, currentUserId }: UsersCli
             </p>
             <p className="truncate text-xs text-slate-400">{row.email}</p>
           </div>
+        </div>
+      ),
+    },
+    {
+      key: "profile",
+      header: "Perfil",
+      render: (row) => (
+        <div className="space-y-3">
+          <form action={nameAction} className="flex flex-wrap items-center gap-2">
+            <input type="hidden" name="userId" value={row.id} />
+            <label className="sr-only" htmlFor={`fullName-${row.id}`}>
+              Editar nombre de {row.fullName ?? row.email}
+            </label>
+            <input
+              id={`fullName-${row.id}`}
+              name="fullName"
+              defaultValue={row.fullName ?? ""}
+              maxLength={120}
+              required
+              disabled={namePending}
+              className="h-8 min-w-44 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 outline-none transition-colors placeholder:text-slate-400 focus:border-brand/40 focus:ring-2 focus:ring-brand/10 disabled:opacity-50"
+              placeholder="Nombre completo"
+            />
+            <button
+              type="submit"
+              disabled={namePending}
+              className="h-8 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50"
+            >
+              Guardar nombre
+            </button>
+          </form>
+
+          <form action={passwordAction} className="flex flex-wrap items-center gap-2">
+            <input type="hidden" name="userId" value={row.id} />
+            <label className="sr-only" htmlFor={`password-${row.id}`}>
+              Cambiar contraseña de {row.fullName ?? row.email}
+            </label>
+            <input
+              id={`password-${row.id}`}
+              name="password"
+              type="password"
+              minLength={8}
+              required
+              autoComplete="new-password"
+              disabled={passwordPending}
+              className="h-8 min-w-44 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 outline-none transition-colors placeholder:text-slate-400 focus:border-brand/40 focus:ring-2 focus:ring-brand/10 disabled:opacity-50"
+              placeholder="Nueva contraseña"
+            />
+            <button
+              type="submit"
+              disabled={passwordPending}
+              className="h-8 rounded-lg border border-amber-200 px-3 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-50 disabled:opacity-50"
+            >
+              Cambiar contraseña
+            </button>
+          </form>
         </div>
       ),
     },
@@ -165,6 +234,8 @@ export function UsersClient({ viewModel, total, query, currentUserId }: UsersCli
         <CardBody>
           <FeedbackBanner state={roleState} />
           <FeedbackBanner state={activeState} />
+          <FeedbackBanner state={nameState} />
+          <FeedbackBanner state={passwordState} />
           <DataTable
             columns={columns}
             rows={rows}

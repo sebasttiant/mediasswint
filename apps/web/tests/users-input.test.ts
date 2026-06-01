@@ -4,6 +4,8 @@ import { describe, it } from "node:test";
 import {
   parseCreateUserInput,
   parseUpdateUserPatchInput,
+  parseUpdateUserFullNameInput,
+  parseUpdateUserPasswordInput,
   parseListUsersQuery,
 } from "@/lib/users-input";
 
@@ -92,6 +94,19 @@ describe("parseCreateUserInput", () => {
     );
   });
 
+  it("rejects SUPER_ADMIN because the app only supports ADMIN and STAFF", () => {
+    const result = parseCreateUserInput({
+      email: "x@x.com",
+      fullName: "Alice",
+      role: "SUPER_ADMIN",
+      password: "secure123",
+    });
+
+    assert.equal(result.ok, false);
+    if (result.ok) return;
+    assert.ok(result.errors.some((e) => e.field === "role"));
+  });
+
   it("accumulates multiple validation errors", () => {
     const result = parseCreateUserInput({
       email: "bad",
@@ -172,6 +187,58 @@ describe("parseUpdateUserPatchInput", () => {
     const result = parseUpdateUserPatchInput("not-an-object");
 
     assert.equal(result.ok, false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseUpdateUserFullNameInput
+// ---------------------------------------------------------------------------
+
+describe("parseUpdateUserFullNameInput", () => {
+  it("accepts and trims a valid fullName", () => {
+    const result = parseUpdateUserFullNameInput({ fullName: "  Ada Lovelace  " });
+
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.value.fullName, "Ada Lovelace");
+  });
+
+  it("rejects blank fullName", () => {
+    const result = parseUpdateUserFullNameInput({ fullName: "   " });
+
+    assert.equal(result.ok, false);
+    if (result.ok) return;
+    assert.ok(result.errors.some((error) => error.field === "fullName"));
+  });
+
+  it("rejects fullName longer than create-user limit", () => {
+    const result = parseUpdateUserFullNameInput({ fullName: "a".repeat(121) });
+
+    assert.equal(result.ok, false);
+    if (result.ok) return;
+    assert.ok(result.errors.some((error) => error.field === "fullName"));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseUpdateUserPasswordInput
+// ---------------------------------------------------------------------------
+
+describe("parseUpdateUserPasswordInput", () => {
+  it("accepts password with at least 8 characters", () => {
+    const result = parseUpdateUserPasswordInput({ password: "secure123" });
+
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.value.password, "secure123");
+  });
+
+  it("rejects short password", () => {
+    const result = parseUpdateUserPasswordInput({ password: "short" });
+
+    assert.equal(result.ok, false);
+    if (result.ok) return;
+    assert.ok(result.errors.some((error) => error.field === "password"));
   });
 });
 

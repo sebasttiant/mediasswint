@@ -1,5 +1,11 @@
 import type { UserRole } from "@/lib/auth-edge";
 import type { SafeUser } from "@/lib/users";
+import {
+  parseUpdateUserFullNameInput,
+  parseUpdateUserPasswordInput,
+  type UpdateUserFullNameInput,
+  type UpdateUserPasswordInput,
+} from "@/lib/users-input";
 
 import { resolveAdminAccess } from "../admin-access";
 
@@ -25,6 +31,18 @@ export type UpdateRoleFn = (
 export type SetActiveFn = (
   id: string,
   isActive: boolean,
+  actorUserId: string,
+) => Promise<MutationResult>;
+
+export type UpdateFullNameFn = (
+  id: string,
+  input: UpdateUserFullNameInput,
+  actorUserId: string,
+) => Promise<MutationResult>;
+
+export type UpdatePasswordFn = (
+  id: string,
+  input: UpdateUserPasswordInput,
   actorUserId: string,
 ) => Promise<MutationResult>;
 
@@ -98,4 +116,58 @@ export async function authorizeAndSetActive(
     status: "success",
     message: isActive ? "Usuario activado." : "Usuario desactivado.",
   };
+}
+
+/**
+ * Security boundary for full-name updates. Authorization is re-checked before
+ * validation/mutation so STAFF and anonymous callers never reach the service.
+ */
+export async function authorizeAndUpdateFullName(
+  formData: FormData,
+  deps: { readUser: () => Promise<ActionActor>; updateFullNameFn: UpdateFullNameFn },
+): Promise<UserActionState> {
+  const actor = await deps.readUser();
+  if (!resolveAdminAccess(actor).allowed || !actor) {
+    return { status: "error", message: "No tenés permisos para esta acción." };
+  }
+
+  const userId = String(formData.get("userId") ?? "").trim();
+  const parsed = parseUpdateUserFullNameInput({ fullName: formData.get("fullName") });
+  if (!userId || !parsed.ok) {
+    return { status: "error", message: "El nombre es obligatorio y debe tener hasta 120 caracteres." };
+  }
+
+  const result = await deps.updateFullNameFn(userId, parsed.value, actor.id);
+  if (!result.ok) {
+    return { status: "error", message: mapMutationError(result.error) };
+  }
+
+  return { status: "success", message: "Nombre actualizado." };
+}
+
+/**
+ * Security boundary for password changes. Existing passwords/hashes are never
+ * accepted from the client and never returned in action state.
+ */
+export async function authorizeAndUpdatePassword(
+  formData: FormData,
+  deps: { readUser: () => Promise<ActionActor>; updatePasswordFn: UpdatePasswordFn },
+): Promise<UserActionState> {
+  const actor = await deps.readUser();
+  if (!resolveAdminAccess(actor).allowed || !actor) {
+    return { status: "error", message: "No tenés permisos para esta acción." };
+  }
+
+  const userId = String(formData.get("userId") ?? "").trim();
+  const parsed = parseUpdateUserPasswordInput({ password: formData.get("password") });
+  if (!userId || !parsed.ok) {
+    return { status: "error", message: "La contraseña debe tener al menos 8 caracteres." };
+  }
+
+  const result = await deps.updatePasswordFn(userId, parsed.value, actor.id);
+  if (!result.ok) {
+    return { status: "error", message: mapMutationError(result.error) };
+  }
+
+  return { status: "success", message: "Contraseña actualizada." };
 }

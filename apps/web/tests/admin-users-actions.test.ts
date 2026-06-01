@@ -4,6 +4,8 @@ import { describe, it } from "node:test";
 import type { SafeUser } from "../lib/users";
 import {
   authorizeAndSetActive,
+  authorizeAndUpdateFullName,
+  authorizeAndUpdatePassword,
   authorizeAndUpdateRole,
 } from "../app/admin/users/user-actions-core";
 
@@ -129,5 +131,103 @@ describe("authorizeAndSetActive security boundary", () => {
     );
     assert.equal(state.status, "error");
     assert.match(state.message ?? "", /administrador/i);
+  });
+});
+
+describe("authorizeAndUpdateFullName security boundary", () => {
+  it("does not call updateFullName for STAFF actors", async () => {
+    let called = false;
+    const state = await authorizeAndUpdateFullName(formDataFrom({ userId: "u-2", fullName: "Ada" }), {
+      readUser: async () => STAFF,
+      updateFullNameFn: async () => {
+        called = true;
+        return { ok: true as const, value: safeUserFixture() };
+      },
+    });
+
+    assert.equal(called, false);
+    assert.equal(state.status, "error");
+  });
+
+  it("updates fullName for ADMIN actors, including self", async () => {
+    const calls: Array<[string, string, string]> = [];
+    const state = await authorizeAndUpdateFullName(
+      formDataFrom({ userId: "admin-1", fullName: "Admin Renamed" }),
+      {
+        readUser: async () => ADMIN,
+        updateFullNameFn: async (id, input, actorId) => {
+          calls.push([id, input.fullName, actorId]);
+          return { ok: true as const, value: safeUserFixture({ id, fullName: input.fullName }) };
+        },
+      },
+    );
+
+    assert.deepEqual(calls, [["admin-1", "Admin Renamed", "admin-1"]]);
+    assert.equal(state.status, "success");
+  });
+
+  it("rejects blank fullName without calling updateFullName", async () => {
+    let called = false;
+    const state = await authorizeAndUpdateFullName(formDataFrom({ userId: "u-2", fullName: "   " }), {
+      readUser: async () => ADMIN,
+      updateFullNameFn: async () => {
+        called = true;
+        return { ok: true as const, value: safeUserFixture() };
+      },
+    });
+
+    assert.equal(called, false);
+    assert.equal(state.status, "error");
+  });
+});
+
+describe("authorizeAndUpdatePassword security boundary", () => {
+  it("does not call updatePassword for anonymous actors", async () => {
+    let called = false;
+    const state = await authorizeAndUpdatePassword(
+      formDataFrom({ userId: "u-2", password: "secure123" }),
+      {
+        readUser: async () => null,
+        updatePasswordFn: async () => {
+          called = true;
+          return { ok: true as const, value: safeUserFixture() };
+        },
+      },
+    );
+
+    assert.equal(called, false);
+    assert.equal(state.status, "error");
+  });
+
+  it("changes password for ADMIN actors, including self, without returning secrets", async () => {
+    const calls: Array<[string, string, string]> = [];
+    const state = await authorizeAndUpdatePassword(
+      formDataFrom({ userId: "admin-1", password: "secure123" }),
+      {
+        readUser: async () => ADMIN,
+        updatePasswordFn: async (id, input, actorId) => {
+          calls.push([id, input.password, actorId]);
+          return { ok: true as const, value: safeUserFixture({ id }) };
+        },
+      },
+    );
+
+    assert.deepEqual(calls, [["admin-1", "secure123", "admin-1"]]);
+    assert.equal(state.status, "success");
+    assert.equal(JSON.stringify(state).includes("secure123"), false);
+  });
+
+  it("rejects short password without calling updatePassword", async () => {
+    let called = false;
+    const state = await authorizeAndUpdatePassword(formDataFrom({ userId: "u-2", password: "short" }), {
+      readUser: async () => ADMIN,
+      updatePasswordFn: async () => {
+        called = true;
+        return { ok: true as const, value: safeUserFixture() };
+      },
+    });
+
+    assert.equal(called, false);
+    assert.equal(state.status, "error");
   });
 });
