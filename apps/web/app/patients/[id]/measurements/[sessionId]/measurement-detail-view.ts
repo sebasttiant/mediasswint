@@ -30,6 +30,7 @@ export type MeasurementDetailViewMeasurement = {
   garmentType: string | null;
   compressionClass: string | null;
   values: Record<string, number | null>;
+  metadata?: Record<string, unknown> | null;
   templateSnapshot: unknown;
 };
 

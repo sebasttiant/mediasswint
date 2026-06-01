@@ -6,6 +6,7 @@ import {
   getDefaultMeasurementsRepository,
   getMeasurement,
 } from "@/lib/measurements";
+import { getMeasurementSnapshotPatientSex } from "@/lib/body-figure-sex";
 import { getPatient } from "@/lib/patients";
 
 import { resolvePatientDetailLoad } from "../../../patient-detail-loading";
@@ -41,7 +42,7 @@ export default async function EditMeasurementPage({ params }: Params) {
     <NewMeasurementClient
       patientId={decision.patient.id}
       patientName={decision.patient.fullName}
-      patientSex={decision.patient.sex}
+      patientSex={getMeasurementSnapshotPatientSex(access.detail.metadata) ?? decision.patient.sex}
       initialDraft={{
         id: access.detail.id,
         templateSnapshot: access.templateSnapshot,
@@ -51,6 +52,7 @@ export default async function EditMeasurementPage({ params }: Params) {
         compressionClass: access.detail.compressionClass,
         diagnosis: access.detail.diagnosis,
         notes: access.detail.notes,
+        patientSex: getMeasurementSnapshotPatientSex(access.detail.metadata) ?? decision.patient.sex,
       }}
     />
   );

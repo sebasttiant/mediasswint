@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useId, useState } from "react";
 
 import { type AnatomicalRegion, findRegionSummary, hasDetailView } from "@/lib/body-anatomy";
+import { BODY_FIGURE_SEX, type BodyFigureSex } from "@/lib/body-figure-sex";
 import type { AnatomyZoneId } from "@/lib/compression-measurements";
 
 import {
@@ -40,12 +41,7 @@ import {
 } from "./silhouettes";
 import styles from "./body-highlight.module.css";
 
-export const BODY_FIGURE_SEX = {
-  FEMALE: "female",
-  MALE: "male",
-} as const;
-
-export type BodyFigureSex = (typeof BODY_FIGURE_SEX)[keyof typeof BODY_FIGURE_SEX];
+export { BODY_FIGURE_SEX, type BodyFigureSex } from "@/lib/body-figure-sex";
 
 // The calibration module's FullBodySex is the same string union; cast is
 // only here to bridge the typed-constant alias used at component props.

@@ -2,7 +2,8 @@ import Link from "next/link";
 import type { ReactElement } from "react";
 import { ArrowLeft, Pencil } from "lucide-react";
 
-import { BODY_FIGURE_SEX, BodyHighlight, type BodyFigureSex } from "@/app/_components/body-highlight/body-highlight";
+import { BodyHighlight } from "@/app/_components/body-highlight/body-highlight";
+import { resolveMeasurementBodyFigureSex } from "@/lib/body-figure-sex";
 import type { MeasurementSessionDetail } from "@/lib/measurements";
 import { formatClinicDateTime } from "@/lib/datetime";
 
@@ -42,10 +43,6 @@ function ClinicalField({ label, value }: { label: string; value: string }): Reac
 function formatDateTime(date: Date): string {
   // Explicit clinic timezone — see lib/datetime. Avoids runtime-tz drift.
   return formatClinicDateTime(date);
-}
-
-function resolveBodyFigureSex(patientSex: string | null): BodyFigureSex {
-  return patientSex === "MALE" ? BODY_FIGURE_SEX.MALE : BODY_FIGURE_SEX.FEMALE;
 }
 
 function buildMeasurementEditHref(patientId: string, sessionId: string): string {
@@ -170,7 +167,7 @@ export default function MeasurementDetailBody({
             <aside className={styles.bodyHighlightRail} aria-label="Zonas anatómicas">
               <BodyHighlight
                 view="full"
-                sex={resolveBodyFigureSex(patient.sex)}
+                sex={resolveMeasurementBodyFigureSex(measurement.metadata, patient.sex)}
                 activeZoneId={null}
                 filledZoneIds={filledZoneIds}
                 ariaLabel="Resumen anatómico con zonas medidas"

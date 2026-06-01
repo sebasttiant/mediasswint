@@ -274,6 +274,7 @@ describe("POST /api/patients/[id]/measurements", () => {
         compressionClass: "II",
         productFlags: { mediaCorta: true },
         diagnosis: "Insuficiencia venosa",
+        patientSex: "MALE",
       }),
       { params: Promise.resolve({ id: "pat-1" }) },
       staffUser,
@@ -286,6 +287,7 @@ describe("POST /api/patients/[id]/measurements", () => {
     const stored = repo.sessions.get(json.id);
     assert.equal(stored?.status, "DRAFT");
     assert.equal(stored?.diagnosis, "Insuficiencia venosa");
+    assert.deepEqual(stored?.metadata, { patientSex: "MALE" });
   });
 });
 
