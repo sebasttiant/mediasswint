@@ -101,6 +101,14 @@ type TooltipData = {
   y: number;
 };
 
+type HandCropBox = {
+  label: "Palma" | "Dorso";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
 function ZoneMarker({
   zone,
   zonePath,
@@ -247,6 +255,39 @@ function DetailLayer({ region, sex }: DetailLayerProps) {
   return sex === "male" ? <HandDetailMale /> : <HandDetailFemale />;
 }
 
+function getHandCropBoxes(sex: BodyFigureSex, detailSide: DetailSide | null): ReadonlyArray<HandCropBox> {
+  const halfWidth = HAND_DETAIL_VIEWBOX.width / 2;
+  const halfHeight = HAND_DETAIL_VIEWBOX.height / 2;
+
+  if (sex !== BODY_FIGURE_SEX.MALE) {
+    const x = detailSide === "left" ? halfWidth : 0;
+    return [
+      { label: "Palma", x, y: 0, width: halfWidth, height: halfHeight },
+      { label: "Dorso", x, y: halfHeight, width: halfWidth, height: halfHeight },
+    ];
+  }
+
+  // Male PNG is not a clean 50/50 split: the dorsal hand's fingertips begin at
+  // y~660 — above the half-sheet line (701) — so an exact half crop leaks those
+  // fingertips into the bottom of the palm panel (a stray fragment) and would
+  // clip them off the top of the dorso panel. These boxes are measured from the
+  // non-white content bounds of apps/web/public/anatomy/hand-male.png: the palm
+  // ends at the wrist (~y630) with a clean gap before the dorsal fingertips,
+  // and the dorso starts just above them (~y652). detailSide "left" = the right
+  // column of the sheet (the patient's left hand), "right" = the left column.
+  if (detailSide === "left") {
+    return [
+      { label: "Palma", x: 580, y: 10, width: 420, height: 638 },
+      { label: "Dorso", x: 580, y: 652, width: 420, height: 678 },
+    ];
+  }
+
+  return [
+    { label: "Palma", x: 120, y: 10, width: 420, height: 638 },
+    { label: "Dorso", x: 120, y: 652, width: 420, height: 678 },
+  ];
+}
+
 function getViewBoxForState(
   view: BodyView,
   detail: DetailRegion | null,
@@ -336,18 +377,10 @@ export function BodyHighlight({
   })();
 
   // Hand detail renders palm + dorso side by side instead of the single
-  // tall column crop. The reference PNG is a clean 2×2 grid: top row =
-  // palms, bottom row = dorsa; left column = right hand, right column =
-  // left hand. So the chosen side is one vertical half, split 50/50 into
-  // palm (top) / dorso (bottom).
+  // tall column crop. Female keeps the clean 2×2 half-sheet crop; male uses
+  // measured boxes because its PNG content is offset inside the sheet.
   const isHandDetail = isDetail && detailRegion === "hands";
-  const handColumnX = detailSide === "left" ? HAND_DETAIL_VIEWBOX.width / 2 : 0;
-  const handColumnWidth = HAND_DETAIL_VIEWBOX.width / 2;
-  const handRowHeight = HAND_DETAIL_VIEWBOX.height / 2;
-  const handCrops = [
-    { label: "Palma", y: 0 },
-    { label: "Dorso", y: handRowHeight },
-  ] as const;
+  const handCrops = getHandCropBoxes(sex, detailSide);
   const wrapperClassName = [styles.wrapper, isDetail ? styles.wrapperDetail : null]
     .filter(Boolean)
     .join(" ");
@@ -398,45 +431,63 @@ export function BodyHighlight({
 
       {isHandDetail ? (
         <div className={styles.handSplit}>
-          {handCrops.map(({ label, y }) => (
-            <figure key={label} className={styles.handCrop}>
-              <svg
-                role="img"
-                aria-label={`${detailTitle ?? "Mano"} — ${label}`}
-                viewBox={`${handColumnX} ${y} ${handColumnWidth} ${handRowHeight}`}
-                className={styles.handCropSvg}
-                overflow="hidden"
-                style={{ overflow: "hidden" }}
-              >
-                <DetailLayer region="hands" sex={sex} />
-              </svg>
-              <figcaption className={styles.handCropCaption}>{label}</figcaption>
-            </figure>
-          ))}
+          {handCrops.map(({ label, x, y, width, height }) => {
+            // The full hand sheet (1122×1402) is twice the size of a single
+            // palm/dorso quadrant, so a bare viewBox crop is not enough: when
+            // the SVG box ends up wider than the viewBox aspect ratio (the
+            // max-height clamp makes it landscape), `meet` letterboxes the
+            // viewBox and `overflow:hidden` only clips to the *viewport*, not
+            // the viewBox — so the neighbouring hand bleeds in through the
+            // side margin. Clipping the asset to the exact quadrant rect kills
+            // that leak regardless of the box's final aspect ratio.
+            const clipId = `${defsId}-hand-${label}`;
+            return (
+              <figure key={label} className={styles.handCrop}>
+                <svg
+                  role="img"
+                  aria-label={`${detailTitle ?? "Mano"} — ${label}`}
+                  viewBox={`${x} ${y} ${width} ${height}`}
+                  className={styles.handCropSvg}
+                  overflow="hidden"
+                  style={{ overflow: "hidden" }}
+                >
+                  <defs>
+                    <clipPath id={clipId} clipPathUnits="userSpaceOnUse">
+                      <rect x={x} y={y} width={width} height={height} />
+                    </clipPath>
+                  </defs>
+                  <g clipPath={`url(#${clipId})`}>
+                    <DetailLayer region="hands" sex={sex} />
+                  </g>
+                </svg>
+                <figcaption className={styles.handCropCaption}>{label}</figcaption>
+              </figure>
+            );
+          })}
         </div>
       ) : (
-      <svg
-        role="img"
-        aria-label={
-          isDetail && detailTitle
-            ? `Detalle anatómico de ${detailTitle.toLowerCase()}`
-            : (ariaLabel ?? DEFAULT_ARIA_LABEL[view])
-        }
-        viewBox={viewBox}
-        className={svgClassName}
-        data-view={view}
-        data-detail={detailRegion ?? "none"}
-        data-detail-side={detailSide ?? "none"}
-        data-active-zone={activeZoneId ?? ""}
-        // Body view keeps overflow visible so the active-zone glow filter
-        // can extend past the SVG bounds. In detail mode the viewBox is
-        // intentionally cropped (e.g. half the hands PNG for a single side)
-        // so we MUST hide overflow or the rest of the asset leaks in.
-        // The inline style is needed because .svg in CSS sets overflow:visible
-        // and would otherwise win against the presentation attribute.
-        overflow={isDetail ? "hidden" : "visible"}
-        style={isDetail ? { overflow: "hidden" } : undefined}
-      >
+        <svg
+          role="img"
+          aria-label={
+            isDetail && detailTitle
+              ? `Detalle anatómico de ${detailTitle.toLowerCase()}`
+              : (ariaLabel ?? DEFAULT_ARIA_LABEL[view])
+          }
+          viewBox={viewBox}
+          className={svgClassName}
+          data-view={view}
+          data-detail={detailRegion ?? "none"}
+          data-detail-side={detailSide ?? "none"}
+          data-active-zone={activeZoneId ?? ""}
+          // Body view keeps overflow visible so the active-zone glow filter
+          // can extend past the SVG bounds. In detail mode the viewBox is
+          // intentionally cropped (e.g. half the hands PNG for a single side)
+          // so we MUST hide overflow or the rest of the asset leaks in.
+          // The inline style is needed because .svg in CSS sets overflow:visible
+          // and would otherwise win against the presentation attribute.
+          overflow={isDetail ? "hidden" : "visible"}
+          style={isDetail ? { overflow: "hidden" } : undefined}
+        >
         <title>
           {isDetail && detailTitle
             ? `Detalle anatómico de ${detailTitle}`

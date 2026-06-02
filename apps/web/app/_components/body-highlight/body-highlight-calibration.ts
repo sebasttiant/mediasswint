@@ -95,18 +95,24 @@ export const MALE_FULL_BODY: FigureCalibration = {
       width: { atTop: 36, atBottom: 22 },
     },
   },
+  // Arm band/centerline calibration matches the contour-fitted male arm
+  // bands (see MALE_ARM_CONTOUR). The 19 arm points span the drawn
+  // shoulder→wrist run (y 115..234), NOT shoulder→fingertips, so the active
+  // point number sits on the centerline of the highlighted band instead of
+  // drifting into the hand. centerlineX follows the arm as it angles inward
+  // toward the wrist (centres measured from full-body-male.svg @240×545).
   arms: {
     right: {
-      top: 113,
-      bottom: 272,
-      centerlineX: { atTop: 56, atBottom: 47 },
-      width: { atTop: 26, atBottom: 18 },
+      top: 115,
+      bottom: 234,
+      centerlineX: { atTop: 57, atBottom: 35 },
+      width: { atTop: 24, atBottom: 18 },
     },
     left: {
-      top: 113,
-      bottom: 272,
-      centerlineX: { atTop: 184, atBottom: 193 },
-      width: { atTop: 26, atBottom: 18 },
+      top: 115,
+      bottom: 234,
+      centerlineX: { atTop: 183, atBottom: 205 },
+      width: { atTop: 24, atBottom: 18 },
     },
   },
   headHotspot: { x: 90, y: 0, width: 60, height: 76 },
@@ -152,18 +158,21 @@ export const FEMALE_FULL_BODY: FigureCalibration = {
       width: { atTop: 46, atBottom: 19 },
     },
   },
+  // Arm marker calibration matches the contour-fitted female arm bands (see
+  // FEMALE_ARM_CONTOUR). 19 points span the drawn upper-arm→wrist run
+  // (y 130..242), so the active point number sits on the band centerline.
   arms: {
     right: {
-      top: 147,
-      bottom: 255,
-      centerlineX: { atTop: 62, atBottom: 31 },
-      width: { atTop: 20, atBottom: 15 },
+      top: 130,
+      bottom: 242,
+      centerlineX: { atTop: 61, atBottom: 35 },
+      width: { atTop: 18, atBottom: 16 },
     },
     left: {
-      top: 147,
-      bottom: 255,
-      centerlineX: { atTop: 178, atBottom: 208 },
-      width: { atTop: 20, atBottom: 15 },
+      top: 130,
+      bottom: 242,
+      centerlineX: { atTop: 179, atBottom: 205 },
+      width: { atTop: 18, atBottom: 16 },
     },
   },
   headHotspot: { x: 90, y: 0, width: 60, height: 92 },
@@ -180,6 +189,83 @@ export const FEMALE_FULL_BODY: FigureCalibration = {
 export function getFullBodyCalibration(sex: FullBodySex): FigureCalibration {
   return sex === "male" ? MALE_FULL_BODY : FEMALE_FULL_BODY;
 }
+
+// Male arm highlights are NOT the auto-traced arm polygons: those were traced
+// from a different source bitmap than the rendered full-body-male.svg, so they
+// sit ~6–9px outboard of the drawn arm and run ~15% longer, spilling outside
+// the limb and into the hand. Instead the arm bands are generated directly
+// from the rendered arm's measured contour so they always stay inside it and
+// follow its taper (see buildContourArmBand in body-highlight-zones.ts).
+//
+// Edges are sampled from full-body-male.svg rasterised at viewBox 240×545 for
+// the figure's RIGHT arm (viewer's left). The LEFT arm is the mirror about
+// `mirrorX`. `outer` is the limb's outboard edge, `inner` the torso-side edge.
+// Bands span [top..bottom] = shoulder..wrist; the hand is measured separately.
+export const MALE_ARM_CONTOUR = {
+  top: 115,
+  bottom: 234,
+  mirrorX: 120,
+  outer: [
+    [113, 45],
+    [140, 42],
+    [160, 39],
+    [175, 37],
+    [192, 31],
+    [208, 29],
+    [224, 27],
+    [234, 25],
+  ],
+  inner: [
+    [113, 70],
+    [140, 70],
+    [160, 66],
+    [175, 62],
+    [192, 59],
+    [208, 54],
+    [224, 49],
+    [234, 45],
+  ],
+} as const;
+
+// Female arm highlights, like the male ones, are NOT the auto-traced arm
+// polygons: those were traced from a different source than the rendered
+// full-body-female.svg, so they sit outboard of the drawn arm and overflow the
+// limb near the wrist (a Y-only lift/scale can't fix a horizontal mismatch).
+// Instead the female arm bands are generated from the rendered arm's measured
+// contour so they stay inside it and follow its taper (see buildContourArmBand
+// in body-highlight-zones.ts).
+//
+// Edges sampled from full-body-female.svg rasterised at viewBox 240×564 for the
+// figure's RIGHT arm (viewer's left); the LEFT arm is the mirror about
+// `mirrorX`. Bands span [top..bottom] = upper-arm..wrist; the hand (which
+// begins ~y246) is measured separately.
+export const FEMALE_ARM_CONTOUR = {
+  top: 130,
+  bottom: 242,
+  mirrorX: 120,
+  outer: [
+    [118, 54],
+    [135, 50],
+    [160, 47],
+    [178, 44],
+    [195, 38],
+    [210, 34],
+    [226, 31],
+    [238, 28],
+    [244, 26],
+  ],
+  inner: [
+    [118, 72],
+    [135, 70],
+    [160, 71],
+    [178, 66],
+    [195, 64],
+    [210, 58],
+    [226, 52],
+    [238, 46],
+    [244, 44],
+  ],
+} as const;
 
 // Marker geometry derived from the calibration for one measurement point.
 // `ratio` is (point - 1) / (totalPoints - 1) so it walks evenly from the

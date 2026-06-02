@@ -5,7 +5,9 @@ import {
 } from "@/lib/compression-measurements";
 
 import {
+  FEMALE_ARM_CONTOUR,
   getFullBodyCalibration,
+  MALE_ARM_CONTOUR,
   MALE_FULL_BODY,
   getMarkerRect,
   markerRectToPath,
@@ -361,13 +363,93 @@ export function getFullMarkerForSex(
   };
 }
 
-export function getFullZonePathForSex(sex: FullBodySex, zone: BodyZoneShape): string {
-  const tracedPath =
-    sex === "female"
-      ? getFemaleZonePath(zone.zoneId)
-      : zone.view === "legs"
-        ? getMaleZonePath(zone.zoneId)
-        : undefined;
+// A measured arm contour: outer/inner edge samples ([y, x], y-ascending) for
+// the figure's RIGHT arm, mirrored about `mirrorX` for the LEFT arm, spanning
+// [top..bottom] = upper-arm..wrist.
+type ArmContour = {
+  readonly top: number;
+  readonly bottom: number;
+  readonly mirrorX: number;
+  readonly outer: ReadonlyArray<readonly [number, number]>;
+  readonly inner: ReadonlyArray<readonly [number, number]>;
+};
 
-  return tracedPath ?? getFullMarkerForSex(getFullBodyCalibration(sex), zone).path;
+// Linear interpolation of a sampled contour edge ([y, x] pairs, y-ascending)
+// at an arbitrary y, clamped to the sampled range.
+function interpEdge(samples: ReadonlyArray<readonly [number, number]>, y: number): number {
+  if (y <= samples[0][0]) return samples[0][1];
+  const last = samples[samples.length - 1];
+  if (y >= last[0]) return last[1];
+  for (let i = 0; i < samples.length - 1; i += 1) {
+    const [y0, x0] = samples[i];
+    const [y1, x1] = samples[i + 1];
+    if (y >= y0 && y <= y1) {
+      const t = (y - y0) / (y1 - y0);
+      return x0 + (x1 - x0) * t;
+    }
+  }
+  return last[1];
+}
+
+// Inset of each band from the measured contour edges (px) so the highlight
+// hugs the drawn outline without touching it. The 1px edge inset still
+// guarantees the bands never overflow the contour. Both sexes use the same
+// tuning: it produces clean, contained, leg-quality bands on either figure.
+const ARM_BAND_INSET = 1;
+// Vertical gap between consecutive bands. 0 makes them contiguous (adjacent
+// bands share an edge) so the limb reads as a continuous solid fill separated
+// only by the band stroke — matching the leg sheet's contiguous polygons —
+// instead of thin striped lines with white space between them.
+const ARM_BAND_GAP = 0;
+
+// Build one arm highlight band as a trapezoid that hugs the rendered arm
+// contour between the band's top and bottom y. X is taken from the measured
+// outer/inner edges (mirrored for the left arm) and inset inward, so the band
+// is guaranteed to stay inside the limb and follow its taper. Used for BOTH
+// the male and female full-body arms (their auto-traced polygons are
+// misaligned with the rendered assets); the only difference is the contour.
+function buildContourArmBand(
+  contour: ArmContour,
+  side: BodySide,
+  point: number,
+  totalPoints: number,
+): string {
+  const { top, bottom, mirrorX, outer, inner } = contour;
+  const slot = (bottom - top) / totalPoints;
+  const yTop = top + (point - 1) * slot + ARM_BAND_GAP;
+  const yBottom = top + point * slot - ARM_BAND_GAP;
+
+  const edgesAt = (y: number): readonly [number, number] => {
+    let o = interpEdge(outer, y);
+    let i = interpEdge(inner, y);
+    if (side === "left") {
+      o = mirrorX * 2 - o;
+      i = mirrorX * 2 - i;
+    }
+    const lo = Math.min(o, i) + ARM_BAND_INSET;
+    const hi = Math.max(o, i) - ARM_BAND_INSET;
+    return [lo, hi];
+  };
+
+  const [loTop, hiTop] = edgesAt(yTop);
+  const [loBottom, hiBottom] = edgesAt(yBottom);
+  const f = (n: number) => n.toFixed(2);
+  return `M ${f(loTop)} ${f(yTop)} L ${f(hiTop)} ${f(yTop)} L ${f(hiBottom)} ${f(yBottom)} L ${f(loBottom)} ${f(yBottom)} Z`;
+}
+
+export function getFullZonePathForSex(sex: FullBodySex, zone: BodyZoneShape): string {
+  // Both figures generate arm bands from the rendered arm's measured contour so
+  // they stay inside the limb and end at the wrist (the traced arm polygons are
+  // misaligned with the assets). Legs keep their aligned traced path per sex.
+  if (zone.view === "arms") {
+    const contour = sex === "female" ? FEMALE_ARM_CONTOUR : MALE_ARM_CONTOUR;
+    return buildContourArmBand(contour, zone.side, zone.point, MAX_POINT_BY_GROUP.arms);
+  }
+
+  if (sex === "female") {
+    const tracedPath = getFemaleZonePath(zone.zoneId);
+    return tracedPath ?? getFullMarkerForSex(getFullBodyCalibration(sex), zone).path;
+  }
+  const tracedPath = getMaleZonePath(zone.zoneId);
+  return tracedPath ?? getFullMarkerForSex(MALE_FULL_BODY, zone).path;
 }

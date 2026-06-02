@@ -18,7 +18,10 @@ import {
   getZonesForView,
   hasZone,
 } from "../app/_components/body-highlight/body-highlight-zones";
-import { MALE_FULL_BODY } from "../app/_components/body-highlight/body-highlight-calibration";
+import {
+  getFullBodyCalibration,
+  MALE_FULL_BODY,
+} from "../app/_components/body-highlight/body-highlight-calibration";
 import { getFemaleZonePath } from "../app/_components/body-highlight/zones-female";
 import { getMaleZonePath } from "../app/_components/body-highlight/zones-male";
 import { COMPRESSION_MEASUREMENTS } from "../lib/compression-measurements";
@@ -215,24 +218,140 @@ describe("zone visual metadata", () => {
   });
 });
 
+// Extract just the Y coordinates from an "M x y L x y …" path. Numbers are
+// emitted as alternating x,y pairs, so the odd indices are the Ys.
+function pathYs(d: string): number[] {
+  const nums = (d.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number);
+  return nums.filter((_, index) => index % 2 === 1);
+}
+function pathXs(d: string): number[] {
+  const nums = (d.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number);
+  return nums.filter((_, index) => index % 2 === 0);
+}
+
 describe("sex-specific full-body zone paths", () => {
-  it("uses calibrated markers for male arm zones to keep highlights inside the arm", () => {
+  it("generates contour-fitted male arm bands instead of the misaligned traced polygons", () => {
     const zone = findZoneShape("arms.right.18");
     assert.ok(zone);
 
-    const calibratedMarker = getFullMarkerForSex(MALE_FULL_BODY, zone).path;
+    const traced = getMaleZonePath(zone.zoneId);
+    assert.ok(traced);
 
-    assert.equal(getFullZonePathForSex("male", zone), calibratedMarker);
-    assert.notEqual(getFullZonePathForSex("male", zone), getMaleZonePath(zone.zoneId));
+    const rendered = getFullZonePathForSex("male", zone);
+
+    // Neither the calibrated marker (blocks) nor the raw traced polygon (which
+    // is misaligned with the male asset and overflows the limb).
+    assert.notEqual(rendered, getFullMarkerForSex(MALE_FULL_BODY, zone).path);
+    assert.notEqual(rendered, traced);
   });
 
-  it("preserves traced full-body paths for female arm zones and male leg zones", () => {
+  it("keeps every male arm band inside the limb and clear of the hand", () => {
+    for (const point of [1, 10, 19]) {
+      for (const side of ["right", "left"] as const) {
+        const zone = findZoneShape(`arms.${side}.${point}`);
+        assert.ok(zone);
+        const rendered = getFullZonePathForSex("male", zone);
+        const ys = pathYs(rendered);
+        const xs = pathXs(rendered);
+
+        // Bands span the shoulder→wrist run (115..234) — never into the hand.
+        assert.ok(Math.min(...ys) >= 114, `male arm ${side}.${point} starts at the shoulder`);
+        assert.ok(Math.max(...ys) <= 234.5, `male arm ${side}.${point} ends at the wrist`);
+        // …and stay within the rendered arm's horizontal contour (right arm
+        // outer edge ~x25 at the wrist; left arm mirror tops out ~x215).
+        assert.ok(Math.min(...xs) >= 22, `male arm ${side}.${point} stays inside the outer edge`);
+        assert.ok(Math.max(...xs) <= 218, `male arm ${side}.${point} stays inside the inner edge`);
+        // …and fill the arm width — not thin floating lines (regression guard
+        // for the over-narrow bands). Trapezoid xs = [loTop, hiTop, hiBottom,
+        // loBottom]; each rung must be a healthy fraction of the limb.
+        const widthTop = xs[1] - xs[0];
+        const widthBottom = xs[2] - xs[3];
+        assert.ok(widthTop >= 15, `male arm ${side}.${point} band is wide enough at top (${widthTop})`);
+        assert.ok(widthBottom >= 14, `male arm ${side}.${point} band is wide enough at bottom (${widthBottom})`);
+      }
+    }
+  });
+
+  it("renders male arm bands as a continuous run (contiguous, like the legs)", () => {
+    // Adjacent bands must share their edge — no vertical white gap between them
+    // — so the limb reads as a solid fill, not thin striped lines.
+    for (const side of ["right", "left"] as const) {
+      for (let point = 1; point < 19; point += 1) {
+        const upper = findZoneShape(`arms.${side}.${point}`);
+        const lower = findZoneShape(`arms.${side}.${point + 1}`);
+        assert.ok(upper && lower);
+        const upperBottom = Math.max(...pathYs(getFullZonePathForSex("male", upper)));
+        const lowerTop = Math.min(...pathYs(getFullZonePathForSex("male", lower)));
+        assert.ok(
+          Math.abs(lowerTop - upperBottom) < 0.02,
+          `male arm ${side} bands ${point}/${point + 1} are contiguous (gap ${lowerTop - upperBottom})`,
+        );
+      }
+    }
+  });
+
+  it("generates contour-fitted female arm bands instead of the misaligned traced polygons", () => {
+    const zone = findZoneShape("arms.right.18");
+    assert.ok(zone);
+    const rendered = getFullZonePathForSex("female", zone);
+    // Neither the calibrated marker nor the raw traced polygon (which is
+    // misaligned with the female asset and overflowed the limb at the wrist).
+    assert.notEqual(rendered, getFullMarkerForSex(getFullBodyCalibration("female"), zone).path);
+    assert.notEqual(rendered, getFemaleZonePath(zone.zoneId));
+  });
+
+  it("keeps every female arm band inside the limb, from upper arm to wrist", () => {
+    for (const point of [1, 10, 19]) {
+      for (const side of ["right", "left"] as const) {
+        const zone = findZoneShape(`arms.${side}.${point}`);
+        assert.ok(zone);
+        const rendered = getFullZonePathForSex("female", zone);
+        const ys = pathYs(rendered);
+        const xs = pathXs(rendered);
+
+        // Spans the upper-arm→wrist run (130..242): starts up on the upper arm
+        // (not too low) and stops before the hand (which begins ~y246).
+        assert.ok(Math.min(...ys) >= 129, `female arm ${side}.${point} starts on the upper arm`);
+        assert.ok(Math.max(...ys) <= 242.5, `female arm ${side}.${point} ends at the wrist`);
+        // Stays within the rendered arm's horizontal contour (right arm outer
+        // edge ~x26 at the wrist; left arm mirror tops out ~x214) — no overflow.
+        assert.ok(Math.min(...xs) >= 24, `female arm ${side}.${point} stays inside the outer edge`);
+        assert.ok(Math.max(...xs) <= 216, `female arm ${side}.${point} stays inside the inner edge`);
+        // Fills the arm width — clean continuous band, not a thin floating line.
+        const widthTop = xs[1] - xs[0];
+        const widthBottom = xs[2] - xs[3];
+        assert.ok(widthTop >= 14, `female arm ${side}.${point} band is wide enough at top (${widthTop})`);
+        assert.ok(widthBottom >= 14, `female arm ${side}.${point} band is wide enough at bottom (${widthBottom})`);
+      }
+    }
+  });
+
+  it("renders female arm bands as a continuous run (contiguous, like the legs)", () => {
+    for (const side of ["right", "left"] as const) {
+      for (let point = 1; point < 19; point += 1) {
+        const upper = findZoneShape(`arms.${side}.${point}`);
+        const lower = findZoneShape(`arms.${side}.${point + 1}`);
+        assert.ok(upper && lower);
+        const upperBottom = Math.max(...pathYs(getFullZonePathForSex("female", upper)));
+        const lowerTop = Math.min(...pathYs(getFullZonePathForSex("female", lower)));
+        assert.ok(
+          Math.abs(lowerTop - upperBottom) < 0.02,
+          `female arm ${side} bands ${point}/${point + 1} are contiguous (gap ${lowerTop - upperBottom})`,
+        );
+      }
+    }
+  });
+
+  it("preserves traced full-body paths for female leg zones and male leg zones", () => {
     const femaleArmZone = findZoneShape("arms.left.18");
+    const femaleLegZone = findZoneShape("legs.left.18");
     const maleLegZone = findZoneShape("legs.right.18");
     assert.ok(femaleArmZone);
+    assert.ok(femaleLegZone);
     assert.ok(maleLegZone);
 
-    assert.equal(getFullZonePathForSex("female", femaleArmZone), getFemaleZonePath(femaleArmZone.zoneId));
+    assert.notEqual(getFullZonePathForSex("female", femaleArmZone), getFemaleZonePath(femaleArmZone.zoneId));
+    assert.equal(getFullZonePathForSex("female", femaleLegZone), getFemaleZonePath(femaleLegZone.zoneId));
     assert.equal(getFullZonePathForSex("male", maleLegZone), getMaleZonePath(maleLegZone.zoneId));
   });
 });
