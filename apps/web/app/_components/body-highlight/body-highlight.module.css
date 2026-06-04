@@ -344,11 +344,19 @@
   padding: 5px 9px;
   font-size: 11px;
   font-weight: 600;
-  white-space: nowrap;
+  /* Never wider than the viewport (minus a small gutter) so the badge can't be
+     clipped at the screen edge on small/medium devices; wrap instead of
+     overflowing horizontally. */
+  max-width: min(240px, calc(100vw - 24px));
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
   pointer-events: none;
   z-index: 10;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   box-shadow: 0 4px 12px rgba(15, 23, 42, 0.18);
   font-family: "Inter Tight", "Inter", system-ui, sans-serif;

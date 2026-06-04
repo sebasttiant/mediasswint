@@ -29,7 +29,9 @@ export function ZoneStrip({
   const label = LIMB_LABELS[limb][side];
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    // Mobile/tablet: grows with its content inside the page scroll. Desktop
+    // (lg+): fixed-height column with its own internal scroll.
+    <div className="flex min-h-0 flex-col lg:h-full">
       <div className={`shrink-0 px-2 py-1.5 text-center text-xs font-bold uppercase tracking-wider border-b ${
         side === "right"
           ? "bg-sky-50 text-sky-700 border-sky-200"
@@ -38,7 +40,7 @@ export function ZoneStrip({
         {label}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50">
+      <div className="flex-1 overflow-visible bg-slate-50 lg:min-h-0 lg:overflow-y-auto">
         <div className="flex flex-col gap-1.5 p-2.5">
           {fields.map((field) => {
             const anatomyZone = field.metadata.anatomyZone as string | undefined;
@@ -100,7 +102,7 @@ export function ZoneStrip({
                           if (anatomyZone) onFocus(anatomyZone);
                           onChange(field.key, event.target.value);
                         }}
-                        className={`h-9 min-w-0 flex-1 rounded-lg border px-3 text-sm font-mono outline-none transition-all ${
+                        className={`h-9 min-w-0 flex-1 scroll-mb-44 rounded-lg border px-3 text-sm font-mono outline-none transition-all lg:scroll-mb-0 ${
                           isActive
                             ? "border-sky-400 bg-white text-sky-950 ring-2 ring-sky-100"
                             : isFilled
