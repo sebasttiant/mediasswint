@@ -22,8 +22,11 @@ export function ProgressFooter({
   const isComplete = filledCount === totalCount && totalCount > 0;
 
   return (
-    <footer className="sticky bottom-0 z-20 border-t border-slate-200 bg-white/95 shadow-sm backdrop-blur">
-      <div className="flex flex-col gap-4 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
+    <footer
+      className="sticky bottom-0 z-20 border-t border-slate-200 bg-white/95 shadow-sm backdrop-blur"
+      style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+    >
+      <div className="flex flex-col gap-2.5 px-4 py-2.5 lg:flex-row lg:items-center lg:justify-between lg:gap-4 lg:py-4">
         <div className="flex-1 space-y-2">
           <div className="flex items-center gap-3 text-sm font-medium text-slate-700">
             <span className="flex-1">Progreso de la toma de medidas</span>
@@ -46,12 +49,12 @@ export function ProgressFooter({
           </p>
         </div>
 
-        <div className="flex w-full flex-col gap-3 lg:w-auto lg:flex-row lg:justify-end">
+        <div className="flex w-full flex-row gap-2 lg:w-auto lg:flex-row lg:justify-end lg:gap-3">
           <button
             type="button"
             disabled={saving}
             onClick={onSaveDraft}
-            className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 lg:w-auto"
+            className="flex shrink-0 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 lg:w-auto"
           >
             <Save className="w-4 h-4" />
             <span className="hidden sm:inline">Guardar borrador</span>
@@ -60,7 +63,7 @@ export function ProgressFooter({
             type="button"
             disabled={saving}
             onClick={onComplete}
-            className={`flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 lg:w-auto ${
+            className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 lg:w-auto lg:flex-none ${
               isComplete ? "bg-emerald-600 hover:bg-emerald-700" : "bg-brand hover:bg-brand-strong"
             }`}
           >

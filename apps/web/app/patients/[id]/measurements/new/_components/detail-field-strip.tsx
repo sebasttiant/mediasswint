@@ -39,7 +39,9 @@ export function DetailFieldStrip({
   tone = "neutral",
 }: DetailFieldStripProps) {
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    // Mobile/tablet: grows with its content inside the page scroll. Desktop
+    // (lg+): fixed-height panel with its own internal scroll.
+    <div className="flex min-h-0 flex-col lg:h-full">
       <div
         className={`shrink-0 border-b px-2 py-1.5 text-center text-xs font-bold uppercase tracking-wider ${TONE_HEADER[tone]}`}
       >
@@ -50,7 +52,7 @@ export function DetailFieldStrip({
         Borrador — estos campos aún no se persisten al guardar.
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50">
+      <div className="flex-1 overflow-visible bg-slate-50 lg:min-h-0 lg:overflow-y-auto">
         {fields.length === 0 ? (
           <p className="px-4 py-6 text-sm text-slate-500">
             No hay campos catalogados en el PDF para esta región.
@@ -99,7 +101,7 @@ export function DetailFieldStrip({
                       value={value}
                       aria-label={`${field.label}${field.unit ? ` (${field.unit})` : ""}`}
                       onChange={(event) => onDraftChange(field.key, event.target.value)}
-                      className={`h-10 min-w-0 flex-1 rounded-lg border px-3 font-mono text-sm outline-none transition-all ${
+                      className={`h-10 min-w-0 flex-1 scroll-mb-44 rounded-lg border px-3 font-mono text-sm outline-none transition-all lg:scroll-mb-0 ${
                         isFilled
                           ? "border-emerald-300 bg-emerald-50 text-slate-800"
                           : "border-slate-200 bg-white text-slate-800 focus:border-sky-400 focus:ring-2 focus:ring-sky-100"

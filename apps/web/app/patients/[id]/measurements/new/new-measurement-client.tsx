@@ -341,7 +341,11 @@ export default function NewMeasurementClient({ patientId, patientName, patientSe
   }
 
   return (
-    <div className="h-dvh flex flex-col overflow-hidden bg-white">
+    // Mobile/tablet: the page itself scrolls (header + footer stay pinned via
+    // their own `sticky`), so the measurement fields are never trapped behind
+    // the footer. Desktop (lg+) keeps the fixed-height, internally-scrolled
+    // 3-column layout untouched.
+    <div className="h-dvh flex flex-col overflow-y-auto lg:overflow-hidden bg-white">
       <PatientHeaderStrip
         patientId={patientId}
         patientName={patientName}

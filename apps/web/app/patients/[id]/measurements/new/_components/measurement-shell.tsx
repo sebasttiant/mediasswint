@@ -175,7 +175,7 @@ export function MeasurementShell({
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mapa corporal interactivo</p>
             <p className="mt-1 text-xs text-slate-600">Tocá una zona para abrir su campo de medida.</p>
           </div>
-          <div className="w-full max-w-[220px]">
+          <div className="w-full max-w-[180px] sm:max-w-[200px] md:max-w-[230px]">
             <BodyHighlight
               view="full"
               sex={sex}
@@ -194,10 +194,7 @@ export function MeasurementShell({
       {/* Mobile active strip — body view shows the leg/arm tab; in detail
           view we replace the strip with the region's pending PDF fields. */}
       {detailRegion && detailStrips ? (
-        <div
-          className="lg:hidden min-h-0 overflow-hidden border-t border-slate-200"
-          style={{ height: "calc(100dvh - 280px)" }}
-        >
+        <div className="lg:hidden border-t border-slate-200">
           {detailStrips.center ? (
             <DetailFieldStrip
               title={detailStrips.center.title}
@@ -216,8 +213,8 @@ export function MeasurementShell({
                 <div
                   className={
                     onlyOne
-                      ? "h-full"
-                      : "grid h-full grid-cols-2 divide-x divide-slate-200"
+                      ? "lg:h-full"
+                      : "grid grid-cols-2 divide-x divide-slate-200 lg:h-full"
                   }
                 >
                   {detailStrips.right ? (
@@ -245,7 +242,7 @@ export function MeasurementShell({
         </div>
       ) : (
         <MobileStripPanel activeTab={mobileTab}>
-          <div className="min-h-0 overflow-hidden" style={{ height: "calc(100dvh - 280px)" }}>
+          <div>
             <ZoneStrip
               side={activeTabSide}
               limb={activeTabLimb}
