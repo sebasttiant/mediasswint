@@ -205,25 +205,34 @@ export const MALE_ARM_CONTOUR = {
   top: 115,
   bottom: 234,
   mirrorX: 120,
+  // Re-measured from full-body-male.svg rasterised at viewBox 240×545: outer is
+  // the leftmost ink per row; inner is the arm's RIGHT silhouette (NOT the hip
+  // line ~x70 that runs alongside the forearm). The previous inner samples kept
+  // the band's right edge short of the true inner silhouette near the
+  // elbow/forearm, leaving a white gap on the inner (torso-side) edge of the arm.
+  // Inner now hugs the true contour: ~71 on the upper arm, tapering through the
+  // elbow to ~46 at the narrow wrist.
   outer: [
-    [113, 45],
-    [140, 42],
-    [160, 39],
-    [175, 37],
-    [192, 31],
-    [208, 29],
-    [224, 27],
-    [234, 25],
+    [115, 46],
+    [140, 42.5],
+    [160, 40],
+    [172, 38.5],
+    [184, 34.5],
+    [196, 31.5],
+    [208, 30],
+    [220, 28.5],
+    [234, 25.5],
   ],
   inner: [
-    [113, 70],
-    [140, 70],
-    [160, 66],
-    [175, 62],
-    [192, 59],
-    [208, 54],
-    [224, 49],
-    [234, 45],
+    [115, 71],
+    [140, 71.5],
+    [152, 70],
+    [168, 66.5],
+    [184, 62],
+    [196, 59],
+    [208, 55],
+    [220, 51],
+    [234, 46.5],
   ],
 } as const;
 
@@ -243,27 +252,35 @@ export const FEMALE_ARM_CONTOUR = {
   top: 130,
   bottom: 242,
   mirrorX: 120,
+  // Re-measured from full-body-female.svg rasterised at viewBox 240×564: outer is
+  // the leftmost ink per row; inner is the arm's RIGHT silhouette (NOT the hip
+  // line that runs alongside the forearm). The previous samples left the more
+  // visible inner gap on the upper-arm/torso side AND let the band overflow the
+  // contour near the wrist. Inner now hugs the true contour: ~74→75 on the upper
+  // arm, tapering through the elbow to ~46 at the narrow wrist; outer stays just
+  // inside the drawn outline so the band never spills past it.
   outer: [
-    [118, 54],
-    [135, 50],
-    [160, 47],
-    [178, 44],
-    [195, 38],
-    [210, 34],
-    [226, 31],
-    [238, 28],
-    [244, 26],
+    [130, 53],
+    [148, 50.2],
+    [162, 47.2],
+    [174, 45.2],
+    [186, 40.2],
+    [198, 36.8],
+    [210, 34.2],
+    [222, 32],
+    [234, 29.2],
+    [242, 26.8],
   ],
   inner: [
-    [118, 72],
-    [135, 70],
-    [160, 71],
-    [178, 66],
-    [195, 64],
-    [210, 58],
-    [226, 52],
-    [238, 46],
-    [244, 44],
+    [130, 74],
+    [144, 75.5],
+    [158, 73],
+    [174, 69],
+    [186, 66],
+    [202, 62.4],
+    [218, 56],
+    [234, 48.8],
+    [242, 45.6],
   ],
 } as const;
 
