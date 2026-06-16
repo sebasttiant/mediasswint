@@ -1,11 +1,11 @@
 # syntax=docker/dockerfile:1.7
 # ------------------------------------------------------------
-# mediasswint - web (Next.js 16.2.6) - multi-stage
+# mediasswint - web (Next.js 16.2.9) - multi-stage
 # Base: Debian 13 (trixie) slim + Node 24.16.0 LTS
 # ------------------------------------------------------------
 
 ARG NODE_IMAGE=node:24.16.0-trixie-slim
-ARG PNPM_VERSION=11.2.2
+ARG PNPM_VERSION=11.7.0
 
 # ---------- base ----------
 FROM ${NODE_IMAGE} AS base

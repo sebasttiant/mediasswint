@@ -5,9 +5,9 @@
   "description": "Software Interno Medias Elasticas - monorepo",
   "engines": {
     "node": ">=24.16.0 <25",
-    "pnpm": ">=11.2.2 <12"
+    "pnpm": ">=11.7.0 <12"
   },
-  "packageManager": "pnpm@11.2.2",
+  "packageManager": "pnpm@11.7.0",
   "scripts": {
     "prepare": "husky",
     "lint": "pnpm --filter @mediasswint/web lint",
