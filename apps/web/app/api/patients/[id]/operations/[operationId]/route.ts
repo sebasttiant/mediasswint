@@ -10,6 +10,7 @@ import {
   type ServiceResult,
   type UpdateOperationInput,
 } from "@/lib/operations";
+import { parseOperationMetadataInput } from "@/lib/operation-metadata";
 
 type Params = {
   params: Promise<{ id: string; operationId: string }>;
@@ -143,6 +144,15 @@ export async function handleUpdateOperationRequest(
     }
     updateData.notes = input.notes.trim() || undefined;
   }
+
+  const metadata = parseOperationMetadataInput(input as Record<string, unknown>);
+  if (!metadata.ok) {
+    return NextResponse.json(
+      { errors: [{ field: metadata.field, message: metadata.message }] },
+      { status: 400 },
+    );
+  }
+  Object.assign(updateData, metadata.value);
 
   if (Object.keys(updateData).length === 0) {
     return NextResponse.json(

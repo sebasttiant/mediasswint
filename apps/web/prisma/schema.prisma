@@ -188,16 +188,29 @@ enum CommercialOperationStatus {
 }
 
 model CommercialOperation {
-  id          String                    @id @default(cuid())
-  patientId   String
-  status      CommercialOperationStatus @default(PRESUPUESTO)
-  totalAmount Decimal?                  @db.Decimal(10, 2)
-  depositPaid Decimal                   @default(0) @db.Decimal(10, 2)
-  garmentType String?
-  notes       String?
-  patient     Patient                   @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  createdAt   DateTime                  @default(now())
-  updatedAt   DateTime                  @updatedAt
+  id            String                    @id @default(cuid())
+  patientId     String
+  status        CommercialOperationStatus @default(PRESUPUESTO)
+  totalAmount   Decimal?                  @db.Decimal(10, 2)
+  depositPaid   Decimal                   @default(0) @db.Decimal(10, 2)
+  garmentType   String?
+  notes         String?
+  // Etapa E: order metadata v1 — additive, all nullable. No payment-method,
+  // cashbox, claim or delivery semantics yet. orderNumber is intentionally NOT
+  // unique (legacy Excel data has duplicates/repairs/historical rows).
+  orderNumber   String?
+  orderedAt     DateTime?
+  productCode   String?
+  productType   String?
+  quantity      Int?                      @default(1)
+  invoiceNumber String?
+  invoiceDate   DateTime?
+  discount      Decimal?                  @db.Decimal(10, 2)
+  exitDate      DateTime?
+  patient       Patient                   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
 
   @@index([patientId, createdAt(sort: Desc)])
+  @@index([orderNumber])
 }

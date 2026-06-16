@@ -712,6 +712,36 @@
   line-height: 1.5;
 }
 
+/* Etapa E: order metadata read-only display inside the operation card. */
+.operationMetaGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 0.5rem 1rem;
+  margin: 0.75rem 0 0;
+  padding-top: 0.75rem;
+  border-top: 1px dashed var(--border);
+}
+
+.operationMetaGrid > div {
+  min-width: 0;
+}
+
+.operationMetaGrid dt {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.operationMetaGrid dd {
+  margin: 0.1rem 0 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-main);
+  overflow-wrap: anywhere;
+}
+
 .operationActions {
   display: flex;
   gap: 0.5rem;

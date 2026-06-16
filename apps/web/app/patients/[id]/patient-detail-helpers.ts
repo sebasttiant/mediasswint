@@ -37,6 +37,16 @@ export type OperationSummary = {
   depositPaid: string;
   garmentType: string | null;
   notes: string | null;
+  // Etapa E: order metadata (serialized; dates as ISO strings)
+  orderNumber: string | null;
+  orderedAt: string | null;
+  productCode: string | null;
+  productType: string | null;
+  quantity: number | null;
+  invoiceNumber: string | null;
+  invoiceDate: string | null;
+  discount: string | null;
+  exitDate: string | null;
   createdAt: string;
   updatedAt: string;
 };

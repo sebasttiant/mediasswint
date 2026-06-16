@@ -18,6 +18,7 @@ import {
   handleAddDepositRequest,
   type DepositDeps,
 } from "../app/api/patients/[id]/operations/[operationId]/deposit/route";
+import type { CreateOperationInput, UpdateOperationInput } from "../lib/operations";
 
 const staffUser: AuthUser = {
   id: "staff-1",
@@ -36,6 +37,15 @@ type MockOperation = {
   depositPaid: Prisma.Decimal;
   garmentType: string | null;
   notes: string | null;
+  orderNumber: string | null;
+  orderedAt: Date | null;
+  productCode: string | null;
+  productType: string | null;
+  quantity: number | null;
+  invoiceNumber: string | null;
+  invoiceDate: Date | null;
+  discount: Prisma.Decimal | null;
+  exitDate: Date | null;
   createdAt: Date;
   updatedAt: Date;
   patient: { id: string; fullName: string } | null;
@@ -48,6 +58,15 @@ function createOp(overrides: Partial<MockOperation> & { id: string; patientId: s
     depositPaid: newDecimal(0),
     garmentType: null,
     notes: null,
+    orderNumber: null,
+    orderedAt: null,
+    productCode: null,
+    productType: null,
+    quantity: null,
+    invoiceNumber: null,
+    invoiceDate: null,
+    discount: null,
+    exitDate: null,
     createdAt: new Date("2026-05-01T12:00:00Z"),
     updatedAt: new Date("2026-05-01T12:00:00Z"),
     patient: { id: overrides.patientId, fullName: "Test Patient" },
@@ -233,6 +252,26 @@ describe("POST /api/patients/[id]/operations", () => {
     assert.equal(response.status, 404);
   });
 
+  it("returns 400 when service rejects cross-field operation metadata", async () => {
+    const deps: OperationsCollectionDeps = {
+      listOperations: async () => ({ ok: true, value: [] }),
+      createOperation: async () => ({ ok: false, error: "INVALID_OPERATION" as const }),
+    };
+    const response = await handleCreateOperationRequest(
+      buildRequest("http://localhost/api/patients/pat-1/operations", {
+        method: "POST",
+        body: JSON.stringify({ garmentType: "Media", totalAmount: "100", discount: "150" }),
+      }),
+      { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
+      deps,
+    );
+
+    assert.equal(response.status, 400);
+    const json = (await response.json()) as { error: string };
+    assert.equal(json.error, "Invalid operation");
+  });
+
   it("creates an operation and returns 201", async () => {
     const store = { operations: new Map<string, MockOperation>(), knownPatientIds: ["pat-1"] };
     const deps = buildCollectionDeps(store);
@@ -269,6 +308,108 @@ describe("POST /api/patients/[id]/operations", () => {
     const json = (await response.json()) as { totalAmount: string | null };
     assert.equal(json.totalAmount, null);
   });
+
+  it("forwards parsed order metadata to the service", async () => {
+    const captured: CreateOperationInput[] = [];
+    const deps: OperationsCollectionDeps = {
+      listOperations: async () => ({ ok: true, value: [] }),
+      createOperation: async (patientId, input) => {
+        captured.push(input);
+        return { ok: true, value: createOp({ id: "op-1", patientId, garmentType: input.garmentType ?? null }) };
+      },
+    };
+    const response = await handleCreateOperationRequest(
+      buildRequest("http://localhost/api/patients/pat-1/operations", {
+        method: "POST",
+        body: JSON.stringify({
+          garmentType: "Media",
+          orderNumber: "3952",
+          orderedAt: "2026-02-01",
+          productCode: "MR",
+          productType: "L",
+          quantity: 2,
+          invoiceNumber: "6108",
+          invoiceDate: "2026-02-02",
+          discount: "5000",
+          exitDate: "2026-02-10",
+        }),
+      }),
+      { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
+      deps,
+    );
+    assert.equal(response.status, 201);
+    assert.equal(captured.length, 1);
+    const forwarded = captured[0]!;
+    assert.equal(forwarded.orderNumber, "3952");
+    assert.equal(forwarded.productCode, "MR");
+    assert.equal(forwarded.productType, "L");
+    assert.equal(forwarded.quantity, 2);
+    assert.equal(forwarded.invoiceNumber, "6108");
+    assert.equal(forwarded.discount?.toString(), "5000");
+    assert.ok(forwarded.orderedAt instanceof Date);
+    assert.ok(forwarded.invoiceDate instanceof Date);
+    assert.ok(forwarded.exitDate instanceof Date);
+    assert.equal(forwarded.orderedAt?.toISOString(), "2026-02-01T12:00:00.000Z");
+  });
+
+  it("returns 400 when quantity is below 1", async () => {
+    const store = { operations: new Map<string, MockOperation>(), knownPatientIds: ["pat-1"] };
+    const deps = buildCollectionDeps(store);
+    const response = await handleCreateOperationRequest(
+      buildRequest("http://localhost/api/patients/pat-1/operations", {
+        method: "POST",
+        body: JSON.stringify({ garmentType: "Media", quantity: 0 }),
+      }),
+      { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
+      deps,
+    );
+    assert.equal(response.status, 400);
+    const json = (await response.json()) as { errors: Array<{ field: string }> };
+    assert.equal(json.errors[0].field, "quantity");
+  });
+
+  it("returns 400 when discount is negative", async () => {
+    const store = { operations: new Map<string, MockOperation>(), knownPatientIds: ["pat-1"] };
+    const deps = buildCollectionDeps(store);
+    const response = await handleCreateOperationRequest(
+      buildRequest("http://localhost/api/patients/pat-1/operations", {
+        method: "POST",
+        body: JSON.stringify({ garmentType: "Media", discount: "-100" }),
+      }),
+      { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
+      deps,
+    );
+    assert.equal(response.status, 400);
+    const json = (await response.json()) as { errors: Array<{ field: string }> };
+    assert.equal(json.errors[0].field, "discount");
+  });
+
+  for (const orderedAt of [
+    "not-a-date",
+    "2026-02-01T00:00:00Z",
+    "2026-02-31",
+    "2026-02-31T00:00:00Z",
+  ]) {
+    it(`returns 400 when orderedAt is invalid: ${orderedAt}`, async () => {
+      const store = { operations: new Map<string, MockOperation>(), knownPatientIds: ["pat-1"] };
+      const deps = buildCollectionDeps(store);
+      const response = await handleCreateOperationRequest(
+        buildRequest("http://localhost/api/patients/pat-1/operations", {
+          method: "POST",
+          body: JSON.stringify({ garmentType: "Media", orderedAt }),
+        }),
+        { params: Promise.resolve({ id: "pat-1" }) },
+        staffUser,
+        deps,
+      );
+      assert.equal(response.status, 400);
+      const json = (await response.json()) as { errors: Array<{ field: string }> };
+      assert.equal(json.errors[0].field, "orderedAt");
+    });
+  }
 });
 
 describe("GET /api/patients/[id]/operations", () => {
@@ -462,6 +603,50 @@ describe("PATCH /api/patients/[id]/operations/[operationId]", () => {
       deps,
     );
     assert.equal(response.status, 400);
+  });
+
+  it("forwards parsed order metadata to the service", async () => {
+    const captured: UpdateOperationInput[] = [];
+    const deps: OperationDeps = {
+      getOperation: async () => ({ ok: false, error: "NOT_FOUND" as const }),
+      updateOperation: async (patientId, operationId, input) => {
+        captured.push(input);
+        return { ok: true, value: createOp({ id: operationId, patientId }) };
+      },
+    };
+    const response = await handleUpdateOperationRequest(
+      buildRequest("http://localhost/api/patients/pat-1/operations/op-1", {
+        method: "PATCH",
+        body: JSON.stringify({ orderNumber: "777", quantity: 3, exitDate: "2026-03-01" }),
+      }),
+      { params: Promise.resolve({ id: "pat-1", operationId: "op-1" }) },
+      staffUser,
+      deps,
+    );
+    assert.equal(response.status, 200);
+    assert.equal(captured.length, 1);
+    const forwarded = captured[0]!;
+    assert.equal(forwarded.orderNumber, "777");
+    assert.equal(forwarded.quantity, 3);
+    assert.ok(forwarded.exitDate instanceof Date);
+  });
+
+  it("returns 400 when quantity is below 1 on update", async () => {
+    const store = { operations: new Map<string, MockOperation>(), knownPatientIds: ["pat-1"] };
+    store.operations.set("op-1", createOp({ id: "op-1", patientId: "pat-1" }));
+    const deps = buildOperationDeps(store);
+    const response = await handleUpdateOperationRequest(
+      buildRequest("http://localhost/api/patients/pat-1/operations/op-1", {
+        method: "PATCH",
+        body: JSON.stringify({ quantity: 0 }),
+      }),
+      { params: Promise.resolve({ id: "pat-1", operationId: "op-1" }) },
+      staffUser,
+      deps,
+    );
+    assert.equal(response.status, 400);
+    const json = (await response.json()) as { errors: Array<{ field: string }> };
+    assert.equal(json.errors[0].field, "quantity");
   });
 });
 

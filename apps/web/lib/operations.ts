@@ -20,11 +20,25 @@ export const OPERATION_QUEUE_KIND = {
   PRODUCTION: "PRODUCTION",
 } as const;
 
+// Etapa E: additive order metadata. All optional; undefined fields are left
+// untouched on update (Prisma ignores undefined). No payment/cashbox semantics.
+export type OperationMetadataInput = {
+  orderNumber?: string;
+  orderedAt?: Date;
+  productCode?: string;
+  productType?: string;
+  quantity?: number;
+  invoiceNumber?: string;
+  invoiceDate?: Date;
+  discount?: Prisma.Decimal;
+  exitDate?: Date;
+};
+
 export type CreateOperationInput = {
   garmentType?: string;
   totalAmount?: Prisma.Decimal;
   notes?: string;
-};
+} & OperationMetadataInput;
 
 export type UpdateOperationInput = {
   status?: CommercialOperationStatus;
@@ -32,7 +46,7 @@ export type UpdateOperationInput = {
   totalAmount?: Prisma.Decimal;
   garmentType?: string;
   notes?: string;
-};
+} & OperationMetadataInput;
 
 export type OperationWithPatient = CommercialOperation & {
   patient: { id: string; fullName: string } | null;
@@ -82,6 +96,47 @@ export function isValidOperationPaymentUpdate(
   }
 
   return !effectiveTotal || !effectiveDeposit.gt(effectiveTotal);
+}
+
+/**
+ * Cross-field validation for the Etapa E order metadata. Pure and side-effect
+ * free so it can be unit-tested. On update, `existing` supplies the current
+ * persisted values so we validate against the effective (merged) result.
+ * Rules:
+ *  - quantity must be an integer >= 1 when provided.
+ *  - discount must be >= 0 and (when an effective total exists) not exceed it.
+ *  - exitDate must not be earlier than orderedAt (effective values).
+ */
+export function isValidOperationMetadataUpdate(
+  existing: Pick<CommercialOperation, "totalAmount" | "discount" | "orderedAt" | "exitDate"> | null,
+  input: Pick<UpdateOperationInput, "discount" | "totalAmount" | "orderedAt" | "exitDate" | "quantity">,
+): boolean {
+  if (input.quantity !== undefined && (!Number.isInteger(input.quantity) || input.quantity < 1)) {
+    return false;
+  }
+
+  const effectiveDiscount = input.discount ?? existing?.discount ?? null;
+  const effectiveTotal = input.totalAmount ?? existing?.totalAmount ?? null;
+  if (effectiveDiscount) {
+    if (effectiveDiscount.lt(0)) {
+      return false;
+    }
+    if (effectiveTotal && effectiveDiscount.gt(effectiveTotal)) {
+      return false;
+    }
+  }
+
+  const effectiveOrderedAt = input.orderedAt ?? existing?.orderedAt ?? null;
+  const effectiveExitDate = input.exitDate ?? existing?.exitDate ?? null;
+  if (
+    effectiveOrderedAt &&
+    effectiveExitDate &&
+    effectiveExitDate.getTime() < effectiveOrderedAt.getTime()
+  ) {
+    return false;
+  }
+
+  return true;
 }
 
 function toQueueItem(operation: OperationalQueueSourceOperation): OperationalQueueItem {
@@ -195,6 +250,10 @@ export async function createOperation(
       return { ok: false, error: "NOT_FOUND" };
     }
 
+    if (!isValidOperationMetadataUpdate(null, input)) {
+      return { ok: false, error: "INVALID_OPERATION" };
+    }
+
     const operation = await prisma.commercialOperation.create({
       data: {
         patientId,
@@ -203,6 +262,15 @@ export async function createOperation(
         notes: input.notes,
         status: "PRESUPUESTO",
         depositPaid: new Prisma.Decimal(0),
+        orderNumber: input.orderNumber,
+        orderedAt: input.orderedAt,
+        productCode: input.productCode,
+        productType: input.productType,
+        quantity: input.quantity ?? 1,
+        invoiceNumber: input.invoiceNumber,
+        invoiceDate: input.invoiceDate,
+        discount: input.discount,
+        exitDate: input.exitDate,
       },
       include: {
         patient: {
@@ -250,14 +318,16 @@ export async function updateOperation(
     }
 
     // Validaciones de negocio
-    if (input.status) {
-      // CANCELADO es terminal, no se puede cambiar
-      if (existing.status === "CANCELADO") {
-        return { ok: false, error: "INVALID_OPERATION" };
-      }
+    // CANCELADO is terminal: no field can be mutated after cancellation.
+    if (existing.status === "CANCELADO") {
+      return { ok: false, error: "INVALID_OPERATION" };
     }
 
     if (!isValidOperationPaymentUpdate(existing, input)) {
+      return { ok: false, error: "INVALID_OPERATION" };
+    }
+
+    if (!isValidOperationMetadataUpdate(existing, input)) {
       return { ok: false, error: "INVALID_OPERATION" };
     }
 
@@ -269,6 +339,15 @@ export async function updateOperation(
         totalAmount: input.totalAmount,
         garmentType: input.garmentType,
         notes: input.notes,
+        orderNumber: input.orderNumber,
+        orderedAt: input.orderedAt,
+        productCode: input.productCode,
+        productType: input.productType,
+        quantity: input.quantity,
+        invoiceNumber: input.invoiceNumber,
+        invoiceDate: input.invoiceDate,
+        discount: input.discount,
+        exitDate: input.exitDate,
       },
       include: {
         patient: {
