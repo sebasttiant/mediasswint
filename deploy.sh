@@ -1,39 +1,53 @@
 #!/usr/bin/env bash
-
 set -Eeuo pipefail
 umask 077
 
-# Safe VPS deploy for mediasswint.
+# ==========================================================================
+# mediasswint — safe VPS deploy
 #
-# What this script does, in order:
-# 1. Creates a compressed backup of the current app directory.
-# 2. Creates a PostgreSQL logical dump when the DB container is running.
-# 3. Creates compressed Docker volume snapshots for Postgres and Redis volumes.
-# 4. Pulls the latest code from the selected branch.
-# 5. Rebuilds and recreates the Docker Compose stack.
-# 6. Verifies the web health endpoint.
+# Flow:
+#   lock -> preflight -> backup -> pull -> build -> db/cache up -> migrate ->
+#   bootstrap/seed -> web up -> health check -> cleanup
+#
+# This project uses a Next.js standalone runtime image. Prisma migrations and
+# bootstrap/seed tasks are executed through dedicated Dockerfile targets and
+# Compose services, so the production web container stays minimal.
 #
 # Default VPS location expected by the owner:
 #   /opt/docker/swmedias
+#
+# Common usage on the VPS:
+#   ./deploy.sh
+#   BRANCH=fix/some-branch ./deploy.sh
+# ===========================================================================
 
-APP_DIR="${APP_DIR:-/opt/docker/swmedias}"
+APP_DIR="${APP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 BRANCH="${BRANCH:-main}"
 BACKUP_ROOT="${BACKUP_ROOT:-/opt/docker/backups/swmedias}"
 BACKUP_KEEP_DAYS="${BACKUP_KEEP_DAYS:-14}"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.yml}"
-# APP_PORT and HEALTH_URL are resolved after loading .env so the health check
-# matches the host port used by docker-compose.
-APP_PORT="${APP_PORT:-}"
-HEALTH_URL="${HEALTH_URL:-}"
-
 PROJECT_NAME="${PROJECT_NAME:-mediasswint}"
+HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-180}"
+
+WEB_SERVICE="${WEB_SERVICE:-web}"
+DB_SERVICE="${DB_SERVICE:-postgres}"
+REDIS_SERVICE="${REDIS_SERVICE:-redis}"
+MIGRATE_SERVICE="${MIGRATE_SERVICE:-migrate}"
+AUTH_BOOTSTRAP_SERVICE="${AUTH_BOOTSTRAP_SERVICE:-auth-bootstrap}"
+TEMPLATE_SEEDER_SERVICE="${TEMPLATE_SEEDER_SERVICE:-template-seeder}"
+
 POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-mediasswint-postgres}"
 POSTGRES_VOLUME="${POSTGRES_VOLUME:-mediasswint_postgres_data}"
 REDIS_VOLUME="${REDIS_VOLUME:-mediasswint_redis_data}"
 
+APP_PORT="${APP_PORT:-}"
+HEALTH_URL="${HEALTH_URL:-}"
+
 LOCK_FILE="${LOCK_FILE:-/tmp/mediasswint-deploy.lock}"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 BACKUP_DIR="${BACKUP_ROOT}/${TIMESTAMP}"
+
+cd "$APP_DIR"
 
 log() {
   printf '\n[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
@@ -53,14 +67,12 @@ compose() {
 }
 
 load_env_defaults() {
-  # Load only simple KEY=value lines used by docker-compose defaults.
-  # Do not print secrets.
-  if [[ -f "$APP_DIR/.env" ]]; then
-    set -a
-    # shellcheck disable=SC1091
-    source "$APP_DIR/.env"
-    set +a
-  fi
+  [[ -f "$APP_DIR/.env" ]] || fail "Missing $APP_DIR/.env. Copy env.example/.env.example and fill production values."
+
+  set -a
+  # shellcheck disable=SC1091
+  source "$APP_DIR/.env"
+  set +a
 
   POSTGRES_USER="${POSTGRES_USER:-mediass}"
   POSTGRES_DB="${POSTGRES_DB:-mediass}"
@@ -78,8 +90,8 @@ ensure_preconditions() {
   require_command find
 
   [[ -d "$APP_DIR" ]] || fail "APP_DIR does not exist: $APP_DIR"
-  [[ -f "$APP_DIR/$COMPOSE_FILE" ]] || fail "Compose file not found: $APP_DIR/$COMPOSE_FILE"
   [[ -d "$APP_DIR/.git" ]] || fail "APP_DIR is not a git repo: $APP_DIR"
+  [[ -f "$APP_DIR/$COMPOSE_FILE" ]] || fail "Compose file not found: $APP_DIR/$COMPOSE_FILE"
 
   mkdir -p "$BACKUP_DIR"
 }
@@ -92,9 +104,11 @@ backup_app_directory() {
     --exclude='node_modules' \
     --exclude='apps/web/node_modules' \
     --exclude='apps/web/.next' \
+    --exclude='.next' \
     --exclude='.turbo' \
     --exclude='coverage' \
     --exclude='tmp' \
+    --exclude='backups' \
     -czf "$BACKUP_DIR/app-source-${TIMESTAMP}.tar.gz" \
     -C "$(dirname "$APP_DIR")" "$(basename "$APP_DIR")"
 }
@@ -158,29 +172,122 @@ update_code() {
   git -C "$APP_DIR" pull --ff-only origin "$BRANCH"
 }
 
-deploy_stack() {
-  log "Building and recreating Docker Compose stack"
+build_images() {
+  log "Building deploy images"
 
-  compose up -d --build --force-recreate
+  compose build \
+    "$WEB_SERVICE" \
+    "$MIGRATE_SERVICE" \
+    "$AUTH_BOOTSTRAP_SERVICE" \
+    "$TEMPLATE_SEEDER_SERVICE"
+}
+
+container_status() {
+  local service="$1"
+  local container_id
+
+  container_id="$(compose ps -q "$service")"
+  [[ -n "$container_id" ]] || return 1
+
+  docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_id" 2>/dev/null
+}
+
+wait_for_service() {
+  local service="$1"
+  local expected="$2"
+  local deadline
+  local status=""
+
+  log "Waiting for '${service}' to become ${expected} (timeout ${HEALTH_TIMEOUT}s)"
+  deadline=$(( $(date +%s) + HEALTH_TIMEOUT ))
+
+  until status="$(container_status "$service" || true)" && [[ "$status" == "$expected" ]]; do
+    if [[ "$(date +%s)" -ge "$deadline" ]]; then
+      compose ps || true
+      compose logs --no-color --tail=100 "$service" || true
+      fail "Service '${service}' did not become ${expected}. Last status: ${status:-unknown}"
+    fi
+    sleep 3
+  done
+
+  log "'${service}' is ${expected}"
+}
+
+wait_for_db_or_running() {
+  local deadline
+  local status=""
+
+  log "Waiting for database service"
+  deadline=$(( $(date +%s) + HEALTH_TIMEOUT ))
+
+  until status="$(container_status "$DB_SERVICE" || true)" && { [[ "$status" == "healthy" ]] || [[ "$status" == "running" ]]; }; do
+    if [[ "$(date +%s)" -ge "$deadline" ]]; then
+      compose logs --no-color --tail=100 "$DB_SERVICE" || true
+      fail "Database did not become healthy/running. Last status: ${status:-unknown}"
+    fi
+    sleep 2
+  done
+
+  log "Database is ${status}"
+}
+
+start_data_services() {
+  log "Starting database and Redis"
+
+  compose up -d "$DB_SERVICE" "$REDIS_SERVICE"
+  wait_for_db_or_running
+  wait_for_service "$REDIS_SERVICE" "healthy"
+}
+
+run_migrations() {
+  log "Running Prisma migrations via '${MIGRATE_SERVICE}' service"
+
+  compose up -d --no-deps --force-recreate "$MIGRATE_SERVICE"
+  wait_for_service "$MIGRATE_SERVICE" "healthy"
+}
+
+run_bootstrap_tasks() {
+  log "Running auth bootstrap"
+  compose run --rm --no-deps "$AUTH_BOOTSTRAP_SERVICE"
+
+  log "Running measurement template seed"
+  compose run --rm --no-deps "$TEMPLATE_SEEDER_SERVICE"
+}
+
+start_web() {
+  log "Starting web container"
+
+  # Dependencies ran explicitly above. --no-deps prevents Compose from rerunning
+  # one-shot services while recreating only the web container.
+  compose up -d --no-deps --force-recreate "$WEB_SERVICE"
 }
 
 verify_health() {
+  local deadline
+
+  wait_for_service "$WEB_SERVICE" "healthy"
+
   log "Verifying health endpoint: $HEALTH_URL"
+  deadline=$(( $(date +%s) + HEALTH_TIMEOUT ))
 
-  for attempt in {1..30}; do
-    if curl -fsS "$HEALTH_URL" >/dev/null; then
-      log "Health check passed"
-      compose ps
-      return 0
+  until curl -fsS "$HEALTH_URL" >/dev/null; do
+    if [[ "$(date +%s)" -ge "$deadline" ]]; then
+      compose ps || true
+      compose logs --no-color --tail=120 "$WEB_SERVICE" || true
+      fail "Health endpoint failed after waiting. Backup is available at: $BACKUP_DIR"
     fi
-
-    log "Health check not ready yet (${attempt}/30). Waiting 5s..."
-    sleep 5
+    sleep 3
   done
 
-  compose ps || true
-  compose logs --no-color --tail=120 web || true
-  fail "Health check failed after waiting. Backup is available at: $BACKUP_DIR"
+  log "Health endpoint passed"
+}
+
+verify_users() {
+  log "Verifying users table (informational)"
+
+  compose exec -T "$DB_SERVICE" sh -lc \
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select email, role from \"users\" order by role, email;"' \
+    || log "Users verification skipped; web health is already authoritative for deploy success."
 }
 
 cleanup_old_backups() {
@@ -198,7 +305,9 @@ main() {
 
   log "Starting deploy"
   log "App dir: $APP_DIR"
+  log "Branch: $BRANCH"
   log "Backup dir: $BACKUP_DIR"
+  log "Health URL: $HEALTH_URL"
 
   backup_app_directory
   backup_postgres_dump
@@ -207,9 +316,17 @@ main() {
   write_backup_manifest
 
   update_code
-  deploy_stack
+  build_images
+  start_data_services
+  run_migrations
+  run_bootstrap_tasks
+  start_web
   verify_health
+  verify_users
   cleanup_old_backups
+
+  log "Final container status"
+  compose ps
 
   log "Deploy finished successfully"
   log "Backup saved at: $BACKUP_DIR"
