@@ -56,7 +56,7 @@ export function PatientHeaderStrip({
 
   return (
     <header className="sticky top-0 z-20 bg-white border-b border-slate-200 shadow-sm">
-      <div className="flex items-center gap-3 px-4 py-3">
+      <div className="flex items-center gap-2.5 px-4 py-2.5 sm:gap-3 sm:py-3">
         <Link
           href={`/patients/${encodeURIComponent(patientId)}`}
           className="flex items-center gap-1 text-sm font-medium text-slate-600 hover:text-red-700 transition-colors shrink-0"
@@ -66,10 +66,10 @@ export function PatientHeaderStrip({
           <span className="hidden sm:inline">Volver</span>
         </Link>
 
-        <div className="w-px h-6 bg-slate-200 shrink-0" />
+        <div className="h-5 w-px shrink-0 bg-slate-200 sm:h-6" />
 
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-red-100 text-red-700 shrink-0">
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-700 sm:size-8">
             <User className="w-4 h-4" />
           </div>
           <div className="min-w-0">

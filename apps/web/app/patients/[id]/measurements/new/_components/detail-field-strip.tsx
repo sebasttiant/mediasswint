@@ -43,12 +43,12 @@ export function DetailFieldStrip({
     // (lg+): fixed-height panel with its own internal scroll.
     <div className="flex min-h-0 flex-col lg:h-full">
       <div
-        className={`shrink-0 border-b px-2 py-1.5 text-center text-xs font-bold uppercase tracking-wider ${TONE_HEADER[tone]}`}
+        className={`shrink-0 border-b px-2 py-1 text-center text-[11px] font-bold uppercase tracking-wider sm:py-1.5 sm:text-xs ${TONE_HEADER[tone]}`}
       >
         {title}
       </div>
 
-      <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-2 py-1.5 text-[10px] font-medium text-amber-800">
+      <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-2 py-1.5 text-[10px] font-medium leading-tight text-amber-800">
         Borrador — estos campos aún no se persisten al guardar.
       </div>
 
@@ -58,7 +58,7 @@ export function DetailFieldStrip({
             No hay campos catalogados en el PDF para esta región.
           </p>
         ) : (
-          <div className="flex flex-col gap-2.5 p-3">
+          <div className="flex flex-col gap-1.5 p-2 sm:p-2.5 lg:gap-2.5 lg:p-3">
             {fields.map((field) => {
               const value = draftByKey[field.key] ?? "";
               const isFilled = value.trim().length > 0;
@@ -69,13 +69,13 @@ export function DetailFieldStrip({
               return (
                 <div
                   key={field.key}
-                  className={`rounded-xl border bg-white p-3 transition-colors ${
+                  className={`rounded-xl border bg-white px-2.5 py-2 transition-colors lg:p-3 ${
                     isFilled ? "border-emerald-200" : "border-slate-200 hover:border-slate-300"
                   }`}
                 >
-                  <div className="mb-2 flex items-start justify-between gap-3">
+                  <div className="mb-1.5 flex items-start justify-between gap-2.5 lg:mb-2 lg:gap-3">
                     <div className="min-w-0">
-                      <label className="block text-sm font-semibold text-slate-800">
+                      <label className="block text-[13px] font-semibold leading-tight text-slate-800 sm:text-sm">
                         {field.label}
                       </label>
                       <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
@@ -101,13 +101,13 @@ export function DetailFieldStrip({
                       value={value}
                       aria-label={`${field.label}${field.unit ? ` (${field.unit})` : ""}`}
                       onChange={(event) => onDraftChange(field.key, event.target.value)}
-                      className={`h-10 min-w-0 flex-1 scroll-mb-44 rounded-lg border px-3 font-mono text-sm outline-none transition-all lg:scroll-mb-0 ${
+                      className={`h-9 min-w-0 flex-1 scroll-mb-44 rounded-lg border px-3 font-mono text-base outline-none transition-all lg:h-10 lg:scroll-mb-0 lg:text-sm ${
                         isFilled
                           ? "border-emerald-300 bg-emerald-50 text-slate-800"
                           : "border-slate-200 bg-white text-slate-800 focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
                       }`}
                     />
-                    <span className="w-10 shrink-0 text-center text-[11px] font-semibold uppercase text-slate-400">
+                    <span className="w-8 shrink-0 text-center text-[11px] font-semibold uppercase text-slate-400 sm:w-10">
                       {field.unit && field.unit !== "n/a" ? field.unit : "·"}
                     </span>
                   </div>

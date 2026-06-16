@@ -32,7 +32,9 @@ export function Topbar({ userLabel }: TopbarProps) {
 
   return (
     <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/85 backdrop-blur-md">
-      <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-4 py-3 md:px-8">
+      {/* pl-16 on mobile reserves room for the fixed hamburger (Sidebar) so the
+          breadcrumb can never slide under it; md+ has the static sidebar instead. */}
+      <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-3 px-4 py-3 pl-16 md:gap-4 md:px-8">
         {/* Left: breadcrumbs */}
         <div className="flex min-w-0 flex-1 items-center">
           <Breadcrumbs />

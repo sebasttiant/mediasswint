@@ -277,6 +277,65 @@ function buildFilterForm(formValues: AuditFormValues): ReactElement {
   );
 }
 
+function buildAuditField(label: string, value: ReactNode): ReactElement {
+  return createElement(
+    "div",
+    { key: label, className: "min-w-0" },
+    createElement(
+      "dt",
+      { className: "text-[11px] font-bold uppercase tracking-wider text-slate-400" },
+      label,
+    ),
+    createElement("dd", { className: "mt-0.5 min-w-0 break-words text-sm text-slate-700" }, value),
+  );
+}
+
+// Mobile/small-tablet: each audit row becomes a labeled card so the 5 columns
+// never clip or force horizontal scroll. The real table returns at md+.
+function buildAuditCards(rows: AuditRowView[]): ReactElement {
+  return createElement(
+    "ul",
+    { className: "flex flex-col gap-3 md:hidden" },
+    rows.map((row) =>
+      createElement(
+        "li",
+        { key: row.id, className: "rounded-xl border border-slate-200 p-4" },
+        createElement(
+          "dl",
+          { className: "flex flex-col gap-2.5" },
+          buildAuditField(
+            "Fecha",
+            createElement(
+              "span",
+              { className: "inline-flex items-center gap-2" },
+              createElement(Calendar, { size: 14, className: "text-slate-400", "aria-hidden": true }),
+              formatClinicDateTime(row.createdAt),
+            ),
+          ),
+          buildAuditField("Usuario", row.actorLabel),
+          buildAuditField(
+            "Acción",
+            // eslint-disable-next-line react/no-children-prop -- Badge's createElement overload requires children in props in this .ts view module
+            createElement(Badge, {
+              variant: auditActionBadgeVariant(row.actionLabel),
+              children: row.actionLabel,
+            }),
+          ),
+          buildAuditField("Entidad", row.entityType),
+          buildAuditField(
+            "ID",
+            createElement(
+              "span",
+              { className: "break-all font-mono text-xs text-slate-500" },
+              row.entityId,
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
 function buildList(viewModel: AuditListViewModel): ReactElement {
   if (viewModel.kind === "empty") {
     return createElement(
@@ -312,9 +371,10 @@ function buildList(viewModel: AuditListViewModel): ReactElement {
     createElement(
       CardBody,
       null,
+      buildAuditCards(viewModel.rows),
       createElement(
         "div",
-        { className: "overflow-x-auto rounded-xl border border-slate-200" },
+        { className: "hidden overflow-x-auto rounded-xl border border-slate-200 md:block" },
         createElement(
           "table",
           { className: "w-full border-collapse text-sm", "aria-label": "Registros de auditoría" },

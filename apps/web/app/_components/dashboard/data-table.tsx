@@ -28,8 +28,30 @@ export function DataTable<T>({
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-slate-200">
-      <table className="w-full border-collapse text-sm">
+    <>
+      {/* Mobile/small-tablet: stacked label/value cards so columns never clip
+          or force horizontal scroll. Real table returns at md+. */}
+      <ul className="flex flex-col gap-3 md:hidden">
+        {rows.map((row) => (
+          <li key={getKey(row)} className="rounded-xl border border-slate-200 p-4">
+            <dl className="flex flex-col gap-2.5">
+              {columns.map((col) => (
+                <div key={col.key} className="min-w-0">
+                  <dt className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                    {col.header}
+                  </dt>
+                  <dd className="mt-0.5 min-w-0 break-words text-sm text-slate-700">
+                    {col.render(row)}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </li>
+        ))}
+      </ul>
+
+      <div className="hidden overflow-x-auto rounded-xl border border-slate-200 md:block">
+        <table className="w-full border-collapse text-sm">
         <thead>
           <tr className="bg-slate-50">
             {columns.map((col) => (
@@ -60,6 +82,7 @@ export function DataTable<T>({
           ))}
         </tbody>
       </table>
-    </div>
+      </div>
+    </>
   );
 }

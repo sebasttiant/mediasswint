@@ -62,13 +62,21 @@ export function Breadcrumbs() {
   if (crumbs.length <= 1) return null;
 
   return (
-    <nav aria-label="Navegación de ruta" className="flex items-center gap-1 text-xs text-ink-muted">
+    <nav
+      aria-label="Navegación de ruta"
+      className="flex min-w-0 flex-nowrap items-center gap-1 overflow-hidden text-xs text-ink-muted"
+    >
       {crumbs.map((crumb, index) => {
         const isLast = index === crumbs.length - 1;
         const isFirst = index === 0;
 
         return (
-          <span key={crumb.href} className="flex items-center gap-1">
+          // On phones only the current (last) crumb is shown so the trail can
+          // never collide with the avatar; ancestors return from sm upward.
+          <span
+            key={crumb.href}
+            className={`items-center gap-1 ${isLast ? "flex min-w-0" : "hidden sm:flex"}`}
+          >
             {isFirst ? (
               <Link
                 href={crumb.href}

@@ -24,7 +24,7 @@ export function MobileStripTabs({ activeTab, onTabChange }: MobileStripTabsProps
           key={tab.id}
           type="button"
           onClick={() => onTabChange(tab.id)}
-          className={`flex-1 relative py-2.5 text-xs font-semibold transition-colors ${
+          className={`relative min-w-0 flex-1 px-1 py-2 text-xs font-semibold transition-colors sm:py-2.5 ${
             activeTab === tab.id
               ? "text-sky-700"
               : "text-slate-500 hover:text-slate-700"
@@ -32,8 +32,8 @@ export function MobileStripTabs({ activeTab, onTabChange }: MobileStripTabsProps
           aria-selected={activeTab === tab.id}
           role="tab"
         >
-          <span className="block text-sm font-bold">{tab.label}</span>
-          <span className="block text-[10px] font-normal text-slate-400">{tab.sublabel}</span>
+          <span className="block truncate text-[13px] font-bold leading-tight sm:text-sm">{tab.label}</span>
+          <span className="block truncate text-[10px] font-normal leading-tight text-slate-400">{tab.sublabel}</span>
           {activeTab === tab.id ? (
             <motion.div
               layoutId="mobile-tab-indicator"

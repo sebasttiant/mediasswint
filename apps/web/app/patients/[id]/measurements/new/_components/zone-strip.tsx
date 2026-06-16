@@ -32,7 +32,7 @@ export function ZoneStrip({
     // Mobile/tablet: grows with its content inside the page scroll. Desktop
     // (lg+): fixed-height column with its own internal scroll.
     <div className="flex min-h-0 flex-col lg:h-full">
-      <div className={`shrink-0 px-2 py-1.5 text-center text-xs font-bold uppercase tracking-wider border-b ${
+      <div className={`shrink-0 border-b px-2 py-1 text-center text-[11px] font-bold uppercase tracking-wider sm:py-1.5 sm:text-xs ${
         side === "right"
           ? "bg-sky-50 text-sky-700 border-sky-200"
           : "bg-violet-50 text-violet-700 border-violet-200"
@@ -41,7 +41,7 @@ export function ZoneStrip({
       </div>
 
       <div className="flex-1 overflow-visible bg-slate-50 lg:min-h-0 lg:overflow-y-auto">
-        <div className="flex flex-col gap-1.5 p-2.5">
+        <div className="flex flex-col gap-1.5 p-2 sm:p-2.5">
           {fields.map((field) => {
             const anatomyZone = field.metadata.anatomyZone as string | undefined;
             const isActive = anatomyZone ? anatomyZone === activeZoneId : false;
@@ -52,7 +52,7 @@ export function ZoneStrip({
             return (
               <div
                 key={field.key}
-                className={`rounded-xl border px-2.5 py-2 transition-colors ${
+                className={`rounded-xl border px-2.5 py-1.5 transition-colors sm:py-2 ${
                   isActive
                     ? "border-sky-300 bg-sky-50 ring-1 ring-sky-200"
                     : isFilled
@@ -61,7 +61,7 @@ export function ZoneStrip({
                 }`}
               >
                 <div className="flex items-center gap-2.5">
-                  <div className={`flex size-8 shrink-0 items-center justify-center rounded-full font-mono text-xs font-bold select-none ${
+                  <div className={`flex size-7 shrink-0 select-none items-center justify-center rounded-full font-mono text-[11px] font-bold sm:size-8 sm:text-xs ${
                     isActive
                       ? "bg-sky-600 text-white"
                       : isFilled
@@ -72,7 +72,7 @@ export function ZoneStrip({
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="mb-1 flex items-center justify-between gap-2">
-                      <label className="truncate text-xs font-semibold text-slate-700">
+                      <label className="truncate text-[13px] font-semibold leading-tight text-slate-700 sm:text-xs">
                         {field.label}
                       </label>
                       <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
@@ -102,7 +102,7 @@ export function ZoneStrip({
                           if (anatomyZone) onFocus(anatomyZone);
                           onChange(field.key, event.target.value);
                         }}
-                        className={`h-9 min-w-0 flex-1 scroll-mb-44 rounded-lg border px-3 text-sm font-mono outline-none transition-all lg:scroll-mb-0 ${
+                        className={`h-9 min-w-0 flex-1 scroll-mb-44 rounded-lg border px-3 font-mono text-base outline-none transition-all lg:scroll-mb-0 lg:text-sm ${
                           isActive
                             ? "border-sky-400 bg-white text-sky-950 ring-2 ring-sky-100"
                             : isFilled

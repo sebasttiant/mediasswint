@@ -94,8 +94,8 @@ export function UsersClient({ viewModel, total, query, currentUserId }: UsersCli
             </span>
           }
           action={
-            <div className="flex items-center gap-2">
-              <form method="get" role="search" className="relative">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <form method="get" role="search" className="relative w-full sm:w-auto">
                 <Search
                   size={14}
                   className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
@@ -110,10 +110,15 @@ export function UsersClient({ viewModel, total, query, currentUserId }: UsersCli
                   name="q"
                   defaultValue={query}
                   placeholder="Buscar usuario…"
-                  className="h-9 w-48 rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm text-slate-800 placeholder-slate-400 outline-none transition-all focus:border-brand/40 focus:bg-white focus:ring-2 focus:ring-brand/10"
+                  className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm text-slate-800 placeholder-slate-400 outline-none transition-all focus:border-brand/40 focus:bg-white focus:ring-2 focus:ring-brand/10 sm:w-48"
                 />
               </form>
-              <Button variant="primary" size="sm" onClick={() => setCreateOpen(true)}>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setCreateOpen(true)}
+                className="w-full sm:w-auto"
+              >
                 <UserPlus size={15} aria-hidden="true" />
                 Nuevo usuario
               </Button>

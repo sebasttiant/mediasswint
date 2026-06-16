@@ -22,12 +22,12 @@ export function CardHeader({
   return (
     <div
       className={cn(
-        "flex items-center justify-between gap-4 border-b border-slate-100 px-6 py-4",
+        "flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-slate-100 px-6 py-4",
         className,
       )}
     >
-      <h2 className="text-base font-bold tracking-tight text-slate-900">{title}</h2>
-      {action ? <div className="shrink-0">{action}</div> : null}
+      <h2 className="min-w-0 text-base font-bold tracking-tight text-slate-900">{title}</h2>
+      {action ? <div className="w-full shrink-0 sm:w-auto">{action}</div> : null}
     </div>
   );
 }

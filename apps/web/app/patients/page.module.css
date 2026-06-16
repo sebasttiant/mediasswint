@@ -859,6 +859,23 @@
   margin-top: 0.75rem;
 }
 
+/* Below desktop (lg) the two-column measurement workspace gets cramped once the
+   static sidebar claims its 280px, so reflow to a single column and drop the
+   sticky body rail well before 640px. The figure is capped + centered so it
+   stays compact on tablet portrait. */
+@media (max-width: 1023px) {
+  .measurementWorkspace {
+    grid-template-columns: 1fr;
+  }
+
+  .bodyHighlightRail {
+    position: static;
+    width: 100%;
+    max-width: 420px;
+    margin-inline: auto;
+  }
+}
+
 @media (max-width: 640px) {
   .header {
     flex-direction: column;
@@ -880,14 +897,6 @@
   .primaryButton,
   .ghostButton {
     width: 100%;
-  }
-
-  .measurementWorkspace {
-    grid-template-columns: 1fr;
-  }
-
-  .bodyHighlightRail {
-    position: static;
   }
 
   .actionsRow {

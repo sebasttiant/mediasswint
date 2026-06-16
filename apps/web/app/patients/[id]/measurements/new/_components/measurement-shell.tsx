@@ -169,13 +169,13 @@ export function MeasurementShell({
       <MobileStripTabs activeTab={mobileTab} onTabChange={setMobileTab} />
 
       {/* Mobile body figure */}
-      <div className="lg:hidden border-b border-slate-200 bg-slate-50 px-4 py-4">
-        <div className="mx-auto flex max-w-sm flex-col items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="lg:hidden border-b border-slate-200 bg-slate-50 px-3 py-3 sm:px-4">
+        <div className="mx-auto flex max-w-sm flex-col items-center gap-2.5 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm sm:p-4">
           <div className="text-center">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Mapa corporal interactivo</p>
             <p className="mt-1 text-xs text-slate-600">Tocá una zona para abrir su campo de medida.</p>
           </div>
-          <div className="w-full max-w-[180px] sm:max-w-[200px] md:max-w-[230px]">
+          <div className="w-full max-w-[170px] sm:max-w-[200px] md:max-w-[220px]">
             <BodyHighlight
               view="full"
               sex={sex}
