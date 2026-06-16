@@ -10,6 +10,7 @@ import {
   type OperationWithPatient,
   type ServiceResult,
 } from "@/lib/operations";
+import { parseOperationMetadataInput } from "@/lib/operation-metadata";
 
 type Params = {
   params: Promise<{ id: string }>;
@@ -115,15 +116,27 @@ export async function handleCreateOperationRequest(
     totalAmount = new Prisma.Decimal(input.totalAmount);
   }
 
+  const metadata = parseOperationMetadataInput(input as Record<string, unknown>);
+  if (!metadata.ok) {
+    return NextResponse.json(
+      { errors: [{ field: metadata.field, message: metadata.message }] },
+      { status: 400 },
+    );
+  }
+
   const result = await deps.createOperation(patientId, {
     garmentType: input.garmentType.trim(),
     totalAmount,
     notes: input.notes?.trim() || undefined,
+    ...metadata.value,
   });
 
   if (!result.ok) {
     if (result.error === "NOT_FOUND") {
       return NextResponse.json({ error: "Patient not found" }, { status: 404 });
+    }
+    if (result.error === "INVALID_OPERATION") {
+      return NextResponse.json({ error: "Invalid operation" }, { status: 400 });
     }
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }

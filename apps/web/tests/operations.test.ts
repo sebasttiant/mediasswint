@@ -6,11 +6,14 @@ import { Prisma } from "@prisma/client";
 import {
   buildOperationalPendingQueue,
   getOperationPendingBalance,
+  isValidOperationMetadataUpdate,
   isValidOperationPaymentUpdate,
   type OperationalQueueSourceOperation,
   type ServiceResult,
   type ServiceErrorCode,
+  updateOperation,
 } from "@/lib/operations";
+import { toAuditPayload } from "@/lib/audit-log";
 
 type OkResult<T> = { ok: true; value: T };
 type ErrResult = { ok: false; error: ServiceErrorCode };
@@ -78,6 +81,39 @@ function createOperation(overrides: Partial<OperationalQueueSourceOperation>): O
   };
 }
 
+function getGlobalPrisma(): unknown {
+  return (globalThis as unknown as { prisma?: unknown }).prisma;
+}
+
+function setGlobalPrisma(prisma: unknown): void {
+  (globalThis as unknown as { prisma?: unknown }).prisma = prisma;
+}
+
+function createPersistedOperation(overrides: Record<string, unknown>) {
+  return {
+    id: "op_1",
+    patientId: "pat_1",
+    status: "PRESUPUESTO",
+    totalAmount: new Prisma.Decimal(100),
+    depositPaid: new Prisma.Decimal(0),
+    garmentType: "Media",
+    notes: null,
+    orderNumber: null,
+    orderedAt: null,
+    productCode: null,
+    productType: null,
+    quantity: 1,
+    invoiceNumber: null,
+    invoiceDate: null,
+    discount: null,
+    exitDate: null,
+    createdAt: new Date("2026-05-20T10:00:00Z"),
+    updatedAt: new Date("2026-05-20T10:00:00Z"),
+    patient: { id: "pat_1", fullName: "Ada Lovelace" },
+    ...overrides,
+  };
+}
+
 describe("getOperationPendingBalance", () => {
   it("returns the positive difference between total and deposit", () => {
     const balance = getOperationPendingBalance(createOperation({ totalAmount: "200000", depositPaid: "50000" }));
@@ -118,6 +154,162 @@ describe("isValidOperationPaymentUpdate", () => {
     );
 
     assert.equal(isValid, true);
+  });
+});
+
+describe("isValidOperationMetadataUpdate", () => {
+  it("rejects quantity below 1", () => {
+    assert.equal(isValidOperationMetadataUpdate(null, { quantity: 0 }), false);
+  });
+
+  it("rejects a non-integer quantity", () => {
+    assert.equal(isValidOperationMetadataUpdate(null, { quantity: 1.5 }), false);
+  });
+
+  it("rejects a negative discount", () => {
+    assert.equal(isValidOperationMetadataUpdate(null, { discount: new Prisma.Decimal(-1) }), false);
+  });
+
+  it("rejects discount exceeding the total in the same input", () => {
+    assert.equal(
+      isValidOperationMetadataUpdate(null, {
+        discount: new Prisma.Decimal(150),
+        totalAmount: new Prisma.Decimal(100),
+      }),
+      false,
+    );
+  });
+
+  it("rejects discount exceeding the existing total", () => {
+    assert.equal(
+      isValidOperationMetadataUpdate(
+        { totalAmount: new Prisma.Decimal(100), discount: null, orderedAt: null, exitDate: null },
+        { discount: new Prisma.Decimal(150) },
+      ),
+      false,
+    );
+  });
+
+  it("rejects existing discount exceeding a new effective total", () => {
+    assert.equal(
+      isValidOperationMetadataUpdate(
+        { totalAmount: new Prisma.Decimal(200), discount: new Prisma.Decimal(150), orderedAt: null, exitDate: null },
+        { totalAmount: new Prisma.Decimal(100) },
+      ),
+      false,
+    );
+  });
+
+  it("rejects exitDate earlier than orderedAt in the same input", () => {
+    assert.equal(
+      isValidOperationMetadataUpdate(null, {
+        orderedAt: new Date("2026-02-10T00:00:00Z"),
+        exitDate: new Date("2026-02-01T00:00:00Z"),
+      }),
+      false,
+    );
+  });
+
+  it("rejects exitDate earlier than the existing orderedAt", () => {
+    assert.equal(
+      isValidOperationMetadataUpdate(
+        { totalAmount: null, discount: null, orderedAt: new Date("2026-02-10T00:00:00Z"), exitDate: null },
+        { exitDate: new Date("2026-02-01T00:00:00Z") },
+      ),
+      false,
+    );
+  });
+
+  it("accepts valid metadata", () => {
+    assert.equal(
+      isValidOperationMetadataUpdate(null, {
+        quantity: 2,
+        discount: new Prisma.Decimal(50),
+        totalAmount: new Prisma.Decimal(100),
+        orderedAt: new Date("2026-02-01T00:00:00Z"),
+        exitDate: new Date("2026-02-10T00:00:00Z"),
+      }),
+      true,
+    );
+  });
+
+  it("accepts an empty update", () => {
+    assert.equal(isValidOperationMetadataUpdate(null, {}), true);
+  });
+});
+
+describe("updateOperation business rules", () => {
+  it("rejects metadata-only updates on an existing CANCELADO operation", async () => {
+    const originalPrisma = getGlobalPrisma();
+    let updateCalls = 0;
+    setGlobalPrisma({
+      commercialOperation: {
+        findFirst: async () => createPersistedOperation({ status: "CANCELADO" }),
+        update: async () => {
+          updateCalls += 1;
+          return createPersistedOperation({ status: "CANCELADO" });
+        },
+      },
+    });
+
+    try {
+      const result = await updateOperation("pat_1", "op_1", { orderNumber: "3952" });
+
+      assert.equal(result.ok, false);
+      if (!result.ok) assert.equal(result.error, "INVALID_OPERATION");
+      assert.equal(updateCalls, 0);
+    } finally {
+      setGlobalPrisma(originalPrisma);
+    }
+  });
+
+  it("rejects lowering totalAmount below the existing discount", async () => {
+    const originalPrisma = getGlobalPrisma();
+    let updateCalls = 0;
+    setGlobalPrisma({
+      commercialOperation: {
+        findFirst: async () => createPersistedOperation({
+          totalAmount: new Prisma.Decimal(200),
+          discount: new Prisma.Decimal(150),
+        }),
+        update: async () => {
+          updateCalls += 1;
+          return createPersistedOperation({});
+        },
+      },
+    });
+
+    try {
+      const result = await updateOperation("pat_1", "op_1", { totalAmount: new Prisma.Decimal(100) });
+
+      assert.equal(result.ok, false);
+      if (!result.ok) assert.equal(result.error, "INVALID_OPERATION");
+      assert.equal(updateCalls, 0);
+    } finally {
+      setGlobalPrisma(originalPrisma);
+    }
+  });
+});
+
+describe("toAuditPayload order metadata", () => {
+  it("serializes new metadata fields (dates as ISO, decimals as strings)", () => {
+    const payload = toAuditPayload({
+      id: "op_1",
+      orderNumber: "3952",
+      quantity: 2,
+      discount: new Prisma.Decimal(5000),
+      orderedAt: new Date("2026-02-01T00:00:00Z"),
+      exitDate: new Date("2026-02-10T00:00:00Z"),
+      productCode: "MR",
+    });
+
+    assert.ok(payload);
+    assert.equal(payload.orderNumber, "3952");
+    assert.equal(payload.quantity, 2);
+    assert.equal(payload.discount, "5000");
+    assert.equal(payload.orderedAt, "2026-02-01T00:00:00.000Z");
+    assert.equal(payload.exitDate, "2026-02-10T00:00:00.000Z");
+    assert.equal(payload.productCode, "MR");
   });
 });
 

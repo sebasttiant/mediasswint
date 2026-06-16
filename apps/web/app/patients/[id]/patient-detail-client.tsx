@@ -59,6 +59,64 @@ function formatCurrency(value: string | number | null): string {
   return `$${num.toLocaleString("es-AR")}`;
 }
 
+// Etapa E: order metadata form scaffolding. Empty fields are treated as
+// "absent" — sending only non-empty values. Clearing a previously-set field is
+// out of scope for v1.
+const OPERATION_METADATA_FIELDS = [
+  "orderNumber",
+  "orderedAt",
+  "productCode",
+  "productType",
+  "quantity",
+  "invoiceNumber",
+  "invoiceDate",
+  "discount",
+  "exitDate",
+] as const;
+
+type OperationMetadataForm = Record<(typeof OPERATION_METADATA_FIELDS)[number], string>;
+
+const EMPTY_OPERATION_METADATA_FORM: OperationMetadataForm = {
+  orderNumber: "",
+  orderedAt: "",
+  productCode: "",
+  productType: "",
+  quantity: "",
+  invoiceNumber: "",
+  invoiceDate: "",
+  discount: "",
+  exitDate: "",
+};
+
+// ISO timestamps → YYYY-MM-DD for native date inputs.
+function toDateInputValue(iso: string | null): string {
+  return iso ? iso.slice(0, 10) : "";
+}
+
+function operationToMetadataForm(op: OperationSummary): OperationMetadataForm {
+  return {
+    orderNumber: op.orderNumber ?? "",
+    orderedAt: toDateInputValue(op.orderedAt),
+    productCode: op.productCode ?? "",
+    productType: op.productType ?? "",
+    quantity: op.quantity != null ? String(op.quantity) : "",
+    invoiceNumber: op.invoiceNumber ?? "",
+    invoiceDate: toDateInputValue(op.invoiceDate),
+    discount: op.discount ?? "",
+    exitDate: toDateInputValue(op.exitDate),
+  };
+}
+
+// Only include non-empty metadata values in a request payload.
+function compactMetadataPayload(form: OperationMetadataForm): Record<string, string> {
+  const payload: Record<string, string> = {};
+  for (const field of OPERATION_METADATA_FIELDS) {
+    const value = form[field].trim();
+    if (value) payload[field] = value;
+  }
+  return payload;
+}
+
 export default function PatientDetailClient({
   initialPatient,
   recentMeasurements,
@@ -80,11 +138,18 @@ export default function PatientDetailClient({
   const [newOpGarmentType, setNewOpGarmentType] = useState("");
   const [newOpTotalAmount, setNewOpTotalAmount] = useState("");
   const [newOpNotes, setNewOpNotes] = useState("");
+  const [newOpMeta, setNewOpMeta] = useState<OperationMetadataForm>(EMPTY_OPERATION_METADATA_FORM);
   const [creatingOp, setCreatingOp] = useState(false);
 
   // Edit operation state
   const [editingOperationId, setEditingOperationId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ garmentType: "", totalAmount: "", status: "", notes: "" });
+  const [editForm, setEditForm] = useState({
+    garmentType: "",
+    totalAmount: "",
+    status: "",
+    notes: "",
+    ...EMPTY_OPERATION_METADATA_FORM,
+  });
   const [updatingOp, setUpdatingOp] = useState(false);
 
   // Deposit state
@@ -160,6 +225,7 @@ export default function PatientDetailClient({
             garmentType: newOpGarmentType.trim(),
             totalAmount: newOpTotalAmount ? String(parseFloat(newOpTotalAmount)) : undefined,
             notes: newOpNotes.trim() || undefined,
+            ...compactMetadataPayload(newOpMeta),
           }),
         },
       );
@@ -169,9 +235,11 @@ export default function PatientDetailClient({
         setNewOpGarmentType("");
         setNewOpTotalAmount("");
         setNewOpNotes("");
+        setNewOpMeta(EMPTY_OPERATION_METADATA_FORM);
         router.refresh();
       } else {
-        alert("Error al crear operación");
+        const json = (await response.json().catch(() => null)) as { error?: string } | null;
+        alert(json?.error ?? "Error al crear operación");
       }
     } finally {
       setCreatingOp(false);
@@ -186,6 +254,7 @@ export default function PatientDetailClient({
       totalAmount: op.totalAmount ?? "",
       status: op.status,
       notes: op.notes ?? "",
+      ...operationToMetadataForm(op),
     });
   }
 
@@ -216,6 +285,16 @@ export default function PatientDetailClient({
       }
       if (editForm.notes !== (original.notes ?? "")) {
         body.notes = editForm.notes;
+      }
+
+      // Etapa E metadata: send only changed, non-empty fields. Clearing an
+      // existing value is out of scope for v1.
+      const metadataBaseline = operationToMetadataForm(original);
+      for (const field of OPERATION_METADATA_FIELDS) {
+        const next = editForm[field].trim();
+        if (next && next !== metadataBaseline[field]) {
+          body[field] = next;
+        }
       }
 
       if (Object.keys(body).length === 0) {
@@ -472,6 +551,97 @@ export default function PatientDetailClient({
                   className={styles.operationFormInput}
                 />
               </div>
+              <div>
+                <label className={styles.operationFormLabel}>N° de orden</label>
+                <input
+                  type="text"
+                  value={newOpMeta.orderNumber}
+                  onChange={(e) => setNewOpMeta((p) => ({ ...p, orderNumber: e.target.value }))}
+                  placeholder="ej: 3952"
+                  maxLength={32}
+                  className={styles.operationFormInput}
+                />
+              </div>
+              <div>
+                <label className={styles.operationFormLabel}>Fecha de orden</label>
+                <input
+                  type="date"
+                  value={newOpMeta.orderedAt}
+                  onChange={(e) => setNewOpMeta((p) => ({ ...p, orderedAt: e.target.value }))}
+                  className={styles.operationFormInput}
+                />
+              </div>
+              <div>
+                <label className={styles.operationFormLabel}>Código de producto</label>
+                <input
+                  type="text"
+                  value={newOpMeta.productCode}
+                  onChange={(e) => setNewOpMeta((p) => ({ ...p, productCode: e.target.value }))}
+                  maxLength={64}
+                  className={styles.operationFormInput}
+                />
+              </div>
+              <div>
+                <label className={styles.operationFormLabel}>Tipo de producto</label>
+                <input
+                  type="text"
+                  value={newOpMeta.productType}
+                  onChange={(e) => setNewOpMeta((p) => ({ ...p, productType: e.target.value }))}
+                  maxLength={64}
+                  className={styles.operationFormInput}
+                />
+              </div>
+              <div>
+                <label className={styles.operationFormLabel}>Cantidad</label>
+                <input
+                  type="number"
+                  value={newOpMeta.quantity}
+                  onChange={(e) => setNewOpMeta((p) => ({ ...p, quantity: e.target.value }))}
+                  placeholder="1"
+                  min="1"
+                  step="1"
+                  className={styles.operationFormInput}
+                />
+              </div>
+              <div>
+                <label className={styles.operationFormLabel}>N° de factura</label>
+                <input
+                  type="text"
+                  value={newOpMeta.invoiceNumber}
+                  onChange={(e) => setNewOpMeta((p) => ({ ...p, invoiceNumber: e.target.value }))}
+                  maxLength={64}
+                  className={styles.operationFormInput}
+                />
+              </div>
+              <div>
+                <label className={styles.operationFormLabel}>Fecha de factura</label>
+                <input
+                  type="date"
+                  value={newOpMeta.invoiceDate}
+                  onChange={(e) => setNewOpMeta((p) => ({ ...p, invoiceDate: e.target.value }))}
+                  className={styles.operationFormInput}
+                />
+              </div>
+              <div>
+                <label className={styles.operationFormLabel}>Descuento</label>
+                <input
+                  type="number"
+                  value={newOpMeta.discount}
+                  onChange={(e) => setNewOpMeta((p) => ({ ...p, discount: e.target.value }))}
+                  min="0"
+                  step="0.01"
+                  className={styles.operationFormInput}
+                />
+              </div>
+              <div>
+                <label className={styles.operationFormLabel}>Fecha de salida</label>
+                <input
+                  type="date"
+                  value={newOpMeta.exitDate}
+                  onChange={(e) => setNewOpMeta((p) => ({ ...p, exitDate: e.target.value }))}
+                  className={styles.operationFormInput}
+                />
+              </div>
               <div className={styles.operationNewFormFullWidth}>
                 <label className={styles.operationFormLabel}>
                   Notas (opcional)
@@ -501,6 +671,7 @@ export default function PatientDetailClient({
                   setNewOpGarmentType("");
                   setNewOpTotalAmount("");
                   setNewOpNotes("");
+                  setNewOpMeta(EMPTY_OPERATION_METADATA_FORM);
                 }}
                 className={styles.operationActionBtn}
               >
@@ -563,6 +734,95 @@ export default function PatientDetailClient({
                           <p style={{ margin: "0.35rem 0 0", fontSize: "0.9rem", fontWeight: 600, color: "#10b981" }}>
                             {formatCurrency(op.depositPaid)}
                           </p>
+                        </div>
+                        <div>
+                          <label className={styles.operationFormLabel}>N° de orden</label>
+                          <input
+                            className={styles.operationFormInput}
+                            type="text"
+                            maxLength={32}
+                            value={editForm.orderNumber}
+                            onChange={(e) => setEditForm((prev) => ({ ...prev, orderNumber: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <label className={styles.operationFormLabel}>Fecha de orden</label>
+                          <input
+                            className={styles.operationFormInput}
+                            type="date"
+                            value={editForm.orderedAt}
+                            onChange={(e) => setEditForm((prev) => ({ ...prev, orderedAt: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <label className={styles.operationFormLabel}>Código de producto</label>
+                          <input
+                            className={styles.operationFormInput}
+                            type="text"
+                            maxLength={64}
+                            value={editForm.productCode}
+                            onChange={(e) => setEditForm((prev) => ({ ...prev, productCode: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <label className={styles.operationFormLabel}>Tipo de producto</label>
+                          <input
+                            className={styles.operationFormInput}
+                            type="text"
+                            maxLength={64}
+                            value={editForm.productType}
+                            onChange={(e) => setEditForm((prev) => ({ ...prev, productType: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <label className={styles.operationFormLabel}>Cantidad</label>
+                          <input
+                            className={styles.operationFormInput}
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={editForm.quantity}
+                            onChange={(e) => setEditForm((prev) => ({ ...prev, quantity: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <label className={styles.operationFormLabel}>N° de factura</label>
+                          <input
+                            className={styles.operationFormInput}
+                            type="text"
+                            maxLength={64}
+                            value={editForm.invoiceNumber}
+                            onChange={(e) => setEditForm((prev) => ({ ...prev, invoiceNumber: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <label className={styles.operationFormLabel}>Fecha de factura</label>
+                          <input
+                            className={styles.operationFormInput}
+                            type="date"
+                            value={editForm.invoiceDate}
+                            onChange={(e) => setEditForm((prev) => ({ ...prev, invoiceDate: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <label className={styles.operationFormLabel}>Descuento</label>
+                          <input
+                            className={styles.operationFormInput}
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={editForm.discount}
+                            onChange={(e) => setEditForm((prev) => ({ ...prev, discount: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <label className={styles.operationFormLabel}>Fecha de salida</label>
+                          <input
+                            className={styles.operationFormInput}
+                            type="date"
+                            value={editForm.exitDate}
+                            onChange={(e) => setEditForm((prev) => ({ ...prev, exitDate: e.target.value }))}
+                          />
                         </div>
                         <div className={styles.operationFormFullWidth}>
                           <label className={styles.operationFormLabel}>Notas</label>
@@ -630,6 +890,29 @@ export default function PatientDetailClient({
                             </div>
                           </div>
                         )}
+                        {(() => {
+                          const metaItems: Array<[string, string]> = [];
+                          if (op.orderNumber) metaItems.push(["N° orden", op.orderNumber]);
+                          if (op.orderedAt) metaItems.push(["Fecha orden", formatClinicDate(op.orderedAt)]);
+                          const product = [op.productCode, op.productType].filter(Boolean).join(" · ");
+                          if (product) metaItems.push(["Producto", product]);
+                          if (op.quantity != null) metaItems.push(["Cantidad", String(op.quantity)]);
+                          if (op.invoiceNumber) metaItems.push(["N° factura", op.invoiceNumber]);
+                          if (op.invoiceDate) metaItems.push(["Fecha factura", formatClinicDate(op.invoiceDate)]);
+                          if (op.discount) metaItems.push(["Descuento", formatCurrency(op.discount)]);
+                          if (op.exitDate) metaItems.push(["Fecha salida", formatClinicDate(op.exitDate)]);
+                          if (metaItems.length === 0) return null;
+                          return (
+                            <dl className={styles.operationMetaGrid}>
+                              {metaItems.map(([label, value]) => (
+                                <div key={label}>
+                                  <dt>{label}</dt>
+                                  <dd>{value}</dd>
+                                </div>
+                              ))}
+                            </dl>
+                          );
+                        })()}
                         {op.notes && (
                           <p className={styles.operationNotes}>{op.notes}</p>
                         )}
