@@ -74,7 +74,8 @@ export function FinanceClient({ rows, today }: FinanceClientProps) {
         </p>
       ) : (
         <>
-          <CashboxTable rows={rows} />
+          <CashboxReconciliationSummary rows={rows} today={today} />
+          <CashboxTableDetails rows={rows} />
           <CashboxCards rows={rows} />
         </>
       )}
@@ -105,10 +106,137 @@ function CashboxLegend() {
   );
 }
 
+// Visual treatment for the headline "Diferencia" badge: green when the count is
+// over the expected cash, red when short, neutral when it squares or is pending.
+function diferenciaBadgeClass(value: number | null): string {
+  if (value === null) return "bg-slate-100 text-slate-500";
+  if (value > 0) return "bg-emerald-50 text-emerald-700";
+  if (value < 0) return "bg-red-50 text-red-700";
+  return "bg-slate-100 text-slate-600";
+}
+
+// Desktop / tablet: surface the daily CASH reconciliation up front so operators
+// never have to scroll the Excel-style detail table to the right to read the
+// figures that matter: net cash, counted cash and the difference.
+//
+// The chain reads as a single formula: Venta bruta − Egresos = Venta neta, then
+// Real contado is compared against it to produce the Diferencia (the headline).
+// Bancos / Otros are electronic / ambiguous income, so they sit apart as context
+// and never enter the cash difference.
+function CashboxReconciliationSummary({ rows, today }: { rows: DailyCashboxRow[]; today: string }) {
+  return (
+    <section className="hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:block">
+      <div className="mb-3">
+        <h2 className="text-sm font-semibold text-slate-700">Resumen de conciliación</h2>
+        <p className="text-xs text-slate-400">
+          Lectura rápida de la caja en efectivo: esperado, egresos, neto, real contado y diferencia.
+        </p>
+      </div>
+
+      <div className="grid gap-3 xl:grid-cols-2">
+        {rows.map((row) => (
+          <article key={row.date} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-slate-700">{formatDate(row.date)}</h3>
+                {row.date === today && (
+                  <span className="rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-brand">
+                    Hoy
+                  </span>
+                )}
+              </div>
+              <span
+                className={`rounded-md px-3 py-1 text-sm font-bold tabular-nums ${diferenciaBadgeClass(row.diferencia)}`}
+              >
+                Diferencia {formatCurrency(row.diferencia)}
+              </span>
+            </div>
+
+            {/* Cash chain — wraps instead of scrolling so it always stays in view. */}
+            <div className="flex flex-wrap items-stretch gap-2">
+              <ChainCell label="Venta bruta efectivo" value={row.ventaBruta} />
+              <ChainOperator symbol="−" />
+              <ChainCell label="Egresos" value={row.egresos} />
+              <ChainOperator symbol="=" />
+              <ChainCell label="Venta neta efectivo" value={row.ventaNetaEfectivo} highlight />
+              <ChainOperator symbol="vs" muted />
+              <ChainCell label="Real contado" value={row.realContado} emphasis />
+            </div>
+
+            <p className="mt-3 text-xs text-slate-400">
+              Bancos / electrónicos{" "}
+              <span className="font-semibold tabular-nums text-slate-500">{formatCurrency(row.totalBancos)}</span>
+              {" · "}Otros (no efectivo){" "}
+              <span className="font-semibold tabular-nums text-slate-500">{formatCurrency(row.otros)}</span>
+            </p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ChainCell({
+  label,
+  value,
+  highlight,
+  emphasis,
+}: {
+  label: string;
+  value: number | null;
+  highlight?: boolean;
+  emphasis?: boolean;
+}) {
+  return (
+    <div
+      className={`min-w-[7.5rem] flex-1 rounded-md border px-3 py-2 ${
+        highlight ? "border-amber-300" : emphasis ? "border-slate-300 bg-white" : "border-slate-200 bg-white"
+      }`}
+      style={highlight ? { backgroundColor: CASHBOX_COLORS.ventaNetaEfectivo } : undefined}
+    >
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+      <p
+        className={`mt-1 tabular-nums ${
+          highlight || emphasis ? "text-base font-bold text-slate-900" : "text-sm font-semibold text-slate-700"
+        }`}
+      >
+        {formatCurrency(value)}
+      </p>
+    </div>
+  );
+}
+
+function ChainOperator({ symbol, muted }: { symbol: string; muted?: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`flex select-none items-center text-sm font-bold ${muted ? "text-slate-300" : "text-slate-400"}`}
+    >
+      {symbol}
+    </span>
+  );
+}
+
+// Desktop / tablet: the full Excel-style table is kept as collapsible AUDIT detail,
+// so the primary daily read no longer depends on scrolling it to the right.
+function CashboxTableDetails({ rows }: { rows: DailyCashboxRow[] }) {
+  return (
+    <details className="hidden rounded-xl border border-slate-200 bg-white shadow-sm md:block">
+      <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-slate-700">
+        Detalle completo (estilo Excel)
+        <span className="ml-2 text-xs font-normal text-slate-400">
+          Todas las columnas: abonos, reclamados y bancos por método
+        </span>
+      </summary>
+      <CashboxTable rows={rows} />
+    </details>
+  );
+}
+
 // Desktop / tablet: full Excel-style table with controlled horizontal scroll.
 function CashboxTable({ rows }: { rows: DailyCashboxRow[] }) {
   return (
-    <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm md:block">
+    <div className="overflow-x-auto border-t border-slate-100">
       <table className="w-full border-collapse text-right text-sm">
         <caption className="sr-only">Caja diaria: ingresos por tipo y método, egresos y conciliación</caption>
         <thead>
