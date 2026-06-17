@@ -78,6 +78,78 @@ export function buildMeasurementsSectionViewModel(args: {
   };
 }
 
+const CANCELLED_OPERATION_STATUS = "CANCELADO";
+
+export type OperationFinancials = {
+  total: number;
+  deposit: number;
+  pendingBalance: number;
+  hasTotal: boolean;
+  isCancelled: boolean;
+  isFullyPaid: boolean;
+  canEdit: boolean;
+  canDeposit: boolean;
+};
+
+/**
+ * Pure financial + action-availability model for a single commercial operation.
+ * Keeps the deposit/balance math and the CANCELADO guards out of the JSX so they
+ * can be unit-tested. `pendingBalance` is floored at 0 to mirror the server-side
+ * `getOperationPendingBalance` helper.
+ */
+export function buildOperationFinancials(
+  operation: Pick<OperationSummary, "status" | "totalAmount" | "depositPaid">,
+): OperationFinancials {
+  const hasTotal = operation.totalAmount != null && operation.totalAmount !== "";
+  const total = hasTotal ? Number(operation.totalAmount) : 0;
+  const deposit = Number(operation.depositPaid);
+  const pendingBalance = Math.max(total - deposit, 0);
+  const isCancelled = operation.status === CANCELLED_OPERATION_STATUS;
+  const isFullyPaid = hasTotal && pendingBalance === 0;
+
+  return {
+    total,
+    deposit,
+    pendingBalance,
+    hasTotal,
+    isCancelled,
+    isFullyPaid,
+    // CANCELADO is terminal: no mutations allowed (mirrors updateOperation).
+    canEdit: !isCancelled,
+    // A deposit is only meaningful while there is room left to pay. Operations
+    // without a total have no ceiling, so deposits stay allowed.
+    canDeposit: !isCancelled && (!hasTotal || pendingBalance > 0),
+  };
+}
+
+export type CommercialOperationsSummary = {
+  totalCount: number;
+  totalAmount: number;
+  totalDeposit: number;
+  totalBalance: number;
+};
+
+/**
+ * Aggregates the patient's active commercial operations for the section header.
+ * CANCELADO operations are excluded so the totals reflect real outstanding work.
+ */
+export function buildCommercialSummary(operations: OperationSummary[]): CommercialOperationsSummary {
+  return operations.reduce<CommercialOperationsSummary>(
+    (acc, operation) => {
+      const financials = buildOperationFinancials(operation);
+      if (financials.isCancelled) return acc;
+
+      return {
+        totalCount: acc.totalCount + 1,
+        totalAmount: acc.totalAmount + financials.total,
+        totalDeposit: acc.totalDeposit + financials.deposit,
+        totalBalance: acc.totalBalance + financials.pendingBalance,
+      };
+    },
+    { totalCount: 0, totalAmount: 0, totalDeposit: 0, totalBalance: 0 },
+  );
+}
+
 export type PatientDetailClientProps = {
   initialPatient: PatientDetail;
   recentMeasurements: PatientMeasurementSummary[];
