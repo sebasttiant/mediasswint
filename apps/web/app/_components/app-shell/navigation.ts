@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Briefcase, Home, LayoutDashboard, ScrollText, ShieldCheck, Stethoscope, Users } from "lucide-react";
+import { Briefcase, Home, LayoutDashboard, ScrollText, ShieldCheck, Stethoscope, Users, Wallet } from "lucide-react";
 
 import type { UserRole } from "@/lib/auth-edge";
 
@@ -8,6 +8,7 @@ export type AppShellNavKey =
   | "patients"
   | "measurements"
   | "operations"
+  | "finance"
   | "admin"
   | "admin-users"
   | "admin-audit";
@@ -73,6 +74,17 @@ export const APP_SHELL_NAVIGATION: AppShellNavItem[] = [
       { label: "Crear operación", href: "/patients", description: "Elegir paciente antes de presupuestar" },
     ],
   },
+  {
+    key: "finance",
+    label: "Caja y Finanzas",
+    href: "/finance",
+    description: "Caja diaria, egresos y conciliación de efectivo",
+    dashboardHref: "/",
+    icon: Wallet,
+    children: [
+      { label: "Caja diaria", href: "/finance", description: "Resumen diario de ingresos y efectivo" },
+    ],
+  },
 ];
 
 // Admin module navigation. Kept separate from APP_SHELL_NAVIGATION so the core
@@ -123,7 +135,7 @@ export function buildAppShellNavGroups(role?: UserRole): AppShellNavGroup[] {
     {
       label: "Gestión",
       items: APP_SHELL_NAVIGATION.filter((item) =>
-        ["patients", "measurements", "operations"].includes(item.key),
+        ["patients", "measurements", "operations", "finance"].includes(item.key),
       ),
     },
   ];
@@ -155,6 +167,9 @@ export function findAppShellActiveItem(pathname: string): AppShellNavItem | null
   }
   if (pathname.startsWith("/operations")) {
     return APP_SHELL_NAVIGATION.find((item) => item.key === "operations") ?? null;
+  }
+  if (pathname.startsWith("/finance")) {
+    return APP_SHELL_NAVIGATION.find((item) => item.key === "finance") ?? null;
   }
   if (pathname.startsWith("/patients")) {
     return APP_SHELL_NAVIGATION.find((item) => item.key === "patients") ?? null;

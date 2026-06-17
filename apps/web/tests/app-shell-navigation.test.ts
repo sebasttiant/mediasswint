@@ -11,13 +11,20 @@ import {
 } from "../app/_components/app-shell/navigation";
 
 describe("app shell navigation", () => {
-  it("defines dashboard, patients, measurements, and operations navigation with return-to-dashboard", () => {
+  it("defines dashboard, patients, measurements, operations and finance navigation with return-to-dashboard", () => {
     assert.deepEqual(
       APP_SHELL_NAVIGATION.map((item) => item.label),
-      ["Dashboard", "Pacientes", "Mediciones", "Operaciones"],
+      ["Dashboard", "Pacientes", "Mediciones", "Operaciones", "Caja y Finanzas"],
     );
     assert.equal(getDashboardNavigationItem().href, "/");
     assert.equal(APP_SHELL_NAVIGATION.every((item) => item.dashboardHref === "/"), true);
+  });
+
+  it("places Caja y Finanzas in the Gestión group right after Operaciones", () => {
+    const gestion = buildAppShellNavGroups("STAFF").find((group) => group.label === "Gestión");
+    const keys = gestion!.items.map((item) => item.key);
+    assert.deepEqual(keys, ["patients", "measurements", "operations", "finance"]);
+    assert.equal(findAppShellActiveItem("/finance")?.key, "finance");
   });
 
   it("keeps submenus reachable through stable hrefs", () => {
