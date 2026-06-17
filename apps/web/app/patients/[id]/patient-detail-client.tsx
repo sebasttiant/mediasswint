@@ -21,7 +21,11 @@ import {
   type PatientMeasurementSummary,
   type PatientTimelineItem,
 } from "./patient-detail-helpers";
-import { buildMeasurementsSectionViewModel } from "./patient-detail-view";
+import {
+  buildCommercialSummary,
+  buildOperationFinancials,
+  buildMeasurementsSectionViewModel,
+} from "./patient-detail-view";
 
 function getTimelineBadgeLabel(type: string): string {
   if (type === PATIENT_TIMELINE_EVENT_TYPE.MEASUREMENT_CREATED) return "Medición creada";
@@ -157,21 +161,8 @@ export default function PatientDetailClient({
   const [depositAmount, setDepositAmount] = useState("");
   const [depositing, setDepositing] = useState(false);
 
-  // Compute summary
-  const summary = operations.reduce(
-    (acc, op) => {
-      if (op.status === "CANCELADO") return acc;
-      const total = Number(op.totalAmount ?? 0);
-      const deposit = Number(op.depositPaid);
-      return {
-        totalCount: acc.totalCount + 1,
-        totalAmount: acc.totalAmount + total,
-        totalDeposit: acc.totalDeposit + deposit,
-        totalBalance: acc.totalBalance + (total - deposit),
-      };
-    },
-    { totalCount: 0, totalAmount: 0, totalDeposit: 0, totalBalance: 0 },
-  );
+  // Compute summary (CANCELADO excluded; pending balance floored at 0).
+  const summary = buildCommercialSummary(operations);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -686,11 +677,14 @@ export default function PatientDetailClient({
           <div className={styles.operationList}>
             {operations.map((op) => {
               const statusInfo = getOperationStatusInfo(op.status);
-              const total = op.totalAmount ? Number(op.totalAmount) : 0;
-              const deposit = Number(op.depositPaid);
-              const balance = total - deposit;
+              const financials = buildOperationFinancials(op);
               const isEditing = editingOperationId === op.id;
               const isDepositing = depositOperationId === op.id;
+              const depositDisabledReason = financials.isCancelled
+                ? "No se pueden agregar señas a operaciones canceladas"
+                : financials.isFullyPaid
+                  ? "La operación ya está totalmente pagada"
+                  : undefined;
 
               return (
                 <div key={op.id} className={styles.operationCard}>
@@ -872,7 +866,7 @@ export default function PatientDetailClient({
                         </time>
                       </div>
                       <div className={styles.operationCardBody}>
-                        {total > 0 && (
+                        {financials.hasTotal && (
                           <div className={styles.operationFinanceGrid}>
                             <div className={styles.operationFinanceItem}>
                               <p>Total</p>
@@ -884,8 +878,8 @@ export default function PatientDetailClient({
                             </div>
                             <div className={styles.operationFinanceItem}>
                               <p>Saldo</p>
-                              <p className={balance > 0 ? styles.operationFinanceWarning : styles.operationFinancePositive}>
-                                {formatCurrency(balance)}
+                              <p className={financials.pendingBalance > 0 ? styles.operationFinanceWarning : styles.operationFinancePositive}>
+                                {financials.isFullyPaid ? "Pagado" : formatCurrency(financials.pendingBalance)}
                               </p>
                             </div>
                           </div>
@@ -920,14 +914,16 @@ export default function PatientDetailClient({
                           <button
                             className={styles.operationActionBtn}
                             onClick={() => startEdit(op)}
+                            disabled={!financials.canEdit}
+                            title={financials.canEdit ? undefined : "Las operaciones canceladas no se pueden editar"}
                           >
                             Editar
                           </button>
                           <button
                             className={styles.operationActionBtn}
                             onClick={() => startDeposit(op)}
-                            disabled={op.status === "CANCELADO"}
-                            title={op.status === "CANCELADO" ? "No se pueden agregar señas a operaciones canceladas" : undefined}
+                            disabled={!financials.canDeposit}
+                            title={depositDisabledReason}
                           >
                             + Seña
                           </button>
@@ -939,11 +935,17 @@ export default function PatientDetailClient({
                   {/* ── Deposit form ── */}
                   {isDepositing && !isEditing && (
                     <form onSubmit={submitDeposit} className={styles.depositForm}>
-                      <label>Monto de la seña:</label>
+                      <label>
+                        Monto de la seña:
+                        {financials.hasTotal ? (
+                          <span className={styles.muted}> (saldo pendiente: {formatCurrency(financials.pendingBalance)})</span>
+                        ) : null}
+                      </label>
                       <input
                         type="number"
                         min="1"
                         step="0.01"
+                        max={financials.hasTotal ? financials.pendingBalance : undefined}
                         value={depositAmount}
                         onChange={(e) => setDepositAmount(e.target.value)}
                         placeholder="ej: 50000"
