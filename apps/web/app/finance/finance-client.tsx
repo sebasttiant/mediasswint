@@ -28,9 +28,12 @@ function diferenciaClass(value: number | null): string {
   return "text-slate-600";
 }
 
-// Column groups mirror the Excel layout. Background colors come from the original
-// sheet so the cashbox reads like the source document.
-const HEADERS: ReadonlyArray<{ label: string; key: keyof DailyCashboxRow; bg?: string; strong?: boolean }> = [
+const DETAIL_HEADERS: ReadonlyArray<{
+  label: string;
+  key: keyof DailyCashboxRow;
+  bg?: string;
+  strong?: boolean;
+}> = [
   { label: "1 Vez", key: "primeraVez", bg: CASHBOX_COLORS.abonos },
   { label: "R", key: "r", bg: CASHBOX_COLORS.abonos },
   { label: "MEFE", key: "mefe", bg: CASHBOX_COLORS.abonos },
@@ -43,11 +46,22 @@ const HEADERS: ReadonlyArray<{ label: string; key: keyof DailyCashboxRow; bg?: s
   { label: "Tarjeta débito", key: "tarjetaDebito", bg: CASHBOX_COLORS.bancos },
   { label: "Tarjeta crédito", key: "tarjetaCredito", bg: CASHBOX_COLORS.bancos },
   { label: "Total bancos", key: "totalBancos", bg: CASHBOX_COLORS.bancos, strong: true },
-  { label: "Otros (no efectivo)", key: "otros" },
-  { label: "Venta Bruta (efectivo)", key: "ventaBruta", strong: true },
+  { label: "Otros", key: "otros" },
+  { label: "Venta bruta", key: "ventaBruta", strong: true },
   { label: "Egresos", key: "egresos" },
-  { label: "Venta neta efectivo", key: "ventaNetaEfectivo", bg: CASHBOX_COLORS.ventaNetaEfectivo, strong: true },
+  { label: "Venta neta", key: "ventaNetaEfectivo", bg: CASHBOX_COLORS.ventaNetaEfectivo, strong: true },
   { label: "Real contado", key: "realContado" },
+];
+
+// Group band shown above the detail columns so the table reads by section instead
+// of as one long strip. Spans must add up to DETAIL_HEADERS.length + 1 (the trailing
+// Diferencia column lives in the Conciliación group).
+const DETAIL_GROUPS: ReadonlyArray<{ label: string; span: number; bg?: string }> = [
+  { label: "Abonos", span: 4, bg: CASHBOX_COLORS.abonos },
+  { label: "Reclamados", span: 3, bg: CASHBOX_COLORS.reclamados },
+  { label: "Bancos / electrónicos", span: 5, bg: CASHBOX_COLORS.bancos },
+  { label: "Otros", span: 1 },
+  { label: "Conciliación", span: 5 },
 ];
 
 export function FinanceClient({ rows, today }: FinanceClientProps) {
@@ -75,8 +89,7 @@ export function FinanceClient({ rows, today }: FinanceClientProps) {
       ) : (
         <>
           <CashboxReconciliationSummary rows={rows} today={today} />
-          <CashboxTableDetails rows={rows} />
-          <CashboxCards rows={rows} />
+          <CashboxDetailTable rows={rows} />
         </>
       )}
     </div>
@@ -115,9 +128,9 @@ function diferenciaBadgeClass(value: number | null): string {
   return "bg-slate-100 text-slate-600";
 }
 
-// Desktop / tablet: surface the daily CASH reconciliation up front so operators
-// never have to scroll the Excel-style detail table to the right to read the
-// figures that matter: net cash, counted cash and the difference.
+// Primary cashbox view: surface the daily CASH reconciliation up front so operators
+// do not depend on a wide spreadsheet-style table to read the figures that matter:
+// net cash, counted cash and the difference.
 //
 // The chain reads as a single formula: Venta bruta − Egresos = Venta neta, then
 // Real contado is compared against it to produce the Diferencia (the headline).
@@ -125,7 +138,7 @@ function diferenciaBadgeClass(value: number | null): string {
 // and never enter the cash difference.
 function CashboxReconciliationSummary({ rows, today }: { rows: DailyCashboxRow[]; today: string }) {
   return (
-    <section className="hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:block">
+    <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
       <div className="mb-3">
         <h2 className="text-sm font-semibold text-slate-700">Resumen de conciliación</h2>
         <p className="text-xs text-slate-400">
@@ -133,9 +146,9 @@ function CashboxReconciliationSummary({ rows, today }: { rows: DailyCashboxRow[]
         </p>
       </div>
 
-      <div className="grid gap-3 xl:grid-cols-2">
+      <div className="grid gap-3">
         {rows.map((row) => (
-          <article key={row.date} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <article key={row.date} className="rounded-lg border border-slate-200 bg-slate-50 p-3 sm:p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-bold text-slate-700">{formatDate(row.date)}</h3>
@@ -146,9 +159,15 @@ function CashboxReconciliationSummary({ rows, today }: { rows: DailyCashboxRow[]
                 )}
               </div>
               <span
-                className={`rounded-md px-3 py-1 text-sm font-bold tabular-nums ${diferenciaBadgeClass(row.diferencia)}`}
+                className={`rounded-md px-3 py-1 text-sm font-bold ${diferenciaBadgeClass(row.diferencia)}`}
               >
-                Diferencia {formatCurrency(row.diferencia)}
+                {row.diferencia === null ? (
+                  "Diferencia pendiente"
+                ) : (
+                  <>
+                    Diferencia <span className="tabular-nums">{formatCurrency(row.diferencia)}</span>
+                  </>
+                )}
               </span>
             </div>
 
@@ -160,7 +179,7 @@ function CashboxReconciliationSummary({ rows, today }: { rows: DailyCashboxRow[]
               <ChainOperator symbol="=" />
               <ChainCell label="Venta neta efectivo" value={row.ventaNetaEfectivo} highlight />
               <ChainOperator symbol="vs" muted />
-              <ChainCell label="Real contado" value={row.realContado} emphasis />
+              <ChainCell label="Real contado" value={row.realContado} emphasis pendingWhenNull />
             </div>
 
             <p className="mt-3 text-xs text-slate-400">
@@ -181,27 +200,34 @@ function ChainCell({
   value,
   highlight,
   emphasis,
+  pendingWhenNull,
 }: {
   label: string;
   value: number | null;
   highlight?: boolean;
   emphasis?: boolean;
+  pendingWhenNull?: boolean;
 }) {
+  const isPending = value === null && pendingWhenNull;
   return (
     <div
-      className={`min-w-[7.5rem] flex-1 rounded-md border px-3 py-2 ${
+      className={`min-w-[min(100%,8rem)] flex-1 rounded-md border px-3 py-2 ${
         highlight ? "border-amber-300" : emphasis ? "border-slate-300 bg-white" : "border-slate-200 bg-white"
       }`}
       style={highlight ? { backgroundColor: CASHBOX_COLORS.ventaNetaEfectivo } : undefined}
     >
       <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
-      <p
-        className={`mt-1 tabular-nums ${
-          highlight || emphasis ? "text-base font-bold text-slate-900" : "text-sm font-semibold text-slate-700"
-        }`}
-      >
-        {formatCurrency(value)}
-      </p>
+      {isPending ? (
+        <p className="mt-1 text-sm font-semibold text-slate-400">Pendiente</p>
+      ) : (
+        <p
+          className={`mt-1 tabular-nums ${
+            highlight || emphasis ? "text-base font-bold text-slate-900" : "text-sm font-semibold text-slate-700"
+          }`}
+        >
+          {formatCurrency(value)}
+        </p>
+      )}
     </div>
   );
 }
@@ -210,159 +236,108 @@ function ChainOperator({ symbol, muted }: { symbol: string; muted?: boolean }) {
   return (
     <span
       aria-hidden="true"
-      className={`flex select-none items-center text-sm font-bold ${muted ? "text-slate-300" : "text-slate-400"}`}
+      className={`hidden select-none items-center text-sm font-bold sm:flex ${muted ? "text-slate-300" : "text-slate-400"}`}
     >
       {symbol}
     </span>
   );
 }
 
-// Desktop / tablet: the full Excel-style table is kept as collapsible AUDIT detail,
-// so the primary daily read no longer depends on scrolling it to the right.
-function CashboxTableDetails({ rows }: { rows: DailyCashboxRow[] }) {
+function CashboxDetailTable({ rows }: { rows: DailyCashboxRow[] }) {
   return (
-    <details className="hidden rounded-xl border border-slate-200 bg-white shadow-sm md:block">
-      <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-slate-700">
-        Detalle completo (estilo Excel)
-        <span className="ml-2 text-xs font-normal text-slate-400">
-          Todas las columnas: abonos, reclamados y bancos por método
-        </span>
-      </summary>
-      <CashboxTable rows={rows} />
-    </details>
-  );
-}
+    <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-100 px-3 py-3 sm:px-4">
+        <h2 className="text-sm font-semibold text-slate-700">Detalle completo</h2>
+        <p className="text-xs text-slate-400">
+          Abonos, reclamados, bancos, egresos y conciliación por día.
+        </p>
+      </div>
 
-// Desktop / tablet: full Excel-style table with controlled horizontal scroll.
-function CashboxTable({ rows }: { rows: DailyCashboxRow[] }) {
-  return (
-    <div className="overflow-x-auto border-t border-slate-100">
-      <table className="w-full border-collapse text-right text-sm">
-        <caption className="sr-only">Caja diaria: ingresos por tipo y método, egresos y conciliación</caption>
-        <thead>
-          <tr>
-            <th
-              scope="col"
-              className="sticky left-0 z-10 bg-slate-100 px-3 py-2.5 text-left text-xs font-bold uppercase tracking-wide text-slate-500"
-            >
-              Fecha
-            </th>
-            {HEADERS.map((header) => (
+      <div className="overflow-x-auto">
+        <table className="min-w-[72rem] w-full border-collapse text-right text-xs sm:text-sm">
+          <caption className="sr-only">Detalle completo de caja diaria por método y conciliación</caption>
+          <thead>
+            <tr>
               <th
-                key={header.key}
                 scope="col"
-                className="whitespace-nowrap px-3 py-2.5 text-right text-xs font-bold text-slate-600"
-                style={header.bg ? { backgroundColor: header.bg } : undefined}
+                rowSpan={2}
+                className="sticky left-0 z-20 bg-slate-100 px-3 py-2 text-left align-bottom text-[11px] font-bold uppercase tracking-wide text-slate-500 shadow-[1px_0_0_0_rgba(226,232,240,1)]"
               >
-                {header.label}
+                Fecha
               </th>
-            ))}
-            <th scope="col" className="whitespace-nowrap px-3 py-2.5 text-right text-xs font-bold text-slate-600">
-              Diferencia
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.date} className="border-t border-slate-100">
-              <th
-                scope="row"
-                className="sticky left-0 z-10 bg-white px-3 py-2.5 text-left font-medium text-slate-700"
-              >
-                {formatDate(row.date)}
-              </th>
-              {HEADERS.map((header) => (
-                <td
+              {DETAIL_GROUPS.map((group) => (
+                <th
+                  key={group.label}
+                  scope="colgroup"
+                  colSpan={group.span}
+                  className={`border-l border-white px-3 py-2 text-center text-[11px] font-bold uppercase tracking-wide ${
+                    group.bg ? "text-slate-700" : "bg-slate-100 text-slate-600"
+                  }`}
+                  style={group.bg ? { backgroundColor: group.bg } : undefined}
+                >
+                  {group.label}
+                </th>
+              ))}
+            </tr>
+            <tr className="border-b border-slate-200">
+              {DETAIL_HEADERS.map((header) => (
+                <th
                   key={header.key}
-                  className={`whitespace-nowrap px-3 py-2.5 tabular-nums ${header.strong ? "font-semibold text-slate-800" : "text-slate-600"}`}
+                  scope="col"
+                  className="whitespace-nowrap border-l border-white/70 px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-600"
                   style={header.bg ? { backgroundColor: header.bg } : undefined}
                 >
-                  {formatCurrency(row[header.key] as number | null)}
-                </td>
+                  {header.label}
+                </th>
               ))}
-              <td className={`whitespace-nowrap px-3 py-2.5 font-semibold tabular-nums ${diferenciaClass(row.diferencia)}`}>
-                {formatCurrency(row.diferencia)}
-              </td>
+              <th
+                scope="col"
+                className="whitespace-nowrap border-l border-slate-200 bg-slate-100 px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-600"
+              >
+                Diferencia
+              </th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-// Mobile: stacked cards so nothing overflows or gets cut off.
-function CashboxCards({ rows }: { rows: DailyCashboxRow[] }) {
-  return (
-    <div className="space-y-4 md:hidden">
-      {rows.map((row) => (
-        <article key={row.date} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h3 className="mb-3 text-base font-bold text-slate-800">{formatDate(row.date)}</h3>
-
-          <CardGroup title="Abonos" color={CASHBOX_COLORS.abonos}>
-            <CardLine label="1 Vez" value={row.primeraVez} />
-            <CardLine label="R" value={row.r} />
-            <CardLine label="MEFE" value={row.mefe} />
-            <CardLine label="Total Abonos" value={row.totalAbonos} strong />
-          </CardGroup>
-
-          <CardGroup title="Reclamados" color={CASHBOX_COLORS.reclamados}>
-            <CardLine label="Reclamado 1 Vez" value={row.reclamadoPrimeraVez} />
-            <CardLine label="Reclamado R" value={row.reclamadoR} />
-            <CardLine label="Total Reclamados" value={row.totalReclamados} strong />
-          </CardGroup>
-
-          <CardGroup title="Bancos / electrónicos" color={CASHBOX_COLORS.bancos}>
-            <CardLine label="Transferencia" value={row.transferencias} />
-            <CardLine label="BOLD" value={row.bold} />
-            <CardLine label="Tarjeta débito" value={row.tarjetaDebito} />
-            <CardLine label="Tarjeta crédito" value={row.tarjetaCredito} />
-            <CardLine label="Total bancos" value={row.totalBancos} strong />
-          </CardGroup>
-
-          <div className="mt-3 space-y-1 border-t border-slate-100 pt-3">
-            <CardLine label="Otros (no efectivo)" value={row.otros} />
-            <CardLine label="Venta Bruta (efectivo)" value={row.ventaBruta} strong />
-            <CardLine label="Egresos" value={row.egresos} />
-            <div style={{ backgroundColor: CASHBOX_COLORS.ventaNetaEfectivo }} className="-mx-1 rounded px-1">
-              <CardLine label="Venta neta efectivo" value={row.ventaNetaEfectivo} strong />
-            </div>
-            <CardLine label="Real contado" value={row.realContado} />
-            <div className="flex items-center justify-between pt-1">
-              <span className="text-sm font-semibold text-slate-700">Diferencia</span>
-              <span className={`text-sm font-bold tabular-nums ${diferenciaClass(row.diferencia)}`}>
-                {formatCurrency(row.diferencia)}
-              </span>
-            </div>
-          </div>
-        </article>
-      ))}
-    </div>
-  );
-}
-
-function CardGroup({ title, color, children }: { title: string; color: string; children: React.ReactNode }) {
-  return (
-    <div className="mb-3">
-      <div
-        className="mb-1 rounded px-2 py-1 text-xs font-bold uppercase tracking-wide text-slate-700"
-        style={{ backgroundColor: color }}
-      >
-        {title}
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.date} className="border-b border-slate-100 last:border-b-0">
+                <th
+                  scope="row"
+                  className="sticky left-0 z-10 bg-white px-3 py-3 text-left font-semibold text-slate-700 shadow-[1px_0_0_0_rgba(226,232,240,1)]"
+                >
+                  {formatDate(row.date)}
+                </th>
+                {DETAIL_HEADERS.map((header) => {
+                  const value = row[header.key] as number | null;
+                  const pending = value === null && header.key === "realContado";
+                  const tone = pending
+                    ? "font-medium italic text-slate-400"
+                    : header.strong
+                      ? "font-bold text-slate-800 tabular-nums"
+                      : "font-medium text-slate-600 tabular-nums";
+                  return (
+                    <td
+                      key={header.key}
+                      className={`whitespace-nowrap border-l border-white/70 px-3 py-3 ${tone}`}
+                      style={header.bg ? { backgroundColor: header.bg } : undefined}
+                    >
+                      {pending ? "Pendiente" : formatCurrency(value)}
+                    </td>
+                  );
+                })}
+                <td
+                  className={`whitespace-nowrap border-l border-slate-200 bg-slate-50 px-3 py-3 font-bold ${
+                    row.diferencia === null ? "italic text-slate-400" : `tabular-nums ${diferenciaClass(row.diferencia)}`
+                  }`}
+                >
+                  {row.diferencia === null ? "Pendiente" : formatCurrency(row.diferencia)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
-      <div className="space-y-1 px-1">{children}</div>
-    </div>
-  );
-}
-
-function CardLine({ label, value, strong }: { label: string; value: number | null; strong?: boolean }) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className={`text-sm ${strong ? "font-semibold text-slate-700" : "text-slate-500"}`}>{label}</span>
-      <span className={`text-sm tabular-nums ${strong ? "font-semibold text-slate-800" : "text-slate-600"}`}>
-        {formatCurrency(value)}
-      </span>
-    </div>
+    </section>
   );
 }
 
