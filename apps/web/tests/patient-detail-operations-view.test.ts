@@ -54,6 +54,23 @@ describe("buildOperationFinancials", () => {
     assert.equal(f.canDeposit, true);
   });
 
+  it("treats an empty total as no total and allows deposits", () => {
+    const f = buildOperationFinancials(operationFixture({ totalAmount: "", depositPaid: "50000" }));
+    assert.equal(f.total, 0);
+    assert.equal(f.hasTotal, false);
+    assert.equal(f.pendingBalance, 0);
+    assert.equal(f.canDeposit, true);
+  });
+
+  it("treats a zero total as an existing ceiling and disables deposits", () => {
+    const f = buildOperationFinancials(operationFixture({ totalAmount: "0", depositPaid: "0" }));
+    assert.equal(f.total, 0);
+    assert.equal(f.hasTotal, true);
+    assert.equal(f.pendingBalance, 0);
+    assert.equal(f.isFullyPaid, true);
+    assert.equal(f.canDeposit, false);
+  });
+
   it("disables edit and deposit for CANCELADO operations", () => {
     const f = buildOperationFinancials(operationFixture({ status: "CANCELADO" }));
     assert.equal(f.isCancelled, true);

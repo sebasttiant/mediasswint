@@ -924,9 +924,15 @@ export default function PatientDetailClient({
                             onClick={() => startDeposit(op)}
                             disabled={!financials.canDeposit}
                             title={depositDisabledReason}
+                            aria-describedby={depositDisabledReason ? `deposit-disabled-${op.id}` : undefined}
                           >
                             + Seña
                           </button>
+                          {depositDisabledReason ? (
+                            <span id={`deposit-disabled-${op.id}`} className={styles.muted}>
+                              {depositDisabledReason}
+                            </span>
+                          ) : null}
                         </div>
                       </div>
                     </>

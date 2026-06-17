@@ -100,9 +100,9 @@ export type OperationFinancials = {
 export function buildOperationFinancials(
   operation: Pick<OperationSummary, "status" | "totalAmount" | "depositPaid">,
 ): OperationFinancials {
-  const total = operation.totalAmount ? Number(operation.totalAmount) : 0;
+  const hasTotal = operation.totalAmount != null && operation.totalAmount !== "";
+  const total = hasTotal ? Number(operation.totalAmount) : 0;
   const deposit = Number(operation.depositPaid);
-  const hasTotal = total > 0;
   const pendingBalance = Math.max(total - deposit, 0);
   const isCancelled = operation.status === CANCELLED_OPERATION_STATUS;
   const isFullyPaid = hasTotal && pendingBalance === 0;
