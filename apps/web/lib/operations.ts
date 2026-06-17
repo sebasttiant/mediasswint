@@ -371,7 +371,7 @@ export async function updateOperation(
 }
 
 /**
- * Agrega un depósito/seña a una operación.
+ * Agrega un depósito/abono a una operación.
  * CRÍTICO: Valida pertenencia igual que updateOperation.
  * Usa transacción interactiva con Serializable para evitar TOCTOU.
  */

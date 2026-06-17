@@ -335,7 +335,7 @@ export default function PatientDetailClient({
         router.refresh();
       } else {
         const json = (await response.json()) as { error?: string };
-        alert(json.error ?? "Error al registrar seña");
+        alert(json.error ?? "Error al registrar abono");
       }
     } finally {
       setDepositing(false);
@@ -501,7 +501,7 @@ export default function PatientDetailClient({
               <strong className={styles.opsSummaryNumber}>{formatCurrency(summary.totalAmount)}</strong>
             </div>
             <div className={styles.operationsSummaryItem}>
-              <span>Total señado</span>
+              <span>Total abonado</span>
               <strong className={styles.opsSummaryPositive}>{formatCurrency(summary.totalDeposit)}</strong>
             </div>
             <div className={styles.operationsSummaryItem}>
@@ -681,7 +681,7 @@ export default function PatientDetailClient({
               const isEditing = editingOperationId === op.id;
               const isDepositing = depositOperationId === op.id;
               const depositDisabledReason = financials.isCancelled
-                ? "No se pueden agregar señas a operaciones canceladas"
+                ? "No se pueden agregar abonos a operaciones canceladas"
                 : financials.isFullyPaid
                   ? "La operación ya está totalmente pagada"
                   : undefined;
@@ -724,7 +724,7 @@ export default function PatientDetailClient({
                           </select>
                         </div>
                         <div>
-                          <label className={styles.operationFormLabel}>Seña actual</label>
+                          <label className={styles.operationFormLabel}>Abono actual</label>
                           <p style={{ margin: "0.35rem 0 0", fontSize: "0.9rem", fontWeight: 600, color: "#10b981" }}>
                             {formatCurrency(op.depositPaid)}
                           </p>
@@ -873,7 +873,7 @@ export default function PatientDetailClient({
                               <p>{formatCurrency(op.totalAmount)}</p>
                             </div>
                             <div className={styles.operationFinanceItem}>
-                              <p>Seña</p>
+                              <p>Abono</p>
                               <p className={styles.operationFinancePositive}>{formatCurrency(op.depositPaid)}</p>
                             </div>
                             <div className={styles.operationFinanceItem}>
@@ -926,7 +926,7 @@ export default function PatientDetailClient({
                             title={depositDisabledReason}
                             aria-describedby={depositDisabledReason ? `deposit-disabled-${op.id}` : undefined}
                           >
-                            + Seña
+                            + Abono
                           </button>
                           {depositDisabledReason ? (
                             <span id={`deposit-disabled-${op.id}`} className={styles.muted}>
@@ -942,7 +942,7 @@ export default function PatientDetailClient({
                   {isDepositing && !isEditing && (
                     <form onSubmit={submitDeposit} className={styles.depositForm}>
                       <label>
-                        Monto de la seña:
+                        Monto del abono:
                         {financials.hasTotal ? (
                           <span className={styles.muted}> (saldo pendiente: {formatCurrency(financials.pendingBalance)})</span>
                         ) : null}
@@ -964,7 +964,7 @@ export default function PatientDetailClient({
                         disabled={depositing || !depositAmount}
                         className={`${styles.operationActionBtn} ${styles.operationActionBtnPrimary}`}
                       >
-                        {depositing ? "Registrando..." : "Confirmar seña"}
+                        {depositing ? "Registrando..." : "Confirmar abono"}
                       </button>
                       <button
                         type="button"

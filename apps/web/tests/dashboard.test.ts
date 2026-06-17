@@ -53,7 +53,7 @@ function createMockRepository(overrides?: Partial<DashboardData>) {
           id: "payment-op_1",
           kind: "PAYMENT",
           title: "Cobrar saldo: Ada Lovelace",
-          description: "Pendiente 150000 · Media compresión. Abrir ficha del paciente para registrar seña o pago.",
+          description: "Pendiente 150000 · Media compresión. Abrir ficha del paciente para registrar abono o pago.",
           href: "/patients/pat_1",
           actionLabel: "Abrir paciente",
           createdAt: new Date("2026-05-20T09:00:00Z"),

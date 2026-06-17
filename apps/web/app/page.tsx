@@ -144,7 +144,7 @@ const OPERATION_COLUMNS: DataTableColumn<DashboardOperation>[] = [
   },
   {
     key: "deposit",
-    header: "Seña",
+    header: "Abono",
     align: "right",
     render: (row) => <span className="font-mono tabular-nums text-slate-500">{formatCurrency(row.depositPaid)}</span>,
   },
@@ -181,7 +181,7 @@ export default async function DashboardPage() {
           <KpiCard icon="briefcase" iconClassName="bg-amber-50 text-amber-600" label="Operaciones activas" value={data.activeOperationsCount} />
           <KpiCard icon="alertCircle" iconClassName="bg-orange-50 text-orange-500" label="Mediciones abiertas" value={data.openMeasurementDraftsCount} />
           <KpiCard icon="activity" iconClassName="bg-emerald-50 text-emerald-600" label="Finalizadas hoy" value={data.completedMeasurementsTodayCount} />
-          <KpiCard icon="dollarSign" iconClassName="bg-mint-50 text-mint-600" label="Total señado" value={formatCurrency(data.totalDeposits)} />
+          <KpiCard icon="dollarSign" iconClassName="bg-mint-50 text-mint-600" label="Total abonado" value={formatCurrency(data.totalDeposits)} />
           <KpiCard icon="trendingUp" iconClassName="bg-violet-50 text-violet-600" label="Saldo pendiente" value={formatCurrency(data.totalPendingBalance)} />
         </section>
 

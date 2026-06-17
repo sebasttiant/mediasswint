@@ -114,7 +114,7 @@ export function buildPendingWork(
     id: `payment-${operation.id}`,
     kind: PENDING_WORK_KIND.PAYMENT,
     title: `Cobrar saldo: ${operation.patientName ?? "Paciente sin nombre"}`,
-    description: `Pendiente ${String(getPendingBalance(operation))}${operation.garmentType ? ` · ${operation.garmentType}` : ""}. Abrir ficha del paciente para registrar seña o pago.`,
+    description: `Pendiente ${String(getPendingBalance(operation))}${operation.garmentType ? ` · ${operation.garmentType}` : ""}. Abrir ficha del paciente para registrar abono o pago.`,
     href: operation.patientId ? `/patients/${operation.patientId}` : "/patients",
     actionLabel: "Abrir paciente",
     createdAt: operation.createdAt,

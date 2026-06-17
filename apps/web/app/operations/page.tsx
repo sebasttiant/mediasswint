@@ -25,7 +25,7 @@ function QueueTable({ emptyMessage, items }: { emptyMessage: string; items: Oper
       <table className="w-full border-collapse text-sm">
         <thead>
           <tr className="bg-slate-50">
-            {["Paciente", "Prenda", "Estado", "Total", "Seña", "Saldo", "Actualizada", "Acción"].map((h) => (
+            {["Paciente", "Prenda", "Estado", "Total", "Abono", "Saldo", "Actualizada", "Acción"].map((h) => (
               <th
                 key={h}
                 className="border-b border-slate-200 px-4 py-2.5 text-left text-xs font-bold uppercase tracking-widest text-slate-400"
