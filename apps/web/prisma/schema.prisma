@@ -78,6 +78,7 @@ model Patient {
   notes          String?
   sessions       MeasurementSession[]
   operations     CommercialOperation[]
+  payments       PaymentMovement[]
   createdAt      DateTime              @default(now())
   updatedAt      DateTime              @updatedAt
 
@@ -187,6 +188,90 @@ enum CommercialOperationStatus {
   CANCELADO
 }
 
+// Etapa F: Caja y Finanzas — payment ledger + cashbox.
+//
+// PaymentMovement is the source of truth for "Caja y Finanzas". Each new deposit
+// creates ONE movement inside the same Serializable transaction that increments
+// CommercialOperation.depositPaid (kept as a cached total so existing balances do
+// not break). Legacy deposits made before this ledger existed are NOT backfilled:
+// they have no trustworthy date/method, so they stay out of the daily cashbox.
+//
+// Two orthogonal dimensions are captured per movement:
+//  - method (how the money came in)        → drives the cash vs. electronic split
+//  - incomeType (Excel "1 Vez/R/MEFE/...")  → drives Total Abonos / Total Reclamados
+
+enum PaymentMethod {
+  EFECTIVO
+  TRANSFERENCIA
+  BOLD
+  TARJETA_DEBITO
+  TARJETA_CREDITO
+  OTRO
+}
+
+enum PaymentBank {
+  BANCOLOMBIA
+  NEQUI
+  DAVIPLATA
+  OTRO_BANCO
+  OTRO
+}
+
+enum PaymentIncomeType {
+  PRIMERA_VEZ
+  R
+  MEFE
+  RECLAMADO_PRIMERA_VEZ
+  RECLAMADO_R
+}
+
+model PaymentMovement {
+  id          String              @id @default(cuid())
+  operationId String
+  patientId   String
+  amount      Decimal             @db.Decimal(10, 2)
+  method      PaymentMethod
+  bank        PaymentBank?
+  incomeType  PaymentIncomeType   @default(PRIMERA_VEZ)
+  // SLICE 1: paidAt is always now() (the registration instant). The cashbox groups
+  // by this day in the clinic timezone.
+  // TODO (slice 2): allow an editable payment date so a deposit registered late can
+  // be attributed to the day the money actually came in. When added, keep createdAt
+  // as the immutable audit timestamp and let paidAt be user-editable.
+  paidAt      DateTime            @default(now())
+  note        String?
+  operation   CommercialOperation @relation(fields: [operationId], references: [id], onDelete: Cascade)
+  patient     Patient             @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  createdAt   DateTime            @default(now())
+
+  @@index([paidAt])
+  @@index([operationId])
+  @@index([patientId])
+}
+
+// Manual cash outflow. Minimal by design for the first cashbox slice.
+model Expense {
+  id        String   @id @default(cuid())
+  date      DateTime
+  amount    Decimal  @db.Decimal(10, 2)
+  concept   String
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
+}
+
+// "Real contado" — the physically counted cash for a given day. One row per day.
+model DailyCashCount {
+  id            String   @id @default(cuid())
+  date         DateTime @unique @db.Date
+  countedAmount Decimal  @db.Decimal(10, 2)
+  note          String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
 model CommercialOperation {
   id            String                    @id @default(cuid())
   patientId     String
@@ -208,6 +293,7 @@ model CommercialOperation {
   discount      Decimal?                  @db.Decimal(10, 2)
   exitDate      DateTime?
   patient       Patient                   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  payments      PaymentMovement[]
   createdAt     DateTime                  @default(now())
   updatedAt     DateTime                  @updatedAt
 
