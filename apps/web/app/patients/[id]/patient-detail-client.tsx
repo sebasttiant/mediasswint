@@ -6,6 +6,14 @@ import { useRouter } from "next/navigation";
 
 import { PATIENT_TIMELINE_EVENT_TYPE } from "@/lib/patient-timeline";
 import { formatClinicDate, formatClinicDateTime } from "@/lib/datetime";
+import {
+  PAYMENT_BANKS,
+  PAYMENT_INCOME_TYPES,
+  PAYMENT_METHODS,
+  type PaymentBank,
+  type PaymentIncomeType,
+  type PaymentMethod,
+} from "@/lib/cashbox";
 
 import styles from "../page.module.css";
 import {
@@ -159,6 +167,9 @@ export default function PatientDetailClient({
   // Deposit state
   const [depositOperationId, setDepositOperationId] = useState<string | null>(null);
   const [depositAmount, setDepositAmount] = useState("");
+  const [depositMethod, setDepositMethod] = useState<PaymentMethod>("EFECTIVO");
+  const [depositBank, setDepositBank] = useState<PaymentBank | "">("");
+  const [depositIncomeType, setDepositIncomeType] = useState<PaymentIncomeType>("PRIMERA_VEZ");
   const [depositing, setDepositing] = useState(false);
 
   // Compute summary (CANCELADO excluded; pending balance floored at 0).
@@ -325,13 +336,21 @@ export default function PatientDetailClient({
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ amount: String(parseFloat(depositAmount)) }),
+          body: JSON.stringify({
+            amount: String(parseFloat(depositAmount)),
+            method: depositMethod,
+            bank: depositMethod === "TRANSFERENCIA" && depositBank ? depositBank : null,
+            incomeType: depositIncomeType,
+          }),
         },
       );
 
       if (response.ok) {
         setDepositOperationId(null);
         setDepositAmount("");
+        setDepositMethod("EFECTIVO");
+        setDepositBank("");
+        setDepositIncomeType("PRIMERA_VEZ");
         router.refresh();
       } else {
         const json = (await response.json()) as { error?: string };
@@ -959,6 +978,51 @@ export default function PatientDetailClient({
                         className={styles.depositInput}
                         autoFocus
                       />
+                      <label className={styles.depositField}>
+                        Método de pago:
+                        <select
+                          className={styles.depositSelect}
+                          value={depositMethod}
+                          onChange={(e) => setDepositMethod(e.target.value as PaymentMethod)}
+                        >
+                          {PAYMENT_METHODS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      {depositMethod === "TRANSFERENCIA" && (
+                        <label className={styles.depositField}>
+                          Banco / origen:
+                          <select
+                            className={styles.depositSelect}
+                            value={depositBank}
+                            onChange={(e) => setDepositBank(e.target.value as PaymentBank | "")}
+                          >
+                            <option value="">Sin especificar</option>
+                            {PAYMENT_BANKS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+                      <label className={styles.depositField}>
+                        Tipo de ingreso:
+                        <select
+                          className={styles.depositSelect}
+                          value={depositIncomeType}
+                          onChange={(e) => setDepositIncomeType(e.target.value as PaymentIncomeType)}
+                        >
+                          {PAYMENT_INCOME_TYPES.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
                       <button
                         type="submit"
                         disabled={depositing || !depositAmount}
