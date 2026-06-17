@@ -833,8 +833,9 @@
 
 .depositForm {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
-  align-items: center;
+  align-items: flex-end;
   margin: 0 1rem 1rem;
   padding: 0.75rem;
   background: #fffbeb;
@@ -847,6 +848,29 @@
   font-weight: 600;
   color: #92400e;
   white-space: nowrap;
+}
+
+.depositField {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 9rem;
+  flex: 1 1 9rem;
+}
+
+.depositSelect {
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.85rem;
+  background: #fff;
+}
+
+.depositSelect:focus {
+  outline: none;
+  border-color: #c98a55;
+  box-shadow: 0 0 0 2px rgba(201, 138, 85, 0.15);
 }
 
 .depositInput {

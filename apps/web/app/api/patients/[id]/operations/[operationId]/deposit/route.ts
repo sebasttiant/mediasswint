@@ -5,16 +5,30 @@ import { type AuthUser } from "@/lib/auth";
 import { withAuth } from "@/lib/with-auth";
 import {
   addDeposit,
+  type AddDepositPaymentInput,
   type OperationWithPatient,
   type ServiceResult,
 } from "@/lib/operations";
+import {
+  PAYMENT_BANK_VALUES,
+  PAYMENT_INCOME_TYPE_VALUES,
+  PAYMENT_METHOD_VALUES,
+  type PaymentBank,
+  type PaymentIncomeType,
+  type PaymentMethod,
+} from "@/lib/cashbox";
 
 type Params = {
   params: Promise<{ id: string; operationId: string }>;
 };
 
 export type DepositDeps = {
-  addDeposit: (patientId: string, operationId: string, amount: Prisma.Decimal) => Promise<ServiceResult<OperationWithPatient>>;
+  addDeposit: (
+    patientId: string,
+    operationId: string,
+    amount: Prisma.Decimal,
+    payment?: AddDepositPaymentInput,
+  ) => Promise<ServiceResult<OperationWithPatient>>;
 };
 
 const defaultDeps: DepositDeps = {
@@ -49,7 +63,13 @@ export async function handleAddDepositRequest(
     );
   }
 
-  const input = body as { amount?: string };
+  const input = body as {
+    amount?: string;
+    method?: string;
+    bank?: string | null;
+    incomeType?: string;
+    note?: string;
+  };
 
   if (input.amount === undefined) {
     return NextResponse.json(
@@ -73,7 +93,43 @@ export async function handleAddDepositRequest(
     );
   }
 
-  const result = await deps.addDeposit(patientId, operationId, amount);
+  // Payment dimensions are optional for backward compatibility; when present they
+  // must be valid enum members. Method/income default to cash / first payment.
+  const method = (input.method ?? "EFECTIVO") as PaymentMethod;
+  if (!PAYMENT_METHOD_VALUES.includes(method)) {
+    return NextResponse.json(
+      { errors: [{ field: "method", message: "invalid payment method" }] },
+      { status: 400 },
+    );
+  }
+
+  const incomeType = (input.incomeType ?? "PRIMERA_VEZ") as PaymentIncomeType;
+  if (!PAYMENT_INCOME_TYPE_VALUES.includes(incomeType)) {
+    return NextResponse.json(
+      { errors: [{ field: "incomeType", message: "invalid income type" }] },
+      { status: 400 },
+    );
+  }
+
+  let bank: PaymentBank | null = null;
+  if (input.bank != null && input.bank !== "") {
+    if (!PAYMENT_BANK_VALUES.includes(input.bank as PaymentBank)) {
+      return NextResponse.json(
+        { errors: [{ field: "bank", message: "invalid bank" }] },
+        { status: 400 },
+      );
+    }
+    bank = input.bank as PaymentBank;
+  }
+
+  const note = typeof input.note === "string" && input.note.trim() ? input.note.trim() : undefined;
+
+  const result = await deps.addDeposit(patientId, operationId, amount, {
+    method,
+    bank,
+    incomeType,
+    note,
+  });
 
   if (!result.ok) {
     if (result.error === "NOT_FOUND") {

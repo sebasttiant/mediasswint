@@ -4,10 +4,14 @@ import { describe, it } from "node:test";
 import { Prisma } from "@prisma/client";
 
 import {
+  addDeposit,
   buildOperationalPendingQueue,
   getOperationPendingBalance,
   isValidOperationMetadataUpdate,
   isValidOperationPaymentUpdate,
+  isValidPaymentMovementInput,
+  normalizePaymentBank,
+  type AddDepositPaymentInput,
   type OperationalQueueSourceOperation,
   type ServiceResult,
   type ServiceErrorCode,
@@ -386,5 +390,162 @@ describe("buildOperationalPendingQueue", () => {
     assert.equal(queue.productionCount, 2);
     assert.equal(queue.paymentItems.length, 1);
     assert.equal(queue.productionItems.length, 1);
+  });
+});
+
+describe("isValidPaymentMovementInput", () => {
+  it("accepts a valid method + income type", () => {
+    assert.equal(
+      isValidPaymentMovementInput({ method: "EFECTIVO", incomeType: "PRIMERA_VEZ" }),
+      true,
+    );
+  });
+
+  it("accepts a transfer with a known bank", () => {
+    assert.equal(
+      isValidPaymentMovementInput({
+        method: "TRANSFERENCIA",
+        bank: "BANCOLOMBIA",
+        incomeType: "R",
+      }),
+      true,
+    );
+  });
+
+  it("rejects an unknown method", () => {
+    assert.equal(
+      isValidPaymentMovementInput({
+        method: "PAYPAL" as unknown as AddDepositPaymentInput["method"],
+        incomeType: "PRIMERA_VEZ",
+      }),
+      false,
+    );
+  });
+
+  it("rejects an unknown income type", () => {
+    assert.equal(
+      isValidPaymentMovementInput({
+        method: "EFECTIVO",
+        incomeType: "DESCONOCIDO" as unknown as AddDepositPaymentInput["incomeType"],
+      }),
+      false,
+    );
+  });
+
+  it("rejects an unknown bank", () => {
+    assert.equal(
+      isValidPaymentMovementInput({
+        method: "TRANSFERENCIA",
+        bank: "BANCO_PICHINCHA" as unknown as AddDepositPaymentInput["bank"],
+        incomeType: "PRIMERA_VEZ",
+      }),
+      false,
+    );
+  });
+});
+
+describe("normalizePaymentBank", () => {
+  it("keeps the bank for transfers", () => {
+    assert.equal(normalizePaymentBank("TRANSFERENCIA", "NEQUI"), "NEQUI");
+  });
+
+  it("clears the bank for non-transfer methods", () => {
+    assert.equal(normalizePaymentBank("EFECTIVO", "NEQUI"), null);
+    assert.equal(normalizePaymentBank("TARJETA_DEBITO", "BANCOLOMBIA"), null);
+  });
+
+  it("returns null for a transfer without a bank", () => {
+    assert.equal(normalizePaymentBank("TRANSFERENCIA", null), null);
+    assert.equal(normalizePaymentBank("TRANSFERENCIA"), null);
+  });
+});
+
+describe("addDeposit ledger movement", () => {
+  it("creates one payment movement inside the same transaction as the deposit", async () => {
+    const originalPrisma = getGlobalPrisma();
+    const movementCreates: Array<Record<string, unknown>> = [];
+
+    const txMock = {
+      commercialOperation: {
+        findFirst: async () => createPersistedOperation({ depositPaid: new Prisma.Decimal(0) }),
+        update: async () => createPersistedOperation({ depositPaid: new Prisma.Decimal(100) }),
+      },
+      paymentMovement: {
+        create: async ({ data }: { data: Record<string, unknown> }) => {
+          movementCreates.push(data);
+          return data;
+        },
+      },
+    };
+
+    setGlobalPrisma({
+      $transaction: async (fn: (tx: typeof txMock) => unknown) => fn(txMock),
+      auditLog: { create: async () => ({}) },
+    });
+
+    try {
+      const result = await addDeposit("pat_1", "op_1", new Prisma.Decimal(100), {
+        method: "TRANSFERENCIA",
+        bank: "BANCOLOMBIA",
+        incomeType: "R",
+      });
+
+      assert.equal(result.ok, true);
+      assert.equal(movementCreates.length, 1);
+      assert.equal(movementCreates[0].method, "TRANSFERENCIA");
+      assert.equal(movementCreates[0].bank, "BANCOLOMBIA");
+      assert.equal(movementCreates[0].incomeType, "R");
+      assert.equal(String(movementCreates[0].amount), "100");
+    } finally {
+      setGlobalPrisma(originalPrisma);
+    }
+  });
+
+  it("rejects a zero amount without opening a transaction or creating a movement", async () => {
+    const originalPrisma = getGlobalPrisma();
+    let transactionCalls = 0;
+    setGlobalPrisma({
+      $transaction: async () => {
+        transactionCalls += 1;
+        return { ok: false };
+      },
+    });
+
+    try {
+      const result = await addDeposit("pat_1", "op_1", new Prisma.Decimal(0), {
+        method: "EFECTIVO",
+        incomeType: "PRIMERA_VEZ",
+      });
+
+      assert.equal(result.ok, false);
+      if (!result.ok) assert.equal(result.error, "INVALID_OPERATION");
+      assert.equal(transactionCalls, 0);
+    } finally {
+      setGlobalPrisma(originalPrisma);
+    }
+  });
+
+  it("rejects an invalid payment method without writing anything", async () => {
+    const originalPrisma = getGlobalPrisma();
+    let transactionCalls = 0;
+    setGlobalPrisma({
+      $transaction: async () => {
+        transactionCalls += 1;
+        return { ok: false };
+      },
+    });
+
+    try {
+      const result = await addDeposit("pat_1", "op_1", new Prisma.Decimal(100), {
+        method: "BITCOIN" as unknown as AddDepositPaymentInput["method"],
+        incomeType: "PRIMERA_VEZ",
+      });
+
+      assert.equal(result.ok, false);
+      if (!result.ok) assert.equal(result.error, "INVALID_OPERATION");
+      assert.equal(transactionCalls, 0);
+    } finally {
+      setGlobalPrisma(originalPrisma);
+    }
   });
 });

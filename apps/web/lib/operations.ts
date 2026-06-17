@@ -1,6 +1,18 @@
-import { Prisma, type CommercialOperation, type CommercialOperationStatus } from "@prisma/client";
+import {
+  Prisma,
+  type CommercialOperation,
+  type CommercialOperationStatus,
+  type PaymentBank,
+  type PaymentIncomeType,
+  type PaymentMethod,
+} from "@prisma/client";
 
 import { recordAudit, toAuditPayload } from "@/lib/audit-log";
+import {
+  PAYMENT_BANK_VALUES,
+  PAYMENT_INCOME_TYPE_VALUES,
+  PAYMENT_METHOD_VALUES,
+} from "@/lib/cashbox";
 import { getPrisma } from "@/lib/prisma";
 
 export type ServiceErrorCode = "NOT_FOUND" | "INVALID_OPERATION" | "FORBIDDEN" | "UNKNOWN";
@@ -51,6 +63,51 @@ export type UpdateOperationInput = {
 export type OperationWithPatient = CommercialOperation & {
   patient: { id: string; fullName: string } | null;
 };
+
+// Etapa F: payment dimensions captured when registering a deposit. `bank` is only
+// meaningful for TRANSFERENCIA and is normalised to null otherwise.
+export type AddDepositPaymentInput = {
+  method: PaymentMethod;
+  bank?: PaymentBank | null;
+  incomeType: PaymentIncomeType;
+  note?: string;
+};
+
+// Backward-compatible default: callers (or tests) that still send only an amount
+// register the deposit as cash / first payment, which keeps the cashbox math
+// consistent (cash with a valid income type). The UI always sends explicit values.
+export const DEFAULT_DEPOSIT_PAYMENT: AddDepositPaymentInput = {
+  method: "EFECTIVO",
+  incomeType: "PRIMERA_VEZ",
+};
+
+/**
+ * A bank/origin is only stored for transfers. For every other method the bank is
+ * cleared so we never persist a misleading origin (e.g. a card with a bank).
+ */
+export function normalizePaymentBank(
+  method: PaymentMethod,
+  bank?: PaymentBank | null,
+): PaymentBank | null {
+  return method === "TRANSFERENCIA" ? bank ?? null : null;
+}
+
+/**
+ * Pure validation for the captured payment dimensions. Guards against unknown
+ * enum values reaching the database when input crosses the API boundary.
+ */
+export function isValidPaymentMovementInput(payment: AddDepositPaymentInput): boolean {
+  if (!PAYMENT_METHOD_VALUES.includes(payment.method)) {
+    return false;
+  }
+  if (!PAYMENT_INCOME_TYPE_VALUES.includes(payment.incomeType)) {
+    return false;
+  }
+  if (payment.bank != null && !PAYMENT_BANK_VALUES.includes(payment.bank)) {
+    return false;
+  }
+  return true;
+}
 
 export type OperationQueueKind = (typeof OPERATION_QUEUE_KIND)[keyof typeof OPERATION_QUEUE_KIND];
 
@@ -378,12 +435,19 @@ export async function updateOperation(
 export async function addDeposit(
   patientId: string,
   operationId: string,
-  amount: Prisma.Decimal
+  amount: Prisma.Decimal,
+  payment: AddDepositPaymentInput = DEFAULT_DEPOSIT_PAYMENT,
 ): Promise<ServiceResult<OperationWithPatient>> {
   try {
     const prisma = getPrisma();
 
-    if (amount.lt(0)) {
+    // A deposit must move money: reject zero (and negative) at the service layer,
+    // not only at the route, so no empty ledger movement can ever be created.
+    if (amount.lte(0)) {
+      return { ok: false, error: "INVALID_OPERATION" };
+    }
+
+    if (!isValidPaymentMovementInput(payment)) {
       return { ok: false, error: "INVALID_OPERATION" };
     }
 
@@ -420,6 +484,23 @@ export async function addDeposit(
             patient: {
               select: { id: true, fullName: true },
             },
+          },
+        });
+
+        // Source of truth for Caja y Finanzas: one ledger movement per deposit,
+        // written in the same Serializable transaction as the cached total so the
+        // two can never diverge for new deposits.
+        // TODO (slice 2): support an editable payment date. Today paidAt defaults to
+        // now(); a deposit registered a day late lands in the wrong cashbox day.
+        await tx.paymentMovement.create({
+          data: {
+            operationId,
+            patientId,
+            amount,
+            method: payment.method,
+            bank: normalizePaymentBank(payment.method, payment.bank),
+            incomeType: payment.incomeType,
+            note: payment.note,
           },
         });
 
