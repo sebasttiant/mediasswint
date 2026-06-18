@@ -13,3 +13,26 @@ export function formatDate(dateKey: string): string {
   const [year, month, day] = dateKey.split("-");
   return `${day}/${month}/${year}`;
 }
+
+// The business runs in Colombia, so every exported "generated at" stamp must read in
+// Bogota time regardless of where the server runs. Pinning the time zone here (instead
+// of relying on toLocaleString's host default) keeps PDF, Excel and tests deterministic.
+const REPORT_TIME_ZONE = "America/Bogota";
+
+const TIMESTAMP_FORMATTER = new Intl.DateTimeFormat("es-CO", {
+  timeZone: REPORT_TIME_ZONE,
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+/**
+ * Render an ISO timestamp as DD/MM/YYYY, HH:mm in Colombia (Bogota) time. Used for the
+ * "Generado" line in every export so the stamp never drifts with the server's timezone.
+ */
+export function formatTimestamp(iso: string): string {
+  return `${TIMESTAMP_FORMATTER.format(new Date(iso))} (hora Colombia)`;
+}
