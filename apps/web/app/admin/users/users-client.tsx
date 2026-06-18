@@ -53,7 +53,7 @@ export function UsersClient({ viewModel, total, query, currentUserId }: UsersCli
       header: "Rol",
       render: (row) => (
         <Badge variant={roleBadgeVariant(row.role)}>
-          {row.role === "ADMIN" ? "Administrador" : "Staff"}
+          {row.role === "ADMIN" ? "Administrador total" : "Staff operativo"}
         </Badge>
       ),
     },
@@ -141,12 +141,12 @@ export function UsersClient({ viewModel, total, query, currentUserId }: UsersCli
         <CardBody className="space-y-2">
           <h3 className="text-sm font-bold tracking-tight text-slate-900">Sobre los roles</h3>
           <p className="text-sm text-slate-600">
-            <strong className="font-semibold text-slate-800">Administrador:</strong> acceso total al
-            panel, gestión de usuarios y auditoría.
+            <strong className="font-semibold text-slate-800">Administrador total:</strong> puede gestionar usuarios,
+            revisar auditoría y administrar el panel administrativo.
           </p>
           <p className="text-sm text-slate-600">
-            <strong className="font-semibold text-slate-800">Staff:</strong> acceso operativo a
-            pacientes y operaciones, sin gestión de usuarios.
+            <strong className="font-semibold text-slate-800">Staff operativo:</strong> puede trabajar con pacientes,
+            mediciones, operaciones y caja. No puede gestionar usuarios.
           </p>
         </CardBody>
       </Card>
