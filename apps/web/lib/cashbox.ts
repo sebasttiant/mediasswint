@@ -205,6 +205,45 @@ export function filterMovementsByDateRange(
   return rows.filter((row) => isDateKeyInRange(row.dateKey, from, to));
 }
 
+/**
+ * Per-expense audit record. The daily reconciliation only ever shows the SUMMED
+ * `egresos` per day; this is the line-item breakdown behind that number (what was
+ * paid out and why), so an operator can explain a day's outflows. It is detail
+ * only — never re-aggregated into the cashbox formulas.
+ */
+export type ExpenseDetail = {
+  id: string;
+  dateKey: string; // YYYY-MM-DD (date-only, UTC midnight key)
+  amount: number;
+  concept: string;
+  note: string | null;
+};
+
+/**
+ * Per-day counted-cash audit record. Mirrors `realContado` in the reconciliation but
+ * carries the operator's note and the moment it was last saved, so a difference can be
+ * traced to who/when counted the drawer.
+ */
+export type CashCountDetail = {
+  dateKey: string; // YYYY-MM-DD (date-only, UTC midnight key)
+  countedAmount: number;
+  note: string | null;
+  updatedAt: string; // ISO instant of the last save
+};
+
+/**
+ * Keep only the detail rows whose date key falls inside the inclusive range. Generic
+ * over any row carrying a `dateKey`, used for the expense and cash-count audit lists so
+ * they trim to the exact requested window the same way the daily summary does.
+ */
+export function filterDetailByDateRange<T extends { dateKey: string }>(
+  rows: T[],
+  from: string,
+  to: string,
+): T[] {
+  return rows.filter((row) => isDateKeyInRange(row.dateKey, from, to));
+}
+
 type Accumulator = {
   primeraVez: number;
   r: number;

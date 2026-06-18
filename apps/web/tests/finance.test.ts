@@ -9,7 +9,7 @@ import {
   isValidExpenseInput,
   parseDateOnlyUTC,
 } from "@/lib/finance";
-import { toCashboxDateKey } from "@/lib/cashbox";
+import { filterDetailByDateRange, toCashboxDateKey, type ExpenseDetail } from "@/lib/cashbox";
 
 describe("parseDateOnlyUTC / dateOnlyKeyUTC", () => {
   it("round-trips a calendar date without timezone drift", () => {
@@ -100,5 +100,24 @@ describe("isValidCashCountInput", () => {
 
   it("rejects a bad date", () => {
     assert.equal(isValidCashCountInput({ date: "2026/06/17", countedAmount: "100" }), false);
+  });
+});
+
+describe("filterDetailByDateRange", () => {
+  const expenses: ExpenseDetail[] = [
+    { id: "a", dateKey: "2026-06-15", amount: 100, concept: "before", note: null },
+    { id: "b", dateKey: "2026-06-16", amount: 200, concept: "from edge", note: null },
+    { id: "c", dateKey: "2026-06-17", amount: 300, concept: "to edge", note: null },
+    { id: "d", dateKey: "2026-06-18", amount: 400, concept: "after", note: null },
+  ];
+
+  it("keeps only rows whose dateKey is inside the inclusive range", () => {
+    const kept = filterDetailByDateRange(expenses, "2026-06-16", "2026-06-17").map((e) => e.id);
+    assert.deepEqual(kept, ["b", "c"]);
+  });
+
+  it("includes both range edges", () => {
+    const kept = filterDetailByDateRange(expenses, "2026-06-15", "2026-06-18").map((e) => e.id);
+    assert.deepEqual(kept, ["a", "b", "c", "d"]);
   });
 });

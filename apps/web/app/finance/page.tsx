@@ -3,7 +3,13 @@ import { redirect } from "next/navigation";
 
 import { getSessionCookieName, requireActiveUserFromRequest } from "@/lib/auth";
 import { isPaymentMethod, resolveCashboxRange } from "@/lib/cashbox";
-import { fetchDailyCashbox, fetchPaymentMovements, toCashboxDateKeyForForm } from "@/lib/finance";
+import {
+  fetchCashCountDetail,
+  fetchDailyCashbox,
+  fetchExpenseDetail,
+  fetchPaymentMovements,
+  toCashboxDateKeyForForm,
+} from "@/lib/finance";
 
 import { AppShell } from "../_components/app-shell/app-shell";
 import { FinanceClient } from "./finance-client";
@@ -37,9 +43,13 @@ export default async function FinanceDailyCashboxPage({
   const method = isPaymentMethod(params.method) ? params.method : undefined;
   const search = params.search?.trim() || undefined;
 
-  const [rows, movements] = await Promise.all([
+  // Audit detail (expenses, cash counts) is narrowed by date range ONLY — never by
+  // method/search — so it explains the same numbers the reconciliation shows.
+  const [rows, movements, expenses, cashCounts] = await Promise.all([
     fetchDailyCashbox({ from: range.from, to: range.to }),
     fetchPaymentMovements({ from: range.from, to: range.to, method, search }),
+    fetchExpenseDetail({ from: range.from, to: range.to }),
+    fetchCashCountDetail({ from: range.from, to: range.to }),
   ]);
 
   return (
@@ -56,6 +66,8 @@ export default async function FinanceDailyCashboxPage({
         today={today}
         range={range}
         movements={movements}
+        expenses={expenses}
+        cashCounts={cashCounts}
         movementFilters={{ method: method ?? "", search: search ?? "" }}
       />
     </AppShell>

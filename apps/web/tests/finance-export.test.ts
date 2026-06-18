@@ -3,7 +3,13 @@ import { describe, it } from "node:test";
 import ExcelJS from "exceljs";
 
 import { handleCashboxExportRequest, type ExportDeps } from "@/app/api/finance/export/route";
-import { buildDailyCashbox, type DailyCashboxRow, type PaymentMovementDetail } from "@/lib/cashbox";
+import {
+  buildDailyCashbox,
+  type CashCountDetail,
+  type DailyCashboxRow,
+  type ExpenseDetail,
+  type PaymentMovementDetail,
+} from "@/lib/cashbox";
 
 const XLSX_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -28,11 +34,28 @@ const sampleMovements: PaymentMovementDetail[] = [
   },
 ];
 
-function makeDeps(): {
-  deps: ExportDeps;
-  calls: { daily?: { from?: string; to?: string }; movement?: Record<string, unknown> };
-} {
-  const calls: { daily?: { from?: string; to?: string }; movement?: Record<string, unknown> } = {};
+const sampleExpenses: ExpenseDetail[] = [
+  { id: "e1", dateKey: "2026-06-17", amount: 24000, concept: "Pago proveedor", note: "factura 123" },
+];
+
+const sampleCashCounts: CashCountDetail[] = [
+  {
+    dateKey: "2026-06-17",
+    countedAmount: 920000,
+    note: "Conteo de cierre",
+    updatedAt: "2026-06-17T22:10:00Z",
+  },
+];
+
+type ExportCalls = {
+  daily?: { from?: string; to?: string };
+  movement?: Record<string, unknown>;
+  expense?: { from?: string; to?: string };
+  count?: { from?: string; to?: string };
+};
+
+function makeDeps(): { deps: ExportDeps; calls: ExportCalls } {
+  const calls: ExportCalls = {};
   const deps: ExportDeps = {
     fetchDailyCashbox: async (options) => {
       calls.daily = options;
@@ -41,6 +64,14 @@ function makeDeps(): {
     fetchPaymentMovements: async (filters) => {
       calls.movement = filters as unknown as Record<string, unknown>;
       return sampleMovements;
+    },
+    fetchExpenseDetail: async (range) => {
+      calls.expense = range;
+      return sampleExpenses;
+    },
+    fetchCashCountDetail: async (range) => {
+      calls.count = range;
+      return sampleCashCounts;
     },
     now: () => new Date("2026-06-17T15:00:00Z"),
   };
@@ -73,8 +104,10 @@ describe("handleCashboxExportRequest", () => {
     await wb.xlsx.load(Buffer.from(bytes) as unknown as Parameters<typeof wb.xlsx.load>[0]);
     const summary = wb.getWorksheet("Resumen");
     const movements = wb.getWorksheet("Movimientos");
+    const audit = wb.getWorksheet("Auditoría");
     assert.ok(summary);
     assert.ok(movements);
+    assert.ok(audit, "expected an Auditoría sheet with the expense / cash-count breakdown");
     assert.equal(summary.views[0]?.state, "frozen");
     assert.equal(movements.views[0]?.state, "frozen");
     assert.equal(summary.getCell("A1").value, "Caja y Finanzas - Reporte");
@@ -97,6 +130,15 @@ describe("handleCashboxExportRequest", () => {
     assert.ok(groupRowNumber > 0, "could not locate the grouped header row");
     assert.equal(summary.getRow(groupRowNumber + 1).getCell(2).value, "1 Vez");
     assert.equal(summary.getRow(groupRowNumber + 1).getCell(5).value, "Total Abonos");
+
+    // The audit sheet must carry the line-item detail behind the daily totals: the
+    // expense concept/amount and the counted-cash record.
+    const auditCells = new Set<unknown>();
+    audit.eachRow((row) => row.eachCell((cell) => auditCells.add(cell.value)));
+    assert.ok(auditCells.has("Pago proveedor"), "expense concept missing from audit sheet");
+    assert.ok(auditCells.has(24000), "expense amount missing from audit sheet");
+    assert.ok(auditCells.has(920000), "counted cash missing from audit sheet");
+    assert.ok(auditCells.has("Conteo de cierre"), "cash-count note missing from audit sheet");
   });
 
   it("returns a .pdf attachment named after the resolved range", async () => {
@@ -129,6 +171,10 @@ describe("handleCashboxExportRequest", () => {
 
     // The reconciliation must stay whole: only the date range reaches it.
     assert.deepEqual(calls.daily, { from: "2026-06-16", to: "2026-06-17" });
+    // The audit detail (expenses, cash counts) is narrowed by date range ONLY — the
+    // method/patient filters must never reach it, exactly like the reconciliation.
+    assert.deepEqual(calls.expense, { from: "2026-06-16", to: "2026-06-17" });
+    assert.deepEqual(calls.count, { from: "2026-06-16", to: "2026-06-17" });
     // The detail gets the method/patient filters.
     assert.equal(calls.movement?.method, "EFECTIVO");
     assert.equal(calls.movement?.search, "Juan");
