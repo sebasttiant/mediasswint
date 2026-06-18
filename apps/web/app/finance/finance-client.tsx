@@ -54,6 +54,31 @@ function diferenciaClass(value: number | null): string {
   return "text-slate-600";
 }
 
+// Softer, UI-only tints for the Excel-derived palette. The exported workbook keeps the
+// saturated CASHBOX_COLORS (mirroring the original sheet); on screen those reading as
+// "debug" highlights, so we map each one to a calmer pastel. This NEVER touches
+// CASHBOX_COLORS or the Excel/PDF exports — it only affects the web rendering.
+const UI_GROUP_BG: Readonly<Record<string, string>> = {
+  [CASHBOX_COLORS.abonos]: "#FEF9C3", // soft yellow
+  [CASHBOX_COLORS.reclamados]: "#FCE7F3", // soft pink (was a strong magenta)
+  [CASHBOX_COLORS.bancos]: "#DBEAFE", // soft blue
+  [CASHBOX_COLORS.ventaNetaEfectivo]: "#FEF3C7", // soft amber (was pure #FFFF00)
+};
+
+function uiBg(color?: string): string | undefined {
+  if (!color) return undefined;
+  return UI_GROUP_BG[color] ?? color;
+}
+
+// Human-readable reading of the daily cash difference, so caja sees instantly whether the
+// drawer is over, short or square — not just a signed number.
+function diferenciaLabel(value: number | null): string {
+  if (value === null) return "Diferencia pendiente";
+  if (value > 0) return "Sobrante";
+  if (value < 0) return "Faltante";
+  return "Caja cuadrada";
+}
+
 const DETAIL_HEADERS: ReadonlyArray<{
   label: string;
   key: keyof DailyCashboxRow;
@@ -104,12 +129,8 @@ export function FinanceClient({
   const countsByDay = new Map(cashCounts.map((count) => [count.dateKey, count]));
   return (
     <div className="mx-auto max-w-7xl space-y-6">
-      <div className="grid gap-4 md:grid-cols-2">
-        <ExpenseForm today={today} />
-        <CashCountForm today={today} />
-      </div>
-
-      {/* key on the range remounts the filter so its local input state always
+      {/* Controls first: the date range + export drive everything below.
+          key on the range remounts the filter so its local input state always
           re-initialises from the URL-driven range (e.g. after browser back/forward),
           never showing a range that disagrees with the data on screen. The active
           movement filters are forwarded so changing the date keeps them composed. */}
@@ -120,14 +141,6 @@ export function FinanceClient({
         movementFilters={movementFilters}
       />
 
-      <CashboxLegend />
-
-      <p className="text-xs text-slate-400">
-        La <strong>Venta Bruta</strong> es el efectivo esperado: la <strong>Diferencia</strong> compara
-        el real contado contra ese efectivo, no contra métodos electrónicos. Los pagos con método{" "}
-        <strong>Otro</strong> se muestran aparte y no cuentan como efectivo físico.
-      </p>
-
       {rows.length === 0 ? (
         <p className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
           No hay movimientos en el rango seleccionado ({formatDate(range.from)} – {formatDate(range.to)}).
@@ -136,11 +149,15 @@ export function FinanceClient({
         </p>
       ) : (
         <>
+          {/* Executive read first: the cash reconciliation is the headline of the screen. */}
           <CashboxReconciliationSummary rows={rows} today={today} countsByDay={countsByDay} />
           <CashboxDetailTable rows={rows} />
           <ExpensesAuditSection expenses={expenses} />
         </>
       )}
+
+      {/* Data entry sits below the read-first summary, grouped as a clearly secondary area. */}
+      <RegisterForms today={today} />
 
       <MovementDetailSection
         key={`${range.from}:${range.to}:${movementFilters.method}:${movementFilters.search}`}
@@ -149,6 +166,25 @@ export function FinanceClient({
         filters={movementFilters}
       />
     </div>
+  );
+}
+
+// Secondary data-entry area: registering an expense or the day's counted cash. Grouped
+// under one heading so it reads as an action panel, not as the top of the screen.
+function RegisterForms({ today }: { today: string }) {
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+      <div className="mb-3">
+        <h2 className="text-sm font-semibold text-slate-700">Registrar en caja</h2>
+        <p className="text-xs text-slate-400">
+          Cargá un egreso o el efectivo realmente contado del día. Se reflejan en la conciliación de arriba.
+        </p>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <ExpenseForm today={today} />
+        <CashCountForm today={today} />
+      </div>
+    </section>
   );
 }
 
@@ -411,7 +447,7 @@ function MovementDetailTable({ movements }: { movements: PaymentMovementDetail[]
         </thead>
         <tbody>
           {movements.map((m) => (
-            <tr key={m.id} className="border-b border-slate-100 last:border-b-0">
+            <tr key={m.id} className="border-b border-slate-100 transition-colors last:border-b-0 hover:bg-slate-50">
               <td className="whitespace-nowrap px-3 py-2 font-medium text-slate-600">{formatDate(m.dateKey)}</td>
               <td className="px-3 py-2 text-slate-700">{m.patientName}</td>
               <td className="whitespace-nowrap px-3 py-2 text-slate-600">{METHOD_LABELS.get(m.method) ?? m.method}</td>
@@ -435,12 +471,12 @@ function CashboxLegend() {
     { label: "Venta neta efectivo", color: CASHBOX_COLORS.ventaNetaEfectivo },
   ];
   return (
-    <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] text-slate-500">
       {items.map((item) => (
         <span key={item.label} className="inline-flex items-center gap-1.5">
           <span
             className="inline-block h-3 w-3 rounded-sm border border-slate-300"
-            style={{ backgroundColor: item.color }}
+            style={{ backgroundColor: uiBg(item.color) }}
             aria-hidden="true"
           />
           {item.label}
@@ -453,10 +489,10 @@ function CashboxLegend() {
 // Visual treatment for the headline "Diferencia" badge: green when the count is
 // over the expected cash, red when short, neutral when it squares or is pending.
 function diferenciaBadgeClass(value: number | null): string {
-  if (value === null) return "bg-slate-100 text-slate-500";
-  if (value > 0) return "bg-emerald-50 text-emerald-700";
-  if (value < 0) return "bg-red-50 text-red-700";
-  return "bg-slate-100 text-slate-600";
+  if (value === null) return "border-slate-200 bg-slate-100 text-slate-500";
+  if (value > 0) return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (value < 0) return "border-red-200 bg-red-50 text-red-700";
+  return "border-slate-200 bg-slate-100 text-slate-600";
 }
 
 // Primary cashbox view: surface the daily CASH reconciliation up front so operators
@@ -480,8 +516,14 @@ function CashboxReconciliationSummary({
     <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
       <div className="mb-3">
         <h2 className="text-sm font-semibold text-slate-700">Resumen de conciliación</h2>
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-slate-500">
           Lectura rápida de la caja en efectivo: esperado, egresos, neto, real contado y diferencia.
+        </p>
+        <p className="mt-1 text-xs text-slate-400">
+          La <strong className="font-semibold text-slate-500">venta bruta</strong> es el efectivo esperado; la{" "}
+          <strong className="font-semibold text-slate-500">diferencia</strong> compara el real contado contra ese
+          efectivo, no contra métodos electrónicos. Los pagos con método <strong className="font-semibold text-slate-500">Otro</strong>{" "}
+          se muestran aparte y no cuentan como efectivo físico.
         </p>
       </div>
 
@@ -498,13 +540,16 @@ function CashboxReconciliationSummary({
                 )}
               </div>
               <span
-                className={`rounded-md px-3 py-1 text-sm font-bold ${diferenciaBadgeClass(row.diferencia)}`}
+                className={`inline-flex items-center gap-2 rounded-md border px-3 py-1 text-sm font-bold ${diferenciaBadgeClass(row.diferencia)}`}
               >
                 {row.diferencia === null ? (
                   "Diferencia pendiente"
                 ) : (
                   <>
-                    Diferencia <span className="tabular-nums">{formatCurrency(row.diferencia)}</span>
+                    <span className="text-[11px] font-semibold uppercase tracking-wide">
+                      {diferenciaLabel(row.diferencia)}
+                    </span>
+                    <span className="tabular-nums">{formatCurrency(row.diferencia)}</span>
                   </>
                 )}
               </span>
@@ -567,9 +612,12 @@ function ChainCell({
   return (
     <div
       className={`min-w-[min(100%,8rem)] flex-1 rounded-md border px-3 py-2 ${
-        highlight ? "border-amber-300" : emphasis ? "border-slate-300 bg-white" : "border-slate-200 bg-white"
+        highlight
+          ? "border-amber-200 bg-amber-50"
+          : emphasis
+            ? "border-slate-300 bg-white shadow-sm"
+            : "border-slate-200 bg-white"
       }`}
-      style={highlight ? { backgroundColor: CASHBOX_COLORS.ventaNetaEfectivo } : undefined}
     >
       <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
       {isPending ? (
@@ -602,10 +650,15 @@ function CashboxDetailTable({ rows }: { rows: DailyCashboxRow[] }) {
   return (
     <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-100 px-3 py-3 sm:px-4">
-        <h2 className="text-sm font-semibold text-slate-700">Detalle completo</h2>
-        <p className="text-xs text-slate-400">
-          Abonos, reclamados, bancos, egresos y conciliación por día.
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-700">Detalle completo</h2>
+            <p className="text-xs text-slate-400">
+              Abonos, reclamados, bancos, egresos y conciliación por día.
+            </p>
+          </div>
+          <CashboxLegend />
+        </div>
       </div>
 
       <div className="overflow-x-auto">
@@ -628,7 +681,7 @@ function CashboxDetailTable({ rows }: { rows: DailyCashboxRow[] }) {
                   className={`border-l border-white px-3 py-2 text-center text-[11px] font-bold uppercase tracking-wide ${
                     group.bg ? "text-slate-700" : "bg-slate-100 text-slate-600"
                   }`}
-                  style={group.bg ? { backgroundColor: group.bg } : undefined}
+                  style={group.bg ? { backgroundColor: uiBg(group.bg) } : undefined}
                 >
                   {group.label}
                 </th>
@@ -640,7 +693,7 @@ function CashboxDetailTable({ rows }: { rows: DailyCashboxRow[] }) {
                   key={header.key}
                   scope="col"
                   className="whitespace-nowrap border-l border-white/70 px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-600"
-                  style={header.bg ? { backgroundColor: header.bg } : undefined}
+                  style={header.bg ? { backgroundColor: uiBg(header.bg) } : undefined}
                 >
                   {header.label}
                 </th>
@@ -674,7 +727,7 @@ function CashboxDetailTable({ rows }: { rows: DailyCashboxRow[] }) {
                     <td
                       key={header.key}
                       className={`whitespace-nowrap border-l border-white/70 px-3 py-3 ${tone}`}
-                      style={header.bg ? { backgroundColor: header.bg } : undefined}
+                      style={header.bg ? { backgroundColor: uiBg(header.bg) } : undefined}
                     >
                       {pending ? "Pendiente" : formatCurrency(value)}
                     </td>
@@ -719,7 +772,7 @@ function ExpensesAuditSection({ expenses }: { expenses: ExpenseDetail[] }) {
           <table className="min-w-[40rem] w-full border-collapse text-xs sm:text-sm">
             <caption className="sr-only">Detalle de egresos por fecha, concepto y monto</caption>
             <thead>
-              <tr className="border-b border-slate-200 text-left text-[11px] font-bold uppercase tracking-wide text-slate-500">
+              <tr className="border-b border-slate-200 bg-slate-50/70 text-left text-[11px] font-bold uppercase tracking-wide text-slate-500">
                 <th scope="col" className="px-3 py-2">Fecha</th>
                 <th scope="col" className="px-3 py-2">Concepto</th>
                 <th scope="col" className="px-3 py-2 text-right">Monto</th>
@@ -728,7 +781,7 @@ function ExpensesAuditSection({ expenses }: { expenses: ExpenseDetail[] }) {
             </thead>
             <tbody>
               {expenses.map((expense) => (
-                <tr key={expense.id} className="border-b border-slate-100 last:border-b-0">
+                <tr key={expense.id} className="border-b border-slate-100 transition-colors last:border-b-0 hover:bg-slate-50/60">
                   <td className="whitespace-nowrap px-3 py-2 font-medium text-slate-600">{formatDate(expense.dateKey)}</td>
                   <td className="px-3 py-2 text-slate-700">{expense.concept}</td>
                   <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-slate-800">
@@ -739,7 +792,7 @@ function ExpensesAuditSection({ expenses }: { expenses: ExpenseDetail[] }) {
               ))}
             </tbody>
             <tfoot>
-              <tr className="border-t border-slate-200">
+              <tr className="border-t border-slate-200 bg-slate-50">
                 <th scope="row" colSpan={2} className="px-3 py-2 text-left text-xs font-semibold text-slate-500">
                   Total egresos del rango
                 </th>
@@ -790,7 +843,7 @@ function ExpenseForm({ today }: { today: string }) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <form onSubmit={onSubmit} className="rounded-lg border border-slate-200 bg-slate-50/70 p-4">
       <h2 className="mb-3 text-sm font-semibold text-slate-700">Registrar egreso</h2>
       <div className="space-y-2">
         <label className="block text-xs font-medium text-slate-500">
@@ -881,7 +934,7 @@ function CashCountForm({ today }: { today: string }) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <form onSubmit={onSubmit} className="rounded-lg border border-slate-200 bg-slate-50/70 p-4">
       <h2 className="mb-3 text-sm font-semibold text-slate-700">Registrar real contado</h2>
       <div className="space-y-2">
         <label className="block text-xs font-medium text-slate-500">
