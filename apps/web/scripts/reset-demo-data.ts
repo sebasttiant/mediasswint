@@ -41,8 +41,10 @@ function isTruthyFlag(value: string | undefined): boolean {
 }
 
 function getOptionsFromEnv(): ResetDemoDataOptions {
+  const demoOnly = isTruthyFlag(process.env["DEMO_DEMO_ONLY"]);
+
   return {
-    fullReset: isTruthyFlag(process.env["DEMO_FULL_RESET"]),
+    fullReset: !demoOnly,
     deleteUsers: isTruthyFlag(process.env["DEMO_DELETE_USERS"]),
   };
 }

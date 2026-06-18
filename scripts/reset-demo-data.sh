@@ -5,19 +5,22 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() {
   cat <<'USAGE'
-Usage: scripts/reset-demo-data.sh [--full] [--delete-users]
+Usage: scripts/reset-demo-data.sh [--demo-only] [--full] [--delete-users]
 
 Safely removes demo/business data from the configured DATABASE_URL.
 
 Default behavior:
-- Deletes rows marked as demo data: payments, expenses, daily cash counts, commercial operations,
-  measurement values, measurement sessions, patients, and related demo audit logs.
+- Deletes all business/software data: patients, measurement sessions and values,
+  commercial operations, payment movements, expenses, daily cash counts, audit logs,
+  and the compression template.
 - Keeps auth users.
-- Keeps measurement templates.
 
-Full reset:
-- Pass --full or set DEMO_FULL_RESET=1 to delete all business rows and the compression template.
-- Users are still kept unless --delete-users or DEMO_DELETE_USERS=1 is also set.
+User deletion:
+- Users are kept unless --delete-users or DEMO_DELETE_USERS=1 is set.
+
+Demo-only cleanup:
+- Pass --demo-only or set DEMO_DEMO_ONLY=1 to delete only rows marked as demo data.
+- --full and DEMO_FULL_RESET=1 are accepted for compatibility, but full cleanup is now the default.
 
 Required environment:
   DATABASE_URL=postgresql://...
@@ -52,6 +55,11 @@ for arg in "$@"; do
       ;;
     --full)
       export DEMO_FULL_RESET=1
+      unset DEMO_DEMO_ONLY
+      ;;
+    --demo-only)
+      export DEMO_DEMO_ONLY=1
+      unset DEMO_FULL_RESET
       ;;
     --delete-users)
       export DEMO_DELETE_USERS=1
@@ -63,6 +71,12 @@ for arg in "$@"; do
       ;;
   esac
 done
+
+if [[ "${DEMO_DEMO_ONLY:-}" == "1" ]]; then
+  unset DEMO_FULL_RESET
+else
+  export DEMO_FULL_RESET=1
+fi
 
 if command -v pnpm >/dev/null 2>&1; then
   if [[ -z "${DATABASE_URL:-}" && -f "$ROOT_DIR/.env" ]]; then
@@ -89,6 +103,9 @@ else
   env_args=()
   if [[ "${DEMO_FULL_RESET:-}" == "1" ]]; then
     env_args+=("-e" "DEMO_FULL_RESET=1")
+  fi
+  if [[ "${DEMO_DEMO_ONLY:-}" == "1" ]]; then
+    env_args+=("-e" "DEMO_DEMO_ONLY=1")
   fi
   if [[ "${DEMO_DELETE_USERS:-}" == "1" ]]; then
     env_args+=("-e" "DEMO_DELETE_USERS=1")
