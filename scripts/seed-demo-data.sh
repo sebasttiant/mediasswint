@@ -19,8 +19,26 @@ It does not delete auth users. It keeps measurement templates, but syncs the com
 Required environment:
   DATABASE_URL=postgresql://...
 
-If DATABASE_URL is not already exported, the script loads it from .env at the repo root.
+If pnpm is available on the host, the script runs with host pnpm and loads DATABASE_URL
+from .env at the repo root when it is not already exported.
+
+If pnpm is not available, the script falls back to Docker Compose and runs the existing
+template-seeder service, whose DATABASE_URL points to the postgres service.
 USAGE
+}
+
+compose_cmd() {
+  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    printf '%s\n' "docker compose"
+    return 0
+  fi
+
+  if command -v docker-compose >/dev/null 2>&1; then
+    printf '%s\n' "docker-compose"
+    return 0
+  fi
+
+  return 1
 }
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
@@ -28,17 +46,28 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   exit 0
 fi
 
-if [[ -z "${DATABASE_URL:-}" && -f "$ROOT_DIR/.env" ]]; then
-  set -a
-  # shellcheck disable=SC1091
-  source "$ROOT_DIR/.env"
-  set +a
-fi
+if command -v pnpm >/dev/null 2>&1; then
+  if [[ -z "${DATABASE_URL:-}" && -f "$ROOT_DIR/.env" ]]; then
+    set -a
+    # shellcheck disable=SC1091
+    source "$ROOT_DIR/.env"
+    set +a
+  fi
 
-if [[ -z "${DATABASE_URL:-}" ]]; then
-  usage >&2
-  echo "Error: DATABASE_URL is required." >&2
-  exit 1
-fi
+  if [[ -z "${DATABASE_URL:-}" ]]; then
+    usage >&2
+    echo "Error: DATABASE_URL is required." >&2
+    exit 1
+  fi
 
-pnpm --dir "$ROOT_DIR/apps/web" exec tsx scripts/seed-demo-data.ts
+  pnpm --dir "$ROOT_DIR/apps/web" exec tsx scripts/seed-demo-data.ts
+else
+  if ! compose_command="$(compose_cmd)"; then
+    usage >&2
+    echo "Error: pnpm or Docker Compose is required." >&2
+    exit 1
+  fi
+
+  read -r -a compose_parts <<<"$compose_command"
+  (cd "$ROOT_DIR" && "${compose_parts[@]}" run --rm template-seeder pnpm exec tsx scripts/seed-demo-data.ts)
+fi
