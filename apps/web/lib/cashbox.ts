@@ -116,6 +116,58 @@ function round2(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
+const DATE_KEY = /^\d{4}-\d{2}-\d{2}$/;
+
+function isValidDateKey(value: string | null | undefined): value is string {
+  if (!value || !DATE_KEY.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  // Guard against calendar-shaped but impossible dates (e.g. 2026-13-40), which the
+  // regex alone would accept.
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+export type CashboxRange = { from: string; to: string };
+
+/**
+ * Shift a YYYY-MM-DD key by a number of calendar days. Pure date arithmetic on the
+ * key itself (anchored at midnight UTC) so it never drifts across a timezone. Used
+ * by the quick range presets ("últimos 7 días", etc.).
+ */
+export function shiftDateKey(key: string, days: number): string {
+  const base = new Date(`${key}T00:00:00.000Z`);
+  base.setUTCDate(base.getUTCDate() + days);
+  return base.toISOString().slice(0, 10);
+}
+
+/**
+ * Resolve the date range that drives the daily summary / reconciliation. Missing or
+ * malformed bounds fall back to `today` (so the screen defaults to "Hoy" instead of
+ * loading all history), and an inverted range is swapped so it is never empty.
+ *
+ * Method / patient filters never reach this function: per the cashbox accounting
+ * rule, only date/range narrows the daily reconciliation.
+ */
+export function resolveCashboxRange(
+  params: { from?: string | null; to?: string | null },
+  today: string,
+): CashboxRange {
+  const from = isValidDateKey(params.from) ? params.from : today;
+  const to = isValidDateKey(params.to) ? params.to : today;
+  return from <= to ? { from, to } : { from: to, to: from };
+}
+
+/**
+ * Keep only the daily rows whose calendar day falls inside the inclusive range.
+ * YYYY-MM-DD keys compare correctly as strings, so no Date parsing is needed.
+ */
+export function filterDailyRowsByRange(
+  rows: DailyCashboxRow[],
+  from: string,
+  to: string,
+): DailyCashboxRow[] {
+  return rows.filter((row) => row.date >= from && row.date <= to);
+}
+
 type Accumulator = {
   primeraVez: number;
   r: number;

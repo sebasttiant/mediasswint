@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 
 import {
   buildDailyCashbox,
+  filterDailyRowsByRange,
   toCashboxDateKey,
   type CashboxCount,
   type CashboxExpense,
@@ -67,27 +68,51 @@ export function isValidCashCountInput(input: UpsertCashCountInput): boolean {
   return new Prisma.Decimal(input.countedAmount).gte(0);
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 /**
- * Build the daily cashbox from the ledger. Optionally restricts movements to a
- * lower bound (defaults to all history; the ledger only holds new deposits, so it
- * stays small). Legacy deposits never appear here because they are not in the
- * PaymentMovement table.
+ * Coarse DB bounds for a cashbox date range. PaymentMovement.paidAt is a real
+ * instant keyed in the clinic timezone (America/Bogota, UTC-5), so a payment made
+ * late on the `to` day rolls into the next UTC day. To never drop it, the exclusive
+ * upper bound is padded to `to + 2 days` at midnight UTC; the precise per-day
+ * membership is then enforced in memory by filterDailyRowsByRange on the Bogota key.
  */
-export async function fetchDailyCashbox(options?: { since?: Date }): Promise<DailyCashboxRow[]> {
+export function cashboxQueryBounds(from: string, to: string): { gte: Date; lt: Date } {
+  const gte = parseDateOnlyUTC(from) ?? new Date(`${from}T00:00:00.000Z`);
+  const toMidnight = parseDateOnlyUTC(to) ?? new Date(`${to}T00:00:00.000Z`);
+  const lt = new Date(toMidnight.getTime() + 2 * DAY_MS);
+  return { gte, lt };
+}
+
+/**
+ * Build the daily cashbox from the ledger. When a `from`/`to` range is given, the DB
+ * query is bounded (so we never load all history) and the result is filtered to the
+ * exact Bogota days requested. With no range, all history is returned (used by tests
+ * and tooling, not the screen). Legacy deposits never appear here because they are
+ * not in the PaymentMovement table.
+ *
+ * Only date/range narrows this view. Method and patient filters belong to the
+ * movement-level detail, never to the daily reconciliation.
+ */
+export async function fetchDailyCashbox(options?: {
+  from?: string;
+  to?: string;
+}): Promise<DailyCashboxRow[]> {
   const prisma = getPrisma();
-  const since = options?.since;
+  const range = options?.from && options?.to ? { from: options.from, to: options.to } : null;
+  const bounds = range ? cashboxQueryBounds(range.from, range.to) : null;
 
   const [movements, expenses, counts] = await Promise.all([
     prisma.paymentMovement.findMany({
-      where: since ? { paidAt: { gte: since } } : undefined,
+      where: bounds ? { paidAt: { gte: bounds.gte, lt: bounds.lt } } : undefined,
       select: { amount: true, method: true, incomeType: true, paidAt: true },
     }),
     prisma.expense.findMany({
-      where: since ? { date: { gte: since } } : undefined,
+      where: bounds ? { date: { gte: bounds.gte, lt: bounds.lt } } : undefined,
       select: { amount: true, date: true },
     }),
     prisma.dailyCashCount.findMany({
-      where: since ? { date: { gte: since } } : undefined,
+      where: bounds ? { date: { gte: bounds.gte, lt: bounds.lt } } : undefined,
       select: { countedAmount: true, date: true },
     }),
   ]);
@@ -109,7 +134,8 @@ export async function fetchDailyCashbox(options?: { since?: Date }): Promise<Dai
     dateKey: dateOnlyKeyUTC(c.date),
   }));
 
-  return buildDailyCashbox(movementRows, expenseRows, countRows);
+  const rows = buildDailyCashbox(movementRows, expenseRows, countRows);
+  return range ? filterDailyRowsByRange(rows, range.from, range.to) : rows;
 }
 
 export async function createExpense(

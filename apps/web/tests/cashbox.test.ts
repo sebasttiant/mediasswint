@@ -3,9 +3,13 @@ import { describe, it } from "node:test";
 
 import {
   buildDailyCashbox,
+  filterDailyRowsByRange,
+  resolveCashboxRange,
+  shiftDateKey,
   toCashboxDateKey,
   CASHBOX_COLORS,
   type CashboxMovement,
+  type DailyCashboxRow,
 } from "@/lib/cashbox";
 
 function movement(overrides: Partial<CashboxMovement>): CashboxMovement {
@@ -208,6 +212,98 @@ describe("toCashboxDateKey", () => {
     // 2026-06-18 02:00 UTC is still 2026-06-17 21:00 in Bogota (UTC-5)
     assert.equal(toCashboxDateKey(new Date("2026-06-18T02:00:00Z")), "2026-06-17");
     assert.equal(toCashboxDateKey(new Date("2026-06-17T12:00:00Z")), "2026-06-17");
+  });
+});
+
+describe("resolveCashboxRange", () => {
+  const today = "2026-06-17";
+
+  it("defaults both bounds to today when nothing is provided", () => {
+    assert.deepEqual(resolveCashboxRange({}, today), { from: today, to: today });
+    assert.deepEqual(resolveCashboxRange({ from: null, to: null }, today), {
+      from: today,
+      to: today,
+    });
+  });
+
+  it("passes through a valid from/to range", () => {
+    assert.deepEqual(resolveCashboxRange({ from: "2026-06-01", to: "2026-06-10" }, today), {
+      from: "2026-06-01",
+      to: "2026-06-10",
+    });
+  });
+
+  it("falls back an invalid bound to today, keeping the valid one", () => {
+    // from is invalid → today (06-17); with to=06-10 the range inverts, so it is
+    // swapped back to a valid 06-10..06-17 window.
+    assert.deepEqual(resolveCashboxRange({ from: "nope", to: "2026-06-10" }, today), {
+      from: "2026-06-10",
+      to: today,
+    });
+    assert.deepEqual(resolveCashboxRange({ from: "2026-06-01", to: "31/12/2026" }, today), {
+      from: "2026-06-01",
+      to: today,
+    });
+  });
+
+  it("rejects a calendar-shaped but impossible date and falls back to today", () => {
+    // 2026-02-30 matches the YYYY-MM-DD shape but is not a real day; it must not
+    // sneak through as a valid bound. `to` is after today so the swap is not in play.
+    assert.deepEqual(resolveCashboxRange({ from: "2026-02-30", to: "2026-12-25" }, today), {
+      from: today,
+      to: "2026-12-25",
+    });
+  });
+
+  it("swaps the bounds when from is after to so the range is never empty", () => {
+    assert.deepEqual(resolveCashboxRange({ from: "2026-06-10", to: "2026-06-01" }, today), {
+      from: "2026-06-01",
+      to: "2026-06-10",
+    });
+  });
+});
+
+describe("shiftDateKey", () => {
+  it("shifts a date key back and forth by calendar days", () => {
+    assert.equal(shiftDateKey("2026-06-17", -6), "2026-06-11");
+    assert.equal(shiftDateKey("2026-06-17", 0), "2026-06-17");
+    assert.equal(shiftDateKey("2026-06-17", 3), "2026-06-20");
+  });
+
+  it("crosses month boundaries correctly", () => {
+    assert.equal(shiftDateKey("2026-06-01", -1), "2026-05-31");
+    assert.equal(shiftDateKey("2026-12-31", 1), "2027-01-01");
+  });
+});
+
+describe("filterDailyRowsByRange", () => {
+  const row = (date: string): DailyCashboxRow =>
+    buildDailyCashbox([{ amount: 1, method: "EFECTIVO", incomeType: "PRIMERA_VEZ", dateKey: date }], [], [])[0];
+  const rows = ["2026-06-20", "2026-06-17", "2026-06-15", "2026-06-10"].map(row);
+
+  it("keeps rows whose date is within the inclusive range", () => {
+    const result = filterDailyRowsByRange(rows, "2026-06-15", "2026-06-17");
+    assert.deepEqual(
+      result.map((r) => r.date),
+      ["2026-06-17", "2026-06-15"],
+    );
+  });
+
+  it("includes both range boundaries", () => {
+    const result = filterDailyRowsByRange(rows, "2026-06-10", "2026-06-20");
+    assert.equal(result.length, 4);
+  });
+
+  it("returns a single day when from equals to", () => {
+    const result = filterDailyRowsByRange(rows, "2026-06-17", "2026-06-17");
+    assert.deepEqual(
+      result.map((r) => r.date),
+      ["2026-06-17"],
+    );
+  });
+
+  it("returns nothing when the range has no matching days", () => {
+    assert.equal(filterDailyRowsByRange(rows, "2026-07-01", "2026-07-31").length, 0);
   });
 });
 
