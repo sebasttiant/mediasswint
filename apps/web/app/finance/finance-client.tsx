@@ -1,13 +1,19 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { CASHBOX_COLORS, type DailyCashboxRow } from "@/lib/cashbox";
+import {
+  CASHBOX_COLORS,
+  shiftDateKey,
+  type CashboxRange,
+  type DailyCashboxRow,
+} from "@/lib/cashbox";
 
 type FinanceClientProps = {
   rows: DailyCashboxRow[];
   today: string;
+  range: CashboxRange;
 };
 
 function formatCurrency(value: number | null): string {
@@ -64,13 +70,18 @@ const DETAIL_GROUPS: ReadonlyArray<{ label: string; span: number; bg?: string }>
   { label: "Conciliación", span: 5 },
 ];
 
-export function FinanceClient({ rows, today }: FinanceClientProps) {
+export function FinanceClient({ rows, today, range }: FinanceClientProps) {
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       <div className="grid gap-4 md:grid-cols-2">
         <ExpenseForm today={today} />
         <CashCountForm today={today} />
       </div>
+
+      {/* key on the range remounts the filter so its local input state always
+          re-initialises from the URL-driven range (e.g. after browser back/forward),
+          never showing a range that disagrees with the data on screen. */}
+      <CashboxFilters key={`${range.from}:${range.to}`} range={range} today={today} />
 
       <CashboxLegend />
 
@@ -82,9 +93,9 @@ export function FinanceClient({ rows, today }: FinanceClientProps) {
 
       {rows.length === 0 ? (
         <p className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
-          Todavía no hay movimientos registrados. Los abonos nuevos (con método y tipo) aparecerán
-          acá automáticamente. Los abonos anteriores a este módulo no se incluyen porque no tienen
-          método ni fecha confiable.
+          No hay movimientos en el rango seleccionado ({formatDate(range.from)} – {formatDate(range.to)}).
+          Probá ampliar el rango de fechas. Los abonos anteriores a este módulo no se incluyen porque no
+          tienen método ni fecha confiable.
         </p>
       ) : (
         <>
@@ -93,6 +104,105 @@ export function FinanceClient({ rows, today }: FinanceClientProps) {
         </>
       )}
     </div>
+  );
+}
+
+// Date/range filter for the daily summary + reconciliation. Per the cashbox
+// accounting rule this only narrows by DATE — method/patient filters belong to the
+// movement detail (separate slice), never here, so the reconciliation stays whole.
+// Navigation is server-driven (URL search params) so the bounded DB query is the
+// single source of truth; nothing is recomputed on the client.
+function CashboxFilters({ range, today }: { range: CashboxRange; today: string }) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [from, setFrom] = useState(range.from);
+  const [to, setTo] = useState(range.to);
+
+  function applyRange(nextFrom: string, nextTo: string) {
+    const ordered = nextFrom <= nextTo ? { from: nextFrom, to: nextTo } : { from: nextTo, to: nextFrom };
+    setFrom(ordered.from);
+    setTo(ordered.to);
+    const params = new URLSearchParams(ordered);
+    startTransition(() => router.push(`/finance?${params.toString()}`));
+  }
+
+  const presets: ReadonlyArray<{ label: string; from: string; to: string }> = [
+    { label: "Hoy", from: today, to: today },
+    { label: "Últimos 7 días", from: shiftDateKey(today, -6), to: today },
+    { label: "Últimos 30 días", from: shiftDateKey(today, -29), to: today },
+  ];
+
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-700">Filtrar por fecha</h2>
+          <p className="text-xs text-slate-400">
+            El rango afecta el resumen, la conciliación y el detalle diario.
+          </p>
+        </div>
+        {isPending && <span className="text-xs font-medium text-brand">Actualizando…</span>}
+      </div>
+
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="flex flex-wrap gap-2">
+          {presets.map((preset) => {
+            const active = preset.from === range.from && preset.to === range.to;
+            return (
+              <button
+                key={preset.label}
+                type="button"
+                onClick={() => applyRange(preset.from, preset.to)}
+                disabled={isPending}
+                className={`rounded-md border px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50 ${
+                  active
+                    ? "border-brand bg-brand/10 text-brand"
+                    : "border-slate-300 text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                {preset.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <form
+          className="flex flex-wrap items-end gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            applyRange(from, to);
+          }}
+        >
+          <label className="block text-xs font-medium text-slate-500">
+            Desde
+            <input
+              type="date"
+              value={from}
+              max={to}
+              onChange={(e) => setFrom(e.target.value)}
+              className="mt-1 block rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+            />
+          </label>
+          <label className="block text-xs font-medium text-slate-500">
+            Hasta
+            <input
+              type="date"
+              value={to}
+              min={from}
+              onChange={(e) => setTo(e.target.value)}
+              className="mt-1 block rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={isPending}
+            className="rounded-md bg-brand px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            Aplicar
+          </button>
+        </form>
+      </div>
+    </section>
   );
 }
 

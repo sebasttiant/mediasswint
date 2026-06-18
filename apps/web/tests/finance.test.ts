@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  cashboxQueryBounds,
   dateOnlyKeyUTC,
   isValidCashCountInput,
   isValidExpenseInput,
   parseDateOnlyUTC,
 } from "@/lib/finance";
+import { toCashboxDateKey } from "@/lib/cashbox";
 
 describe("parseDateOnlyUTC / dateOnlyKeyUTC", () => {
   it("round-trips a calendar date without timezone drift", () => {
@@ -19,6 +21,29 @@ describe("parseDateOnlyUTC / dateOnlyKeyUTC", () => {
     assert.equal(parseDateOnlyUTC("17/06/2026"), null);
     assert.equal(parseDateOnlyUTC("2026-13-40"), null);
     assert.equal(parseDateOnlyUTC(""), null);
+  });
+});
+
+describe("cashboxQueryBounds", () => {
+  it("sets the lower bound to the from-day midnight UTC", () => {
+    const { gte } = cashboxQueryBounds("2026-06-10", "2026-06-17");
+    assert.equal(gte.toISOString(), "2026-06-10T00:00:00.000Z");
+  });
+
+  it("pads the upper bound past the to-day to cover the Bogota timezone offset", () => {
+    // Exclusive upper bound is to + 2 days at midnight UTC so a late Bogota-night
+    // payment (whose paidAt instant rolls into the next UTC day) is never dropped.
+    const { lt } = cashboxQueryBounds("2026-06-10", "2026-06-17");
+    assert.equal(lt.toISOString(), "2026-06-19T00:00:00.000Z");
+  });
+
+  it("keeps a late Bogota payment inside the bounds even though it is a UTC instant", () => {
+    // 2026-06-17 23:30 in Bogota (UTC-5) == 2026-06-18T04:30Z. Its cashbox day is
+    // still 2026-06-17, so a range ending 2026-06-17 must include this instant.
+    const lateBogotaPayment = new Date("2026-06-18T04:30:00Z");
+    assert.equal(toCashboxDateKey(lateBogotaPayment), "2026-06-17");
+    const { gte, lt } = cashboxQueryBounds("2026-06-17", "2026-06-17");
+    assert.ok(lateBogotaPayment >= gte && lateBogotaPayment < lt);
   });
 });
 
