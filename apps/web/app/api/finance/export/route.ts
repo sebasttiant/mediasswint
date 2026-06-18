@@ -10,11 +10,19 @@ import { buildCashboxReportModel } from "@/lib/finance-report";
 import { cashboxReportToXlsx } from "@/lib/finance-xlsx";
 import { withAuth } from "@/lib/with-auth";
 
-// ExcelJS needs the Node runtime (Buffer / streams); it cannot run on the edge.
+// ExcelJS/PDFKit need the Node runtime (Buffer / streams); they cannot run on the edge.
 export const runtime = "nodejs";
 
 const XLSX_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const PDF_CONTENT_TYPE = "application/pdf";
+
+const EXPORT_FORMATS = {
+  PDF: "pdf",
+  XLSX: "xlsx",
+} as const;
+
+type ExportFormat = (typeof EXPORT_FORMATS)[keyof typeof EXPORT_FORMATS];
 
 export type ExportDeps = {
   fetchDailyCashbox: typeof fetchDailyCashbox;
@@ -40,8 +48,8 @@ export async function handleCashboxExportRequest(
 ): Promise<Response> {
   const params = new URL(request.url).searchParams;
 
-  const format = (params.get("format") ?? "xlsx").toLowerCase();
-  if (format !== "xlsx") {
+  const format = (params.get("format") ?? EXPORT_FORMATS.XLSX).toLowerCase();
+  if (!isExportFormat(format)) {
     return NextResponse.json(
       { error: `Unsupported export format: ${format}` },
       { status: 400 },
@@ -71,17 +79,32 @@ export async function handleCashboxExportRequest(
     search,
     generatedAt: now,
   });
-  const bytes = await cashboxReportToXlsx(model);
+  const extension = format === EXPORT_FORMATS.PDF ? "pdf" : "xlsx";
+  const contentType = format === EXPORT_FORMATS.PDF ? PDF_CONTENT_TYPE : XLSX_CONTENT_TYPE;
+  const bytes =
+    format === EXPORT_FORMATS.PDF
+      ? await renderPdf(model)
+      : await cashboxReportToXlsx(model);
 
-  const filename = `caja_${range.from}_${range.to}.xlsx`;
+  const filename = `caja_${range.from}_${range.to}.${extension}`;
   return new Response(bytes, {
     status: 200,
     headers: {
-      "Content-Type": XLSX_CONTENT_TYPE,
+      "Content-Type": contentType,
       "Content-Disposition": `attachment; filename="${filename}"`,
       "Cache-Control": "no-store",
     },
   });
+}
+
+function isExportFormat(format: string): format is ExportFormat {
+  return format === EXPORT_FORMATS.XLSX || format === EXPORT_FORMATS.PDF;
+}
+
+async function renderPdf(model: Parameters<typeof cashboxReportToXlsx>[0]) {
+  // Keep PDFKit off the XLSX path and out of any client import graph.
+  const { cashboxReportToPdf } = await import("@/lib/finance-pdf");
+  return cashboxReportToPdf(model);
 }
 
 export const GET = withAuth(async (request) => handleCashboxExportRequest(request));

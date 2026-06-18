@@ -6,6 +6,7 @@ import { buildDailyCashbox, type DailyCashboxRow, type PaymentMovementDetail } f
 
 const XLSX_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const PDF_CONTENT_TYPE = "application/pdf";
 
 const sampleRows: DailyCashboxRow[] = buildDailyCashbox(
   [{ amount: 1000, method: "EFECTIVO", incomeType: "PRIMERA_VEZ", dateKey: "2026-06-17" }],
@@ -68,6 +69,26 @@ describe("handleCashboxExportRequest", () => {
     assert.equal(bytes[1], 0x4b);
   });
 
+  it("returns a .pdf attachment named after the resolved range", async () => {
+    const { deps } = makeDeps();
+    const request = new Request(
+      "http://localhost/api/finance/export?from=2026-06-16&to=2026-06-17&format=pdf",
+    );
+
+    const res = await handleCashboxExportRequest(request, deps);
+
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("content-type"), PDF_CONTENT_TYPE);
+    assert.match(
+      res.headers.get("content-disposition") ?? "",
+      /caja_2026-06-16_2026-06-17\.pdf/,
+    );
+
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    assert.ok(bytes.length > 0);
+    assert.equal(new TextDecoder().decode(bytes.slice(0, 4)), "%PDF");
+  });
+
   it("never passes method/search to the daily summary, only to the movement detail", async () => {
     const { deps, calls } = makeDeps();
     const request = new Request(
@@ -112,10 +133,11 @@ describe("handleCashboxExportRequest", () => {
   it("rejects an unsupported format with 400", async () => {
     const { deps } = makeDeps();
     const request = new Request(
-      "http://localhost/api/finance/export?from=2026-06-16&to=2026-06-17&format=pdf",
+      "http://localhost/api/finance/export?from=2026-06-16&to=2026-06-17&format=csv",
     );
 
     const res = await handleCashboxExportRequest(request, deps);
     assert.equal(res.status, 400);
+    assert.deepEqual(await res.json(), { error: "Unsupported export format: csv" });
   });
 });

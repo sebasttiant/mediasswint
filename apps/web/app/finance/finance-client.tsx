@@ -181,13 +181,19 @@ function CashboxFilters({
             El rango afecta el resumen, la conciliación y el detalle diario.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           {isPending && <span className="text-xs font-medium text-brand">Actualizando…</span>}
           <a
             href={buildExportHref(range, movementFilters, "xlsx")}
             className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
           >
             Exportar Excel
+          </a>
+          <a
+            href={buildExportHref(range, movementFilters, "pdf")}
+            className="rounded-md border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700 hover:bg-sky-100"
+          >
+            Exportar PDF
           </a>
         </div>
       </div>
