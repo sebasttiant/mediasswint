@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   cashboxQueryBounds,
   dateOnlyKeyUTC,
+  escapeLikePattern,
   isValidCashCountInput,
   isValidExpenseInput,
   parseDateOnlyUTC,
@@ -44,6 +45,21 @@ describe("cashboxQueryBounds", () => {
     assert.equal(toCashboxDateKey(lateBogotaPayment), "2026-06-17");
     const { gte, lt } = cashboxQueryBounds("2026-06-17", "2026-06-17");
     assert.ok(lateBogotaPayment >= gte && lateBogotaPayment < lt);
+  });
+});
+
+describe("escapeLikePattern", () => {
+  it("escapes LIKE wildcards so they match literally, not as patterns", () => {
+    // Backslash must be escaped first, then % and _.
+    assert.equal(escapeLikePattern("100%"), "100\\%");
+    assert.equal(escapeLikePattern("a_b"), "a\\_b");
+    assert.equal(escapeLikePattern("c:\\x"), "c:\\\\x");
+    assert.equal(escapeLikePattern("%_\\"), "\\%\\_\\\\");
+  });
+
+  it("leaves ordinary search terms untouched", () => {
+    assert.equal(escapeLikePattern("Juan Perez"), "Juan Perez");
+    assert.equal(escapeLikePattern("12345678"), "12345678");
   });
 });
 

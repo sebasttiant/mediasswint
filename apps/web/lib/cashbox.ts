@@ -157,15 +157,52 @@ export function resolveCashboxRange(
 }
 
 /**
+ * Inclusive membership of a YYYY-MM-DD key in a range. Keys compare correctly as
+ * strings, so no Date parsing is needed.
+ */
+export function isDateKeyInRange(key: string, from: string, to: string): boolean {
+  return key >= from && key <= to;
+}
+
+/**
  * Keep only the daily rows whose calendar day falls inside the inclusive range.
- * YYYY-MM-DD keys compare correctly as strings, so no Date parsing is needed.
  */
 export function filterDailyRowsByRange(
   rows: DailyCashboxRow[],
   from: string,
   to: string,
 ): DailyCashboxRow[] {
-  return rows.filter((row) => row.date >= from && row.date <= to);
+  return rows.filter((row) => isDateKeyInRange(row.date, from, to));
+}
+
+/** Type guard for the PaymentMethod enum, used to validate untrusted query params. */
+export function isPaymentMethod(value: string | null | undefined): value is PaymentMethod {
+  return value != null && (PAYMENT_METHOD_VALUES as readonly string[]).includes(value);
+}
+
+/**
+ * A single payment movement, flattened for the movement-level detail view. This is
+ * the ONLY surface that method / patient filters narrow — never the daily
+ * reconciliation, whose accounting must stay whole.
+ */
+export type PaymentMovementDetail = {
+  id: string;
+  dateKey: string; // Bogota calendar day (see toCashboxDateKey)
+  patientName: string;
+  method: PaymentMethod;
+  incomeType: PaymentIncomeType;
+  amount: number;
+  bank: PaymentBank | null;
+  note: string | null;
+};
+
+/** Keep only the movements whose Bogota day falls inside the inclusive range. */
+export function filterMovementsByDateRange(
+  rows: PaymentMovementDetail[],
+  from: string,
+  to: string,
+): PaymentMovementDetail[] {
+  return rows.filter((row) => isDateKeyInRange(row.dateKey, from, to));
 }
 
 type Accumulator = {

@@ -4,12 +4,15 @@ import { describe, it } from "node:test";
 import {
   buildDailyCashbox,
   filterDailyRowsByRange,
+  filterMovementsByDateRange,
+  isPaymentMethod,
   resolveCashboxRange,
   shiftDateKey,
   toCashboxDateKey,
   CASHBOX_COLORS,
   type CashboxMovement,
   type DailyCashboxRow,
+  type PaymentMovementDetail,
 } from "@/lib/cashbox";
 
 function movement(overrides: Partial<CashboxMovement>): CashboxMovement {
@@ -304,6 +307,61 @@ describe("filterDailyRowsByRange", () => {
 
   it("returns nothing when the range has no matching days", () => {
     assert.equal(filterDailyRowsByRange(rows, "2026-07-01", "2026-07-31").length, 0);
+  });
+});
+
+describe("isPaymentMethod", () => {
+  it("accepts every known payment method", () => {
+    for (const method of [
+      "EFECTIVO",
+      "TRANSFERENCIA",
+      "BOLD",
+      "TARJETA_DEBITO",
+      "TARJETA_CREDITO",
+      "OTRO",
+    ]) {
+      assert.equal(isPaymentMethod(method), true);
+    }
+  });
+
+  it("rejects unknown, empty, or nullish values", () => {
+    assert.equal(isPaymentMethod("efectivo"), false); // case-sensitive enum
+    assert.equal(isPaymentMethod("CHEQUE"), false);
+    assert.equal(isPaymentMethod(""), false);
+    assert.equal(isPaymentMethod(null), false);
+    assert.equal(isPaymentMethod(undefined), false);
+  });
+});
+
+describe("filterMovementsByDateRange", () => {
+  const mov = (id: string, dateKey: string): PaymentMovementDetail => ({
+    id,
+    dateKey,
+    patientName: "Paciente",
+    method: "EFECTIVO",
+    incomeType: "PRIMERA_VEZ",
+    amount: 100,
+    bank: null,
+    note: null,
+  });
+  const rows = [
+    mov("a", "2026-06-20"),
+    mov("b", "2026-06-17"),
+    mov("c", "2026-06-15"),
+    mov("d", "2026-06-10"),
+  ];
+
+  it("keeps only movements whose Bogota day is inside the inclusive range", () => {
+    const result = filterMovementsByDateRange(rows, "2026-06-15", "2026-06-17");
+    assert.deepEqual(
+      result.map((r) => r.id),
+      ["b", "c"],
+    );
+  });
+
+  it("includes both boundaries and drops everything outside", () => {
+    assert.equal(filterMovementsByDateRange(rows, "2026-06-10", "2026-06-20").length, 4);
+    assert.equal(filterMovementsByDateRange(rows, "2026-07-01", "2026-07-31").length, 0);
   });
 });
 

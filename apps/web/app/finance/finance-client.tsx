@@ -5,16 +5,28 @@ import { useRouter } from "next/navigation";
 
 import {
   CASHBOX_COLORS,
+  PAYMENT_BANKS,
+  PAYMENT_INCOME_TYPES,
+  PAYMENT_METHODS,
   shiftDateKey,
   type CashboxRange,
   type DailyCashboxRow,
+  type PaymentMovementDetail,
 } from "@/lib/cashbox";
+
+type MovementFilterState = { method: string; search: string };
 
 type FinanceClientProps = {
   rows: DailyCashboxRow[];
   today: string;
   range: CashboxRange;
+  movements: PaymentMovementDetail[];
+  movementFilters: MovementFilterState;
 };
+
+const METHOD_LABELS = new Map(PAYMENT_METHODS.map((m) => [m.value, m.label]));
+const INCOME_TYPE_LABELS = new Map(PAYMENT_INCOME_TYPES.map((t) => [t.value, t.label]));
+const BANK_LABELS = new Map(PAYMENT_BANKS.map((b) => [b.value, b.label]));
 
 function formatCurrency(value: number | null): string {
   if (value === null) return "—";
@@ -70,7 +82,13 @@ const DETAIL_GROUPS: ReadonlyArray<{ label: string; span: number; bg?: string }>
   { label: "Conciliación", span: 5 },
 ];
 
-export function FinanceClient({ rows, today, range }: FinanceClientProps) {
+export function FinanceClient({
+  rows,
+  today,
+  range,
+  movements,
+  movementFilters,
+}: FinanceClientProps) {
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       <div className="grid gap-4 md:grid-cols-2">
@@ -80,8 +98,14 @@ export function FinanceClient({ rows, today, range }: FinanceClientProps) {
 
       {/* key on the range remounts the filter so its local input state always
           re-initialises from the URL-driven range (e.g. after browser back/forward),
-          never showing a range that disagrees with the data on screen. */}
-      <CashboxFilters key={`${range.from}:${range.to}`} range={range} today={today} />
+          never showing a range that disagrees with the data on screen. The active
+          movement filters are forwarded so changing the date keeps them composed. */}
+      <CashboxFilters
+        key={`${range.from}:${range.to}`}
+        range={range}
+        today={today}
+        movementFilters={movementFilters}
+      />
 
       <CashboxLegend />
 
@@ -103,6 +127,13 @@ export function FinanceClient({ rows, today, range }: FinanceClientProps) {
           <CashboxDetailTable rows={rows} />
         </>
       )}
+
+      <MovementDetailSection
+        key={`${range.from}:${range.to}:${movementFilters.method}:${movementFilters.search}`}
+        movements={movements}
+        range={range}
+        filters={movementFilters}
+      />
     </div>
   );
 }
@@ -112,7 +143,15 @@ export function FinanceClient({ rows, today, range }: FinanceClientProps) {
 // movement detail (separate slice), never here, so the reconciliation stays whole.
 // Navigation is server-driven (URL search params) so the bounded DB query is the
 // single source of truth; nothing is recomputed on the client.
-function CashboxFilters({ range, today }: { range: CashboxRange; today: string }) {
+function CashboxFilters({
+  range,
+  today,
+  movementFilters,
+}: {
+  range: CashboxRange;
+  today: string;
+  movementFilters: MovementFilterState;
+}) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [from, setFrom] = useState(range.from);
@@ -122,7 +161,10 @@ function CashboxFilters({ range, today }: { range: CashboxRange; today: string }
     const ordered = nextFrom <= nextTo ? { from: nextFrom, to: nextTo } : { from: nextTo, to: nextFrom };
     setFrom(ordered.from);
     setTo(ordered.to);
-    const params = new URLSearchParams(ordered);
+    const params = new URLSearchParams({ from: ordered.from, to: ordered.to });
+    // Keep the movement-detail filters composed when only the date changes.
+    if (movementFilters.method) params.set("method", movementFilters.method);
+    if (movementFilters.search) params.set("search", movementFilters.search);
     startTransition(() => router.push(`/finance?${params.toString()}`));
   }
 
@@ -203,6 +245,157 @@ function CashboxFilters({ range, today }: { range: CashboxRange; today: string }
         </form>
       </div>
     </section>
+  );
+}
+
+// Movement-level detail. This is the ONLY surface narrowed by method / patient:
+// per the cashbox accounting rule those filters must never reach the daily
+// reconciliation above. Navigation is server-driven and always carries the shared
+// from/to range so the date window stays in sync with the summary.
+function MovementDetailSection({
+  movements,
+  range,
+  filters,
+}: {
+  movements: PaymentMovementDetail[];
+  range: CashboxRange;
+  filters: MovementFilterState;
+}) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [method, setMethod] = useState(filters.method);
+  const [search, setSearch] = useState(filters.search);
+
+  function apply(nextMethod: string, nextSearch: string) {
+    const params = new URLSearchParams({ from: range.from, to: range.to });
+    if (nextMethod) params.set("method", nextMethod);
+    const trimmed = nextSearch.trim();
+    if (trimmed) params.set("search", trimmed);
+    startTransition(() => router.push(`/finance?${params.toString()}`));
+  }
+
+  const hasActiveFilters = Boolean(filters.method || filters.search);
+  const listedTotal = Math.round(movements.reduce((sum, m) => sum + m.amount, 0) * 100) / 100;
+
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-100 px-3 py-3 sm:px-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-700">Detalle de movimientos</h2>
+            <p className="text-xs text-slate-400">
+              Acotado por el rango de fecha de arriba. Método y paciente filtran{" "}
+              <strong>solo este detalle</strong>, no la conciliación diaria.
+            </p>
+          </div>
+          {isPending && <span className="text-xs font-medium text-brand">Actualizando…</span>}
+        </div>
+
+        <form
+          className="mt-3 flex flex-wrap items-end gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            apply(method, search);
+          }}
+        >
+          <label className="block text-xs font-medium text-slate-500">
+            Método
+            <select
+              value={method}
+              onChange={(e) => setMethod(e.target.value)}
+              className="mt-1 block rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+            >
+              <option value="">Todos</option>
+              {PAYMENT_METHODS.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-xs font-medium text-slate-500">
+            Paciente
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Nombre o documento"
+              className="mt-1 block rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={isPending}
+            className="rounded-md bg-brand px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            Aplicar
+          </button>
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={() => {
+                setMethod("");
+                setSearch("");
+                apply("", "");
+              }}
+              disabled={isPending}
+              className="rounded-md border border-slate-300 px-4 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Limpiar
+            </button>
+          )}
+        </form>
+
+        <p className="mt-2 text-xs text-slate-400">
+          {movements.length} movimiento{movements.length === 1 ? "" : "s"}
+          {" · "}Total listado <span className="text-slate-400">(todos los métodos)</span>{" "}
+          <span className="font-semibold tabular-nums text-slate-500">{formatCurrency(listedTotal)}</span>
+          {". "}No es la venta bruta efectivo de la conciliación.
+        </p>
+      </div>
+
+      {movements.length === 0 ? (
+        <p className="px-3 py-6 text-sm text-slate-500 sm:px-4">
+          No hay movimientos para los filtros seleccionados en este rango.
+        </p>
+      ) : (
+        <MovementDetailTable movements={movements} />
+      )}
+    </section>
+  );
+}
+
+function MovementDetailTable({ movements }: { movements: PaymentMovementDetail[] }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-[48rem] w-full border-collapse text-xs sm:text-sm">
+        <caption className="sr-only">Detalle de movimientos por paciente, método y monto</caption>
+        <thead>
+          <tr className="border-b border-slate-200 text-left text-[11px] font-bold uppercase tracking-wide text-slate-500">
+            <th scope="col" className="px-3 py-2">Fecha</th>
+            <th scope="col" className="px-3 py-2">Paciente</th>
+            <th scope="col" className="px-3 py-2">Método</th>
+            <th scope="col" className="px-3 py-2">Tipo</th>
+            <th scope="col" className="px-3 py-2">Banco</th>
+            <th scope="col" className="px-3 py-2 text-right">Monto</th>
+            <th scope="col" className="px-3 py-2">Nota</th>
+          </tr>
+        </thead>
+        <tbody>
+          {movements.map((m) => (
+            <tr key={m.id} className="border-b border-slate-100 last:border-b-0">
+              <td className="whitespace-nowrap px-3 py-2 font-medium text-slate-600">{formatDate(m.dateKey)}</td>
+              <td className="px-3 py-2 text-slate-700">{m.patientName}</td>
+              <td className="whitespace-nowrap px-3 py-2 text-slate-600">{METHOD_LABELS.get(m.method) ?? m.method}</td>
+              <td className="whitespace-nowrap px-3 py-2 text-slate-600">{INCOME_TYPE_LABELS.get(m.incomeType) ?? m.incomeType}</td>
+              <td className="whitespace-nowrap px-3 py-2 text-slate-500">{m.bank ? BANK_LABELS.get(m.bank) ?? m.bank : "—"}</td>
+              <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-slate-800">{formatCurrency(m.amount)}</td>
+              <td className="px-3 py-2 text-slate-500">{m.note ?? ""}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
