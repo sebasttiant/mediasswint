@@ -89,4 +89,31 @@ describe("buildCashboxReportModel — totals across the range", () => {
     assert.equal(model.meta.search, null); // whitespace-only search collapses to null
     assert.equal(model.meta.generatedAt, "2026-06-17T15:30:00.000Z");
   });
+
+  it("defaults the audit detail to empty arrays when not provided", () => {
+    assert.deepEqual(model.expenses, []);
+    assert.deepEqual(model.cashCounts, []);
+  });
+
+  it("passes audit detail through unchanged and never lets it touch the totals", () => {
+    const expenses = [
+      { id: "e1", dateKey: "2026-06-17", amount: 100, concept: "Proveedor", note: "f-1" },
+    ];
+    const cashCounts = [
+      { dateKey: "2026-06-17", countedAmount: 920, note: "cierre", updatedAt: "2026-06-17T22:00:00.000Z" },
+    ];
+    const withAudit = buildCashboxReportModel({
+      range: { from: "2026-06-16", to: "2026-06-17" },
+      rows,
+      movements,
+      expenses,
+      cashCounts,
+      generatedAt,
+    });
+    // Pass-through: detail is surfaced exactly as given.
+    assert.deepEqual(withAudit.expenses, expenses);
+    assert.deepEqual(withAudit.cashCounts, cashCounts);
+    // Invariant: adding the audit detail must not change any reconciliation figure.
+    assert.deepEqual(withAudit.totals, model.totals);
+  });
 });

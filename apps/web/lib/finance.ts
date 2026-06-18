@@ -3,13 +3,16 @@ import { Prisma } from "@prisma/client";
 import {
   buildDailyCashbox,
   filterDailyRowsByRange,
+  filterDetailByDateRange,
   filterMovementsByDateRange,
   isPaymentMethod,
   toCashboxDateKey,
   type CashboxCount,
   type CashboxExpense,
   type CashboxMovement,
+  type CashCountDetail,
   type DailyCashboxRow,
+  type ExpenseDetail,
   type PaymentMovementDetail,
 } from "@/lib/cashbox";
 import { getPrisma } from "@/lib/prisma";
@@ -213,6 +216,65 @@ export async function fetchPaymentMovements(
   }));
 
   return filterMovementsByDateRange(rows, filters.from, filters.to);
+}
+
+/**
+ * Per-expense audit detail for a date range. This is the line-item breakdown behind the
+ * summed `egresos` shown in the daily reconciliation — it is read-only context and is
+ * NEVER fed back into buildDailyCashbox, so the accounting path stays untouched. Bounds
+ * + in-memory trim mirror fetchDailyCashbox so the window matches the summary exactly.
+ *
+ * Only the date range narrows this list. Method/patient filters belong to the movement
+ * detail and must never reach the expense audit, just like the daily reconciliation.
+ */
+export async function fetchExpenseDetail(range: {
+  from: string;
+  to: string;
+}): Promise<ExpenseDetail[]> {
+  const prisma = getPrisma();
+  const bounds = cashboxQueryBounds(range.from, range.to);
+  const expenses = await prisma.expense.findMany({
+    where: { date: { gte: bounds.gte, lt: bounds.lt } },
+    select: { id: true, date: true, amount: true, concept: true, note: true },
+    orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+  });
+
+  const rows: ExpenseDetail[] = expenses.map((e) => ({
+    id: e.id,
+    dateKey: dateOnlyKeyUTC(e.date),
+    amount: decimalToNumber(e.amount),
+    concept: e.concept,
+    note: e.note,
+  }));
+
+  return filterDetailByDateRange(rows, range.from, range.to);
+}
+
+/**
+ * Per-day counted-cash audit detail for a date range. Carries the operator note and the
+ * last-saved instant alongside the counted amount so a difference can be traced. Same
+ * bounds/trim and date-only-narrowing rule as fetchExpenseDetail.
+ */
+export async function fetchCashCountDetail(range: {
+  from: string;
+  to: string;
+}): Promise<CashCountDetail[]> {
+  const prisma = getPrisma();
+  const bounds = cashboxQueryBounds(range.from, range.to);
+  const counts = await prisma.dailyCashCount.findMany({
+    where: { date: { gte: bounds.gte, lt: bounds.lt } },
+    select: { date: true, countedAmount: true, note: true, updatedAt: true },
+    orderBy: { date: "desc" },
+  });
+
+  const rows: CashCountDetail[] = counts.map((c) => ({
+    dateKey: dateOnlyKeyUTC(c.date),
+    countedAmount: decimalToNumber(c.countedAmount),
+    note: c.note,
+    updatedAt: c.updatedAt.toISOString(),
+  }));
+
+  return filterDetailByDateRange(rows, range.from, range.to);
 }
 
 export async function createExpense(

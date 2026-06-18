@@ -309,6 +309,73 @@ function buildMovementsSheet(wb: ExcelJS.Workbook, model: CashboxReportModel): v
   }
 }
 
+// Audit trail behind the daily figures: the line-item expenses summed into `egresos`
+// and the per-day counted cash behind `realContado`. Read-only context — these rows are
+// never re-aggregated, so the sheet can explain a difference without touching any total.
+function buildAuditSheet(wb: ExcelJS.Workbook, model: CashboxReportModel): void {
+  const sheet = wb.addWorksheet("Auditoría");
+  sheet.views = [{ state: "frozen", xSplit: 1, ySplit: 1 }];
+  sheet.properties.defaultRowHeight = 22;
+  sheet.columns = [{ width: 14 }, { width: 40 }, { width: 22 }, { width: 48 }];
+
+  sheet.mergeCells("A1:D1");
+  const title = sheet.getCell("A1");
+  title.value = "Auditoría de caja";
+  title.fill = TITLE_FILL;
+  title.font = { bold: true, size: 16, color: { argb: "FFFFFFFF" } };
+  title.alignment = { vertical: "middle", horizontal: "center" };
+  sheet.getRow(1).height = 28;
+
+  const meta = sheet.addRow(["Rango", `${formatDate(model.meta.from)} - ${formatDate(model.meta.to)}`]);
+  styleRow(meta, { fill: "FFF8FAFC", bold: true });
+  const auditNote = sheet.addRow([
+    "Solo se filtra por rango de fecha. El método y el paciente no afectan esta auditoría.",
+  ]);
+  sheet.mergeCells(auditNote.number, 1, auditNote.number, 4);
+  auditNote.font = { italic: true, color: { argb: "FF92400E" } };
+  auditNote.eachCell((cell) => {
+    cell.fill = NOTE_FILL;
+    cell.alignment = { wrapText: true, vertical: "middle" };
+  });
+  sheet.addRow([]);
+
+  styleSectionRow(sheet.addRow(["Egresos", "", "", ""]));
+  const expenseHeader = sheet.addRow(["Fecha", "Concepto", "Monto", "Observación"]);
+  styleRow(expenseHeader, { fill: "FFE2E8F0", bold: true });
+  if (model.expenses.length === 0) {
+    const empty = sheet.addRow(["Sin egresos registrados en el rango", "", "", ""]);
+    styleRow(empty);
+  } else {
+    for (const expense of model.expenses) {
+      const row = sheet.addRow([formatDate(expense.dateKey), expense.concept, expense.amount, expense.note ?? ""]);
+      styleRow(row);
+      styleCell(row.getCell(3), { money: true });
+      row.getCell(4).alignment = { vertical: "top", horizontal: "left", wrapText: true };
+    }
+  }
+  sheet.addRow([]);
+
+  styleSectionRow(sheet.addRow(["Real contado por día", "", "", ""]));
+  const countHeader = sheet.addRow(["Fecha", "Efectivo contado", "Observación", "Registrado"]);
+  styleRow(countHeader, { fill: "FFE2E8F0", bold: true });
+  if (model.cashCounts.length === 0) {
+    const empty = sheet.addRow(["Sin real contado registrado en el rango", "", "", ""]);
+    styleRow(empty);
+  } else {
+    for (const count of model.cashCounts) {
+      const row = sheet.addRow([
+        formatDate(count.dateKey),
+        count.countedAmount,
+        count.note ?? "",
+        formatTimestamp(count.updatedAt),
+      ]);
+      styleRow(row);
+      styleCell(row.getCell(2), { money: true });
+      row.getCell(3).alignment = { vertical: "top", horizontal: "left", wrapText: true };
+    }
+  }
+}
+
 /** Render the cashbox report model to an .xlsx workbook as bytes (a valid BodyInit). */
 export async function cashboxReportToXlsx(
   model: CashboxReportModel,
@@ -318,6 +385,7 @@ export async function cashboxReportToXlsx(
   wb.created = new Date(model.meta.generatedAt);
 
   buildSummarySheet(wb, model);
+  buildAuditSheet(wb, model);
   buildMovementsSheet(wb, model);
 
   const arrayBuffer = await wb.xlsx.writeBuffer();

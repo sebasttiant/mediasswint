@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 
 import { isPaymentMethod, resolveCashboxRange } from "@/lib/cashbox";
 import {
+  fetchCashCountDetail,
   fetchDailyCashbox,
+  fetchExpenseDetail,
   fetchPaymentMovements,
   toCashboxDateKeyForForm,
 } from "@/lib/finance";
@@ -27,12 +29,16 @@ type ExportFormat = (typeof EXPORT_FORMATS)[keyof typeof EXPORT_FORMATS];
 export type ExportDeps = {
   fetchDailyCashbox: typeof fetchDailyCashbox;
   fetchPaymentMovements: typeof fetchPaymentMovements;
+  fetchExpenseDetail: typeof fetchExpenseDetail;
+  fetchCashCountDetail: typeof fetchCashCountDetail;
   now: () => Date;
 };
 
 const defaultDeps: ExportDeps = {
   fetchDailyCashbox,
   fetchPaymentMovements,
+  fetchExpenseDetail,
+  fetchCashCountDetail,
   now: () => new Date(),
 };
 
@@ -66,15 +72,22 @@ export async function handleCashboxExportRequest(
   const method = isPaymentMethod(methodParam) ? methodParam : undefined;
   const search = params.get("search")?.trim() || undefined;
 
-  const [rows, movements] = await Promise.all([
+  // The audit detail (expenses, cash counts) is narrowed by the date range ONLY, exactly
+  // like the daily reconciliation — method/search never reach it. Only the movement
+  // detail is filtered by method/patient.
+  const [rows, movements, expenses, cashCounts] = await Promise.all([
     deps.fetchDailyCashbox({ from: range.from, to: range.to }),
     deps.fetchPaymentMovements({ from: range.from, to: range.to, method, search }),
+    deps.fetchExpenseDetail({ from: range.from, to: range.to }),
+    deps.fetchCashCountDetail({ from: range.from, to: range.to }),
   ]);
 
   const model = buildCashboxReportModel({
     range,
     rows,
     movements,
+    expenses,
+    cashCounts,
     method,
     search,
     generatedAt: now,

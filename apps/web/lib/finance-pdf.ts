@@ -213,6 +213,55 @@ function drawMovements(doc: PDFKit.PDFDocument, model: CashboxReportModel): void
   }
 }
 
+function drawExpenses(doc: PDFKit.PDFDocument, model: CashboxReportModel): void {
+  sectionTitle(doc, "Detalle de egresos");
+  note(doc, "Desglose de los egresos sumados en la conciliación diaria. No modifica los totales.");
+  const widths = [60, 196, 88, 196];
+  const aligns: readonly Align[] = ["left", "left", "right", "left"];
+  const headers = ["Fecha", "Concepto", "Monto", "Observación"];
+  drawRow(doc, headers, widths, { header: true, aligns });
+  if (model.expenses.length === 0) {
+    drawTableBodyRow(doc, ["Sin egresos registrados en el rango", "", "", ""], widths, headers, aligns);
+    return;
+  }
+  for (const expense of model.expenses) {
+    drawTableBodyRow(
+      doc,
+      [formatDate(expense.dateKey), expense.concept, formatCurrency(expense.amount), expense.note ?? ""],
+      widths,
+      headers,
+      aligns,
+    );
+  }
+}
+
+function drawCashCounts(doc: PDFKit.PDFDocument, model: CashboxReportModel): void {
+  sectionTitle(doc, "Real contado por día");
+  note(doc, "Efectivo físico contado por día, con la observación y el momento del último registro.");
+  const widths = [60, 104, 220, 156];
+  const aligns: readonly Align[] = ["left", "right", "left", "left"];
+  const headers = ["Fecha", "Efectivo contado", "Observación", "Registrado"];
+  drawRow(doc, headers, widths, { header: true, aligns });
+  if (model.cashCounts.length === 0) {
+    drawTableBodyRow(doc, ["Sin real contado registrado en el rango", "", "", ""], widths, headers, aligns);
+    return;
+  }
+  for (const count of model.cashCounts) {
+    drawTableBodyRow(
+      doc,
+      [
+        formatDate(count.dateKey),
+        formatCurrency(count.countedAmount),
+        count.note ?? "",
+        formatTimestamp(count.updatedAt),
+      ],
+      widths,
+      headers,
+      aligns,
+    );
+  }
+}
+
 function drawFooter(doc: PDFKit.PDFDocument, generatedLabel: string): void {
   // bufferPages lets us walk every page after layout to stamp a consistent footer with
   // the report context + "Página X de Y", so a multi-page detail never loses its origin.
@@ -275,6 +324,8 @@ export async function cashboxReportToPdf(model: CashboxReportModel): Promise<Uin
   note(doc, "Real contado y Diferencia se muestran por día; no se totalizan en el rango para evitar conciliaciones engañosas.");
 
   drawDailyBreakdown(doc, model);
+  drawExpenses(doc, model);
+  drawCashCounts(doc, model);
   drawMovements(doc, model);
 
   drawFooter(doc, generatedLabel);

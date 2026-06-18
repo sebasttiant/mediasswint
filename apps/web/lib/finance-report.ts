@@ -6,7 +6,9 @@
 import {
   PAYMENT_METHODS,
   round2,
+  type CashCountDetail,
   type DailyCashboxRow,
+  type ExpenseDetail,
   type PaymentMethod,
   type PaymentMovementDetail,
 } from "@/lib/cashbox";
@@ -44,6 +46,11 @@ export type CashboxReportModel = {
   totals: CashboxReportTotals;
   totalsByMethod: MethodTotal[];
   movements: PaymentMovementDetail[];
+  // Audit detail behind the daily figures: the line-item expenses summed into `egresos`
+  // and the per-day counted-cash records behind `realContado`. Pass-through only — never
+  // re-aggregated, so they cannot drift from the reconciliation numbers.
+  expenses: ExpenseDetail[];
+  cashCounts: CashCountDetail[];
 };
 
 /**
@@ -72,6 +79,8 @@ export type BuildReportInput = {
   range: { from: string; to: string };
   rows: DailyCashboxRow[];
   movements: PaymentMovementDetail[];
+  expenses?: ExpenseDetail[];
+  cashCounts?: CashCountDetail[];
   method?: string | null;
   search?: string | null;
   generatedAt: Date;
@@ -126,5 +135,7 @@ export function buildCashboxReportModel(input: BuildReportInput): CashboxReportM
     totals,
     totalsByMethod,
     movements,
+    expenses: input.expenses ?? [],
+    cashCounts: input.cashCounts ?? [],
   };
 }

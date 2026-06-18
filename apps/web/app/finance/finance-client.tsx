@@ -8,10 +8,18 @@ import {
   PAYMENT_METHODS,
   shiftDateKey,
   type CashboxRange,
+  type CashCountDetail,
   type DailyCashboxRow,
+  type ExpenseDetail,
   type PaymentMovementDetail,
 } from "@/lib/cashbox";
-import { BANK_LABELS, INCOME_TYPE_LABELS, METHOD_LABELS, formatDate } from "@/lib/finance-format";
+import {
+  BANK_LABELS,
+  INCOME_TYPE_LABELS,
+  METHOD_LABELS,
+  formatDate,
+  formatTimestamp,
+} from "@/lib/finance-format";
 
 type MovementFilterState = { method: string; search: string };
 
@@ -20,6 +28,8 @@ type FinanceClientProps = {
   today: string;
   range: CashboxRange;
   movements: PaymentMovementDetail[];
+  expenses: ExpenseDetail[];
+  cashCounts: CashCountDetail[];
   movementFilters: MovementFilterState;
 };
 
@@ -85,8 +95,13 @@ export function FinanceClient({
   today,
   range,
   movements,
+  expenses,
+  cashCounts,
   movementFilters,
 }: FinanceClientProps) {
+  // Index the counted-cash audit by day so each reconciliation card can show the note
+  // and the moment the drawer was last counted, tracing where a difference came from.
+  const countsByDay = new Map(cashCounts.map((count) => [count.dateKey, count]));
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       <div className="grid gap-4 md:grid-cols-2">
@@ -121,8 +136,9 @@ export function FinanceClient({
         </p>
       ) : (
         <>
-          <CashboxReconciliationSummary rows={rows} today={today} />
+          <CashboxReconciliationSummary rows={rows} today={today} countsByDay={countsByDay} />
           <CashboxDetailTable rows={rows} />
+          <ExpensesAuditSection expenses={expenses} />
         </>
       )}
 
@@ -451,7 +467,15 @@ function diferenciaBadgeClass(value: number | null): string {
 // Real contado is compared against it to produce the Diferencia (the headline).
 // Bancos / Otros are electronic / ambiguous income, so they sit apart as context
 // and never enter the cash difference.
-function CashboxReconciliationSummary({ rows, today }: { rows: DailyCashboxRow[]; today: string }) {
+function CashboxReconciliationSummary({
+  rows,
+  today,
+  countsByDay,
+}: {
+  rows: DailyCashboxRow[];
+  today: string;
+  countsByDay: Map<string, CashCountDetail>;
+}) {
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
       <div className="mb-3">
@@ -503,6 +527,22 @@ function CashboxReconciliationSummary({ rows, today }: { rows: DailyCashboxRow[]
               {" · "}Otros (no efectivo){" "}
               <span className="font-semibold tabular-nums text-slate-500">{formatCurrency(row.otros)}</span>
             </p>
+
+            {(() => {
+              const count = countsByDay.get(row.date);
+              if (!count) return null;
+              return (
+                <p className="mt-1 text-xs text-slate-400">
+                  Real contado registrado el{" "}
+                  <span className="font-semibold text-slate-500">{formatTimestamp(count.updatedAt)}</span>
+                  {count.note ? (
+                    <>
+                      {" · "}Observación: <span className="text-slate-500">{count.note}</span>
+                    </>
+                  ) : null}
+                </p>
+              );
+            })()}
           </article>
         ))}
       </div>
@@ -652,6 +692,66 @@ function CashboxDetailTable({ rows }: { rows: DailyCashboxRow[] }) {
           </tbody>
         </table>
       </div>
+    </section>
+  );
+}
+
+// Line-item breakdown behind the daily `Egresos` total. Read-only audit: it explains
+// what was paid out and why, without ever changing the reconciliation numbers.
+function ExpensesAuditSection({ expenses }: { expenses: ExpenseDetail[] }) {
+  const total = Math.round(expenses.reduce((sum, e) => sum + e.amount, 0) * 100) / 100;
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-100 px-3 py-3 sm:px-4">
+        <h2 className="text-sm font-semibold text-slate-700">Detalle de egresos</h2>
+        <p className="text-xs text-slate-400">
+          Desglose de los egresos sumados en la conciliación diaria. Acotado por el rango de fecha;
+          no cambia los totales de caja.
+        </p>
+      </div>
+
+      {expenses.length === 0 ? (
+        <p className="px-3 py-6 text-sm text-slate-500 sm:px-4">
+          No hay egresos registrados en el rango seleccionado.
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="min-w-[40rem] w-full border-collapse text-xs sm:text-sm">
+            <caption className="sr-only">Detalle de egresos por fecha, concepto y monto</caption>
+            <thead>
+              <tr className="border-b border-slate-200 text-left text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                <th scope="col" className="px-3 py-2">Fecha</th>
+                <th scope="col" className="px-3 py-2">Concepto</th>
+                <th scope="col" className="px-3 py-2 text-right">Monto</th>
+                <th scope="col" className="px-3 py-2">Observación</th>
+              </tr>
+            </thead>
+            <tbody>
+              {expenses.map((expense) => (
+                <tr key={expense.id} className="border-b border-slate-100 last:border-b-0">
+                  <td className="whitespace-nowrap px-3 py-2 font-medium text-slate-600">{formatDate(expense.dateKey)}</td>
+                  <td className="px-3 py-2 text-slate-700">{expense.concept}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-slate-800">
+                    {formatCurrency(expense.amount)}
+                  </td>
+                  <td className="px-3 py-2 text-slate-500">{expense.note ?? ""}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t border-slate-200">
+                <th scope="row" colSpan={2} className="px-3 py-2 text-left text-xs font-semibold text-slate-500">
+                  Total egresos del rango
+                </th>
+                <td className="whitespace-nowrap px-3 py-2 text-right font-bold tabular-nums text-slate-800">
+                  {formatCurrency(total)}
+                </td>
+                <td className="px-3 py-2" />
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
     </section>
   );
 }
