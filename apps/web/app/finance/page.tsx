@@ -2,13 +2,13 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { getSessionCookieName, requireActiveUserFromRequest } from "@/lib/auth";
-import { resolveCashboxRange } from "@/lib/cashbox";
-import { fetchDailyCashbox, toCashboxDateKeyForForm } from "@/lib/finance";
+import { isPaymentMethod, resolveCashboxRange } from "@/lib/cashbox";
+import { fetchDailyCashbox, fetchPaymentMovements, toCashboxDateKeyForForm } from "@/lib/finance";
 
 import { AppShell } from "../_components/app-shell/app-shell";
 import { FinanceClient } from "./finance-client";
 
-type FinanceSearchParams = { from?: string; to?: string };
+type FinanceSearchParams = { from?: string; to?: string; method?: string; search?: string };
 
 export default async function FinanceDailyCashboxPage({
   searchParams,
@@ -28,10 +28,19 @@ export default async function FinanceDailyCashboxPage({
   }
 
   const today = toCashboxDateKeyForForm(new Date());
+  const params = await searchParams;
   // Default to "Hoy" instead of the full ledger: the range drives both the DB query
   // and the in-memory day filter, so the screen never loads all history by default.
-  const range = resolveCashboxRange(await searchParams, today);
-  const rows = await fetchDailyCashbox({ from: range.from, to: range.to });
+  const range = resolveCashboxRange(params, today);
+  // The range narrows BOTH datasets; method/search narrow the movement detail only,
+  // so the daily reconciliation stays whole. Invalid method is dropped server-side.
+  const method = isPaymentMethod(params.method) ? params.method : undefined;
+  const search = params.search?.trim() || undefined;
+
+  const [rows, movements] = await Promise.all([
+    fetchDailyCashbox({ from: range.from, to: range.to }),
+    fetchPaymentMovements({ from: range.from, to: range.to, method, search }),
+  ]);
 
   return (
     <AppShell
@@ -42,7 +51,13 @@ export default async function FinanceDailyCashboxPage({
       role={user.role}
       userLabel={user.fullName ?? undefined}
     >
-      <FinanceClient rows={rows} today={today} range={range} />
+      <FinanceClient
+        rows={rows}
+        today={today}
+        range={range}
+        movements={movements}
+        movementFilters={{ method: method ?? "", search: search ?? "" }}
+      />
     </AppShell>
   );
 }

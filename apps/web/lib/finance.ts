@@ -3,11 +3,14 @@ import { Prisma } from "@prisma/client";
 import {
   buildDailyCashbox,
   filterDailyRowsByRange,
+  filterMovementsByDateRange,
+  isPaymentMethod,
   toCashboxDateKey,
   type CashboxCount,
   type CashboxExpense,
   type CashboxMovement,
   type DailyCashboxRow,
+  type PaymentMovementDetail,
 } from "@/lib/cashbox";
 import { getPrisma } from "@/lib/prisma";
 import type { ServiceResult } from "@/lib/operations";
@@ -136,6 +139,80 @@ export async function fetchDailyCashbox(options?: {
 
   const rows = buildDailyCashbox(movementRows, expenseRows, countRows);
   return range ? filterDailyRowsByRange(rows, range.from, range.to) : rows;
+}
+
+/**
+ * Escape LIKE/ILIKE wildcards so a user search term matches literally. Prisma's
+ * `contains` interpolates the value into `%…%` but does NOT escape `%`/`_`, so a
+ * term like "%" would otherwise match every row. Postgres uses backslash as the
+ * default LIKE escape character; backslash itself is escaped first.
+ */
+export function escapeLikePattern(term: string): string {
+  return term.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
+export type MovementFilters = {
+  from: string;
+  to: string;
+  method?: string;
+  search?: string;
+};
+
+/**
+ * Movement-level detail for the cashbox. Date/range bounds the rows (same Bogota
+ * timezone handling as fetchDailyCashbox); method and patient/search narrow this
+ * view ONLY — they never touch the daily reconciliation. An invalid method is
+ * ignored rather than erroring, so a stale URL never breaks the screen.
+ */
+export async function fetchPaymentMovements(
+  filters: MovementFilters,
+): Promise<PaymentMovementDetail[]> {
+  const prisma = getPrisma();
+  const bounds = cashboxQueryBounds(filters.from, filters.to);
+  const method = isPaymentMethod(filters.method) ? filters.method : undefined;
+  const search = filters.search?.trim();
+  const likeTerm = search ? escapeLikePattern(search) : undefined;
+
+  const movements = await prisma.paymentMovement.findMany({
+    where: {
+      paidAt: { gte: bounds.gte, lt: bounds.lt },
+      ...(method ? { method } : {}),
+      ...(likeTerm
+        ? {
+            patient: {
+              OR: [
+                { fullName: { contains: likeTerm, mode: "insensitive" } },
+                { documentNumber: { contains: likeTerm, mode: "insensitive" } },
+              ],
+            },
+          }
+        : {}),
+    },
+    select: {
+      id: true,
+      amount: true,
+      method: true,
+      incomeType: true,
+      bank: true,
+      note: true,
+      paidAt: true,
+      patient: { select: { fullName: true } },
+    },
+    orderBy: { paidAt: "desc" },
+  });
+
+  const rows: PaymentMovementDetail[] = movements.map((m) => ({
+    id: m.id,
+    dateKey: toCashboxDateKey(m.paidAt),
+    patientName: m.patient.fullName,
+    method: m.method,
+    incomeType: m.incomeType,
+    amount: decimalToNumber(m.amount),
+    bank: m.bank,
+    note: m.note,
+  }));
+
+  return filterMovementsByDateRange(rows, filters.from, filters.to);
 }
 
 export async function createExpense(
