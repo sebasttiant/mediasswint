@@ -5,14 +5,13 @@ import { useRouter } from "next/navigation";
 
 import {
   CASHBOX_COLORS,
-  PAYMENT_BANKS,
-  PAYMENT_INCOME_TYPES,
   PAYMENT_METHODS,
   shiftDateKey,
   type CashboxRange,
   type DailyCashboxRow,
   type PaymentMovementDetail,
 } from "@/lib/cashbox";
+import { BANK_LABELS, INCOME_TYPE_LABELS, METHOD_LABELS, formatDate } from "@/lib/finance-format";
 
 type MovementFilterState = { method: string; search: string };
 
@@ -24,19 +23,18 @@ type FinanceClientProps = {
   movementFilters: MovementFilterState;
 };
 
-const METHOD_LABELS = new Map(PAYMENT_METHODS.map((m) => [m.value, m.label]));
-const INCOME_TYPE_LABELS = new Map(PAYMENT_INCOME_TYPES.map((t) => [t.value, t.label]));
-const BANK_LABELS = new Map(PAYMENT_BANKS.map((b) => [b.value, b.label]));
+// Build the export URL carrying the active filters so the file mirrors the screen:
+// from/to drive the summary, method/search narrow the movement detail.
+function buildExportHref(range: CashboxRange, filters: MovementFilterState, format: string): string {
+  const params = new URLSearchParams({ from: range.from, to: range.to, format });
+  if (filters.method) params.set("method", filters.method);
+  if (filters.search) params.set("search", filters.search);
+  return `/api/finance/export?${params.toString()}`;
+}
 
 function formatCurrency(value: number | null): string {
   if (value === null) return "—";
   return `$${value.toLocaleString("es-CO")}`;
-}
-
-function formatDate(dateKey: string): string {
-  // dateKey is YYYY-MM-DD; render as DD/MM/YYYY without timezone surprises.
-  const [year, month, day] = dateKey.split("-");
-  return `${day}/${month}/${year}`;
 }
 
 function diferenciaClass(value: number | null): string {
@@ -183,7 +181,15 @@ function CashboxFilters({
             El rango afecta el resumen, la conciliación y el detalle diario.
           </p>
         </div>
-        {isPending && <span className="text-xs font-medium text-brand">Actualizando…</span>}
+        <div className="flex items-center gap-3">
+          {isPending && <span className="text-xs font-medium text-brand">Actualizando…</span>}
+          <a
+            href={buildExportHref(range, movementFilters, "xlsx")}
+            className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+          >
+            Exportar Excel
+          </a>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-end gap-3">
