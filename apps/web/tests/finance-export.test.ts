@@ -80,6 +80,23 @@ describe("handleCashboxExportRequest", () => {
     assert.equal(summary.getCell("A1").value, "Caja y Finanzas - Reporte");
     assert.equal(summary.getCell("B18").fill.type, "pattern");
     assert.equal(movements.getColumn(7).width, 52);
+
+    // Freeze panes: the summary keeps the title row + Fecha column pinned; the movements
+    // sheet pins through the column header (row 4) so data scrolls under live headers.
+    assert.equal(summary.views[0]?.xSplit, 1);
+    assert.equal(summary.views[0]?.ySplit, 1);
+    assert.equal(movements.views[0]?.xSplit, 1);
+    assert.equal(movements.views[0]?.ySplit, 4);
+
+    // The grouped header row ("Abonos", ...) must be immediately followed by the real
+    // header row ("1 Vez", ...) with no phantom blank row wedged between them.
+    let groupRowNumber = 0;
+    summary.eachRow((row, n) => {
+      if (row.getCell(2).value === "Abonos" && groupRowNumber === 0) groupRowNumber = n;
+    });
+    assert.ok(groupRowNumber > 0, "could not locate the grouped header row");
+    assert.equal(summary.getRow(groupRowNumber + 1).getCell(2).value, "1 Vez");
+    assert.equal(summary.getRow(groupRowNumber + 1).getCell(5).value, "Total Abonos");
   });
 
   it("returns a .pdf attachment named after the resolved range", async () => {

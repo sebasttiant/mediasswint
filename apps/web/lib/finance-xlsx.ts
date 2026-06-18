@@ -7,7 +7,7 @@ import ExcelJS from "exceljs";
 
 import { CASHBOX_COLORS, type DailyCashboxRow } from "@/lib/cashbox";
 import type { CashboxReportModel } from "@/lib/finance-report";
-import { BANK_LABELS, INCOME_TYPE_LABELS, METHOD_LABELS, formatDate } from "@/lib/finance-format";
+import { BANK_LABELS, INCOME_TYPE_LABELS, METHOD_LABELS, formatDate, formatTimestamp } from "@/lib/finance-format";
 
 const MONEY_FMT = '"$"#,##0;[Red]-"$"#,##0;"$"0';
 const WHITE_FONT: Partial<ExcelJS.Font> = { bold: true, color: { argb: "FFFFFFFF" } };
@@ -119,7 +119,10 @@ const DAILY_GROUPS: ReadonlyArray<{ label: string; from: number; to: number; fil
 
 function buildSummarySheet(wb: ExcelJS.Workbook, model: CashboxReportModel): void {
   const sheet = wb.addWorksheet("Resumen");
-  sheet.views = [{ state: "frozen", xSplit: 1, ySplit: 22 }];
+  // Freeze the title row and the Fecha column. The daily table is 20 columns wide, so a
+  // frozen date column keeps each row identifiable when scrolling right; a fixed-row split
+  // (the old ySplit:22) froze arbitrary mid-summary rows and broke as the layout shifted.
+  sheet.views = [{ state: "frozen", xSplit: 1, ySplit: 1 }];
   sheet.properties.defaultRowHeight = 22;
   sheet.columns = [
     { width: 14 },
@@ -154,7 +157,7 @@ function buildSummarySheet(wb: ExcelJS.Workbook, model: CashboxReportModel): voi
 
   const metaRows: ReadonlyArray<readonly [string, string]> = [
     ["Rango", `${formatDate(model.meta.from)} - ${formatDate(model.meta.to)}`],
-    ["Generado", new Date(model.meta.generatedAt).toLocaleString("es-CO")],
+    ["Generado", formatTimestamp(model.meta.generatedAt)],
     ["Filtro método (detalle)", model.meta.method ?? "Todos"],
     ["Filtro paciente (detalle)", model.meta.search ?? "Todos"],
   ];
@@ -216,8 +219,13 @@ function buildSummarySheet(wb: ExcelJS.Workbook, model: CashboxReportModel): voi
   sheet.addRow([]);
 
   styleSectionRow(sheet.addRow(["Resumen diario"]));
+  // Add BOTH the group row and the real header row before merging. Merging A across two
+  // rows first makes the next addRow skip the (already-occupied) header row, which is what
+  // left a phantom blank row between the grouped and real headers. Create then merge.
   const groupRow = sheet.addRow(["Fecha", ...Array.from({ length: DAILY_COLUMNS.length - 1 }, () => "")]);
-  sheet.mergeCells(groupRow.number, 1, groupRow.number + 1, 1);
+  const headerRow = sheet.addRow(DAILY_COLUMNS.map((c) => c.header));
+
+  sheet.mergeCells(groupRow.number, 1, headerRow.number, 1);
   for (const group of DAILY_GROUPS) {
     sheet.mergeCells(groupRow.number, group.from, groupRow.number, group.to);
     const cell = groupRow.getCell(group.from);
@@ -226,7 +234,6 @@ function buildSummarySheet(wb: ExcelJS.Workbook, model: CashboxReportModel): voi
   }
   styleCell(groupRow.getCell(1), { fill: "FFE2E8F0", bold: true });
 
-  const headerRow = sheet.addRow(DAILY_COLUMNS.map((c) => c.header));
   DAILY_COLUMNS.forEach((column, index) => {
     styleCell(headerRow.getCell(index + 1), { fill: column.fill ?? "FFE2E8F0", bold: true });
   });
@@ -248,7 +255,10 @@ function buildSummarySheet(wb: ExcelJS.Workbook, model: CashboxReportModel): voi
 
 function buildMovementsSheet(wb: ExcelJS.Workbook, model: CashboxReportModel): void {
   const sheet = wb.addWorksheet("Movimientos");
-  sheet.views = [{ state: "frozen", ySplit: 5 }];
+  // Freeze through the column header (row 4) and the Fecha column, so scrolling the detail
+  // keeps both the headers and the date in view. The old ySplit:5 also froze the first data
+  // row, pinning a real movement to the top.
+  sheet.views = [{ state: "frozen", xSplit: 1, ySplit: 4 }];
   sheet.properties.defaultRowHeight = 22;
   sheet.columns = [
     { width: 13 },
