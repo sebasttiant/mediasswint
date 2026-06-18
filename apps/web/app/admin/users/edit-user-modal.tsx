@@ -36,6 +36,8 @@ const INPUT_CLASS =
   "h-11 w-full rounded-xl border border-slate-200 bg-white pl-11 pr-3 text-sm text-slate-800 outline-none transition-colors placeholder:text-slate-400 focus:border-brand/40 focus:ring-2 focus:ring-brand/10 disabled:opacity-60";
 const SUBMIT_CLASS =
   "inline-flex h-10 items-center justify-center rounded-xl bg-brand px-4 text-sm font-semibold text-white transition-colors hover:bg-brand-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 disabled:cursor-not-allowed disabled:opacity-60";
+const ROLE_HELP_TEXT =
+  "Administrador total puede gestionar usuarios, auditoría y el panel administrativo. Staff operativo puede trabajar con pacientes, mediciones, operaciones y caja, sin gestionar usuarios.";
 
 /**
  * Single edit module for a user. Name, password (optional), role, and status
@@ -86,7 +88,7 @@ export function EditUserModal({
           {/* Current role/status at a glance */}
           <div className="flex items-center gap-2">
             <Badge variant={roleBadgeVariant(user.role)}>
-              {user.role === "ADMIN" ? "Administrador" : "Staff"}
+              {user.role === "ADMIN" ? "Administrador total" : "Staff operativo"}
             </Badge>
             <Badge variant={statusBadgeVariant(user.isActive)}>{user.statusLabel}</Badge>
           </div>
@@ -163,16 +165,20 @@ export function EditUserModal({
                   name="role"
                   defaultValue={user.role}
                   disabled={rolePending}
+                  aria-describedby="edit-user-role-help"
                   className={INPUT_CLASS}
                 >
-                  <option value="STAFF">Staff</option>
-                  <option value="ADMIN">Administrador</option>
+                  <option value="STAFF">Staff operativo</option>
+                  <option value="ADMIN">Administrador total</option>
                 </select>
               </div>
               <button type="submit" disabled={rolePending} className={SUBMIT_CLASS}>
                 {rolePending ? "Guardando…" : "Guardar rol"}
               </button>
             </div>
+            <p id="edit-user-role-help" className="text-xs leading-relaxed text-slate-500">
+              {ROLE_HELP_TEXT}
+            </p>
             <Feedback state={roleState} />
           </form>
 

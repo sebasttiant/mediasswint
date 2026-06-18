@@ -6,9 +6,12 @@ import { AlertTriangle, Lock, Mail, ShieldCheck, User } from "lucide-react";
 import { errorFor, type CreateUserFormState } from "./create-user-state";
 
 const ROLE_OPTIONS = [
-  { value: "STAFF", label: "Staff" },
-  { value: "ADMIN", label: "Administrador" },
+  { value: "STAFF", label: "Staff operativo" },
+  { value: "ADMIN", label: "Administrador total" },
 ] as const;
+
+const ROLE_HELP_TEXT =
+  "Administrador total puede gestionar usuarios, auditoría y el panel administrativo. Staff operativo puede trabajar con pacientes, mediciones, operaciones y caja, sin gestionar usuarios.";
 
 const FIELD_BASE =
   "h-11 w-full rounded-xl border bg-white pl-11 pr-3 text-sm text-slate-800 outline-none transition-colors placeholder:text-slate-400 focus:ring-2 disabled:opacity-60";
@@ -86,7 +89,7 @@ export function CreateUserFields({
             required
             maxLength={120}
             autoComplete="name"
-            placeholder="Ej: Ada Lovelace"
+            placeholder="Ej: María Fernanda Gómez"
             defaultValue=""
           />
         )}
@@ -100,7 +103,7 @@ export function CreateUserFields({
             type="email"
             required
             autoComplete="email"
-            placeholder="nombre@ilasesorias.com"
+            placeholder="maria.gomez@correo.com"
             defaultValue=""
           />
         )}
@@ -121,17 +124,40 @@ export function CreateUserFields({
         )}
       </IconedField>
 
-      <IconedField id="create-user-role" label="Rol de acceso" icon={ShieldCheck} error={errorFor(state, "role")}>
-        {(props) => (
-          <select {...props} name="role" defaultValue="STAFF" className={`${props.className} pr-3`}>
+      <div className="space-y-1.5">
+        <label htmlFor="create-user-role" className="block text-xs font-semibold uppercase tracking-wide text-slate-600">
+          Rol de acceso
+        </label>
+        <div className="relative">
+          <ShieldCheck
+            size={16}
+            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+            aria-hidden={true}
+          />
+          <select
+            id="create-user-role"
+            name="role"
+            defaultValue="STAFF"
+            aria-invalid={Boolean(errorFor(state, "role"))}
+            aria-describedby="create-user-role-help"
+            className={`${fieldClasses(Boolean(errorFor(state, "role")))} pr-3`}
+          >
             {ROLE_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
             ))}
           </select>
-        )}
-      </IconedField>
+        </div>
+        <p id="create-user-role-help" className="text-xs leading-relaxed text-slate-500">
+          {ROLE_HELP_TEXT}
+        </p>
+        {errorFor(state, "role") ? (
+          <p role="alert" className="text-xs font-medium text-red-600">
+            {errorFor(state, "role")}
+          </p>
+        ) : null}
+      </div>
 
       <button
         type="submit"
