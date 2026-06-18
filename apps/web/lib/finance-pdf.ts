@@ -2,11 +2,16 @@
 // CashboxReportModel and only lays out values; all accounting logic stays in
 // finance-report/buildDailyCashbox.
 
-import PDFDocument from "pdfkit";
+import { createRequire } from "node:module";
 
 import type { DailyCashboxRow } from "@/lib/cashbox";
 import type { CashboxReportModel } from "@/lib/finance-report";
 import { BANK_LABELS, INCOME_TYPE_LABELS, METHOD_LABELS, formatDate } from "@/lib/finance-format";
+
+type PDFDocumentConstructor = new (options?: PDFKit.PDFDocumentOptions) => PDFKit.PDFDocument;
+
+const require = createRequire(import.meta.url);
+const PDFDocument = require("pdfkit/js/pdfkit.standalone.js") as PDFDocumentConstructor;
 
 const MONEY_FORMATTER = new Intl.NumberFormat("es-CO", {
   style: "currency",

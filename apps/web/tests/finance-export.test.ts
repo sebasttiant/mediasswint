@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import ExcelJS from "exceljs";
 
 import { handleCashboxExportRequest, type ExportDeps } from "@/app/api/finance/export/route";
 import { buildDailyCashbox, type DailyCashboxRow, type PaymentMovementDetail } from "@/lib/cashbox";
@@ -67,6 +68,18 @@ describe("handleCashboxExportRequest", () => {
     // .xlsx is a ZIP container; it must start with the "PK" local file header.
     assert.equal(bytes[0], 0x50);
     assert.equal(bytes[1], 0x4b);
+
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(Buffer.from(bytes) as unknown as Parameters<typeof wb.xlsx.load>[0]);
+    const summary = wb.getWorksheet("Resumen");
+    const movements = wb.getWorksheet("Movimientos");
+    assert.ok(summary);
+    assert.ok(movements);
+    assert.equal(summary.views[0]?.state, "frozen");
+    assert.equal(movements.views[0]?.state, "frozen");
+    assert.equal(summary.getCell("A1").value, "Caja y Finanzas - Reporte");
+    assert.equal(summary.getCell("B18").fill.type, "pattern");
+    assert.equal(movements.getColumn(7).width, 52);
   });
 
   it("returns a .pdf attachment named after the resolved range", async () => {
