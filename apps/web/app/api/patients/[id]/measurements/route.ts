@@ -55,6 +55,11 @@ export async function handlePostMeasurementRequest(
     return NextResponse.json({ errors: parsed.errors }, { status: 400 });
   }
 
+  const metadataEntries: Record<string, unknown> = {};
+  if (parsed.value.patientSex) metadataEntries.patientSex = parsed.value.patientSex;
+  if (parsed.value.garmentSnapshot) metadataEntries.garmentSnapshot = parsed.value.garmentSnapshot;
+  const metadata = Object.keys(metadataEntries).length > 0 ? metadataEntries : null;
+
   const result = await createDraftMeasurement(
     {
       patientId: id,
@@ -65,7 +70,7 @@ export async function handlePostMeasurementRequest(
       garmentType: parsed.value.garmentType,
       compressionClass: parsed.value.compressionClass,
       productFlags: parsed.value.productFlags,
-      metadata: parsed.value.patientSex ? { patientSex: parsed.value.patientSex } : null,
+      metadata,
     },
     deps.repository,
   );

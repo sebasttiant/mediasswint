@@ -5,6 +5,14 @@ import { useRouter } from "next/navigation";
 import { User } from "lucide-react";
 
 import { normalizePatientSex, resolveBodyFigureSex } from "@/lib/body-figure-sex";
+import {
+  GARMENT_CATALOG,
+  getGarmentSnapshot,
+  isGarmentSelectionValid,
+  resolveGarmentDisplay,
+  resolveGarmentSelectValue,
+  resolveLegacyGarmentSelectOption,
+} from "@/lib/garment-catalog";
 import type { TemplateSnapshot } from "@/lib/measurements";
 import { toClinicDatetimeLocal } from "@/lib/datetime";
 
@@ -40,6 +48,7 @@ type NewMeasurementClientProps = {
     diagnosis: string | null;
     notes: string | null;
     patientSex?: string | null;
+    metadata?: Record<string, unknown> | null;
   };
 };
 
@@ -81,7 +90,9 @@ function countTotalZones(templateSnapshot: TemplateSnapshot): number {
 export default function NewMeasurementClient({ patientId, patientName, patientSex, initialDraft }: NewMeasurementClientProps) {
   const router = useRouter();
   const [measuredAt, setMeasuredAt] = useState(() => toDatetimeLocalValue(initialDraft?.measuredAt ?? new Date()));
-  const [garmentType, setGarmentType] = useState(initialDraft?.garmentType ?? "");
+  const [garmentType, setGarmentType] = useState(() =>
+    resolveGarmentSelectValue(initialDraft?.garmentType, initialDraft?.metadata),
+  );
   const [compressionClass, setCompressionClass] = useState(initialDraft?.compressionClass ?? "");
   const [diagnosis, setDiagnosis] = useState(initialDraft?.diagnosis ?? "");
   const [notes, setNotes] = useState(initialDraft?.notes ?? "");
@@ -104,8 +115,19 @@ export default function NewMeasurementClient({ patientId, patientName, patientSe
 
   const totalCount = draft ? countTotalZones(draft.templateSnapshot) : 0;
 
+  // Visible garment context while capturing values (incl. edit/reload), so a
+  // selected catalog garment or preserved legacy free-text is never hidden.
+  const garmentDisplay = resolveGarmentDisplay(garmentType, initialDraft?.metadata);
+
   async function createDraft(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (!isGarmentSelectionValid(garmentType)) {
+      setError("Seleccioná un tipo de prenda para iniciar la medición.");
+      setSaveStatus("error");
+      return;
+    }
+
     setSaveStatus("saving");
     setError(null);
 
@@ -121,6 +143,9 @@ export default function NewMeasurementClient({ patientId, patientName, patientSe
           notes,
           productFlags: null,
           patientSex: normalizePatientSex(patientSex),
+          metadata: {
+            garmentSnapshot: getGarmentSnapshot(garmentType) ?? undefined,
+          },
         }),
       });
 
@@ -276,14 +301,41 @@ export default function NewMeasurementClient({ patientId, patientName, patientSe
 
                   <label className="flex flex-col gap-1.5">
                     <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-                      Tipo de prenda
+                      Tipo de prenda *
                     </span>
-                    <input
+                    <select
+                      required
                       value={garmentType}
                       onChange={(event) => setGarmentType(event.target.value)}
-                      placeholder="Ej: Media hasta rodilla"
                       className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
-                    />
+                    >
+                      <option value="">— Seleccionar prenda —</option>
+                      {(() => {
+                        const legacyOption = resolveLegacyGarmentSelectOption(garmentType);
+                        return legacyOption ? (
+                          <option value={legacyOption.value}>{legacyOption.label}</option>
+                        ) : null;
+                      })()}
+                      {Object.values(
+                        GARMENT_CATALOG.reduce<Record<string, typeof GARMENT_CATALOG[number][]>>(
+                          (groups, option) => {
+                            const list = groups[option.family] ?? [];
+                            list.push(option);
+                            groups[option.family] = list;
+                            return groups;
+                          },
+                          {},
+                        ),
+                      ).map((groupOptions) => (
+                        <optgroup key={groupOptions[0]!.family} label={groupOptions[0]!.family}>
+                          {groupOptions.map((option) => (
+                            <option key={option.reference} value={option.reference}>
+                              {option.reference} — {option.label}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
                   </label>
 
                   <label className="flex flex-col gap-1.5">
@@ -356,6 +408,12 @@ export default function NewMeasurementClient({ patientId, patientName, patientSe
       {error ? (
         <div className="px-4 py-2 bg-red-50 border-b border-red-200 text-red-700 text-sm text-center">
           {error}
+        </div>
+      ) : null}
+
+      {garmentDisplay ? (
+        <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 text-slate-700 text-sm text-center">
+          Prenda: <span className="font-semibold">{garmentDisplay}</span>
         </div>
       ) : null}
 

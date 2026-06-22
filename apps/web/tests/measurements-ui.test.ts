@@ -11,6 +11,13 @@ import {
   measurementSnapshotRequiresFaceGuide,
   type MeasurementUiField,
 } from "../app/patients/[id]/measurements/measurements-ui";
+import {
+  GARMENT_FIGURE_KEY,
+  isGarmentSelectionValid,
+  resolveGarmentDisplay,
+  resolveGarmentSelectValue,
+  resolveLegacyGarmentSelectOption,
+} from "../lib/garment-catalog";
 
 function buildSnapshot(): TemplateSnapshot {
   const template = buildCompressionTemplate();
@@ -385,6 +392,113 @@ describe("capture page stays outside AppShell", () => {
     assert.ok(
       !/<\s*AppShell\b/.test(captureSource),
       "capture route must not wrap its render in <AppShell>",
+    );
+  });
+});
+
+describe("resolveGarmentSelectValue — garment selector reload adapter", () => {
+  it("returns the catalog reference when a valid snapshot is present in metadata", () => {
+    const metadata = {
+      garmentSnapshot: {
+        reference: "MR",
+        label: "Media a la Rodilla Par Adulto",
+        family: "Lower limb",
+        figureKey: GARMENT_FIGURE_KEY.LOWER_LIMB,
+      },
+    };
+
+    assert.equal(resolveGarmentSelectValue("MR", metadata), "MR");
+  });
+
+  it("returns the garmentType reference when no snapshot is present but the reference is in the catalog", () => {
+    assert.equal(resolveGarmentSelectValue("MRD", null), "MRD");
+  });
+
+  it("returns the legacy free-text garmentType when the value is not a known catalog reference", () => {
+    assert.equal(resolveGarmentSelectValue("Media hasta rodilla", null), "Media hasta rodilla");
+  });
+
+  it("returns empty string when garmentType is null and no snapshot is present", () => {
+    assert.equal(resolveGarmentSelectValue(null, null), "");
+  });
+
+  it("snapshot reference wins over a different garmentType string", () => {
+    const metadata = {
+      garmentSnapshot: {
+        reference: "MRD",
+        label: "Media a la Rodilla Derecha Adulto",
+        family: "Lower limb",
+        figureKey: GARMENT_FIGURE_KEY.LOWER_LIMB,
+      },
+    };
+
+    assert.equal(resolveGarmentSelectValue("old-legacy-text", metadata), "MRD");
+  });
+});
+
+describe("resolveLegacyGarmentSelectOption — legacy free-text fallback option", () => {
+  it("returns a selectable fallback option for legacy free-text not in the catalog", () => {
+    assert.deepEqual(resolveLegacyGarmentSelectOption("Media hasta rodilla"), {
+      value: "Media hasta rodilla",
+      label: "Media hasta rodilla (texto libre anterior)",
+    });
+  });
+
+  it("returns null for a known catalog reference (no fallback needed)", () => {
+    assert.equal(resolveLegacyGarmentSelectOption("MR"), null);
+  });
+
+  it("returns null when the value is empty, whitespace, or null", () => {
+    assert.equal(resolveLegacyGarmentSelectOption(""), null);
+    assert.equal(resolveLegacyGarmentSelectOption("   "), null);
+    assert.equal(resolveLegacyGarmentSelectOption(null), null);
+    assert.equal(resolveLegacyGarmentSelectOption(undefined), null);
+  });
+
+  it("trims the legacy value before building the fallback option", () => {
+    assert.deepEqual(resolveLegacyGarmentSelectOption("  Funda vieja  "), {
+      value: "Funda vieja",
+      label: "Funda vieja (texto libre anterior)",
+    });
+  });
+});
+
+describe("isGarmentSelectionValid — required garment guard on create", () => {
+  it("accepts a known catalog reference", () => {
+    assert.equal(isGarmentSelectionValid("MR"), true);
+  });
+
+  it("accepts a non-empty legacy free-text value (edit flow)", () => {
+    assert.equal(isGarmentSelectionValid("Media hasta rodilla"), true);
+  });
+
+  it("rejects empty, whitespace-only, null, or undefined", () => {
+    assert.equal(isGarmentSelectionValid(""), false);
+    assert.equal(isGarmentSelectionValid("   "), false);
+    assert.equal(isGarmentSelectionValid(null), false);
+    assert.equal(isGarmentSelectionValid(undefined), false);
+  });
+});
+
+describe("garment display contract for edit/reload (visible representation)", () => {
+  it("derives the legacy free-text as visible garment text on reload", () => {
+    // GIVEN a legacy measurement with free-text garmentType and no snapshot
+    // THEN the UI can derive a visible label (the legacy text itself)
+    assert.equal(resolveGarmentDisplay("Media hasta rodilla", null), "Media hasta rodilla");
+  });
+
+  it("prefers the snapshot label/reference over the stored garmentType on reload", () => {
+    const metadata = {
+      garmentSnapshot: {
+        reference: "MR",
+        label: "Media a la Rodilla Par Adulto",
+        family: "Lower limb",
+        figureKey: GARMENT_FIGURE_KEY.LOWER_LIMB,
+      },
+    };
+    assert.equal(
+      resolveGarmentDisplay("legacy-noise", metadata),
+      "Media a la Rodilla Par Adulto (MR)",
     );
   });
 });

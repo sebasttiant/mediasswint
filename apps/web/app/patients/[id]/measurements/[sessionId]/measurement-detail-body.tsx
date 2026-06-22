@@ -4,6 +4,7 @@ import { ArrowLeft, Pencil } from "lucide-react";
 
 import { BodyHighlight } from "@/app/_components/body-highlight/body-highlight";
 import { resolveMeasurementBodyFigureSex } from "@/lib/body-figure-sex";
+import { resolveGarmentDisplay } from "@/lib/garment-catalog";
 import type { MeasurementSessionDetail } from "@/lib/measurements";
 import { formatClinicDateTime } from "@/lib/datetime";
 
@@ -127,7 +128,12 @@ export default function MeasurementDetailBody({
         <div className="px-5 py-5 sm:px-6">
           <dl className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
             <ClinicalField label="Fecha" value={formatDateTime(measurement.measuredAt)} />
-            <ClinicalField label="Prenda" value={measurement.garmentType ?? "—"} />
+            <ClinicalField
+              label="Prenda"
+              value={
+                resolveGarmentDisplay(measurement.garmentType, measurement.metadata) || "—"
+              }
+            />
             <ClinicalField label="Clase" value={measurement.compressionClass ?? "—"} />
             <ClinicalField label="Diagnóstico" value={measurement.diagnosis ?? "—"} />
             <ClinicalField label="Notas" value={measurement.notes ?? "—"} />

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { getSessionCookieName, type AuthUser } from "../lib/auth";
+import { GARMENT_FIGURE_KEY } from "../lib/garment-catalog";
 import {
   handleListMeasurementsRequest,
   handlePostMeasurementRequest,
@@ -682,5 +683,269 @@ describe("POST /api/patients/[id]/measurements/[sessionId]/reopen", () => {
     );
 
     assert.equal(response.status, 404);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 2: garmentSnapshot persistence contract — route integration
+// ---------------------------------------------------------------------------
+
+describe("POST /api/patients/[id]/measurements — garmentSnapshot metadata", () => {
+  const VALID_SNAPSHOT = {
+    reference: "MR",
+    label: "Media a la Rodilla Par Adulto",
+    family: "Lower limb",
+    figureKey: GARMENT_FIGURE_KEY.LOWER_LIMB,
+  };
+
+  it("persists garmentSnapshot in session metadata when provided", async () => {
+    const repo = buildInMemoryRepository();
+    const deps = collectionDeps({ repository: repo.repository });
+    const response = await handlePostMeasurementRequest(
+      postRequest({
+        measuredAt: "2026-04-28T10:00:00Z",
+        patientSex: "FEMALE",
+        metadata: { garmentSnapshot: VALID_SNAPSHOT },
+      }),
+      { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
+      deps,
+    );
+    assert.equal(response.status, 201);
+    const json = (await response.json()) as { id: string };
+    const stored = repo.sessions.get(json.id);
+    assert.deepEqual((stored?.metadata as Record<string, unknown>)?.garmentSnapshot, VALID_SNAPSHOT);
+  });
+
+  it("always persists patientSex in session metadata even without garmentSnapshot", async () => {
+    const repo = buildInMemoryRepository();
+    const deps = collectionDeps({ repository: repo.repository });
+    const response = await handlePostMeasurementRequest(
+      postRequest({
+        measuredAt: "2026-04-28T10:00:00Z",
+        patientSex: "MALE",
+      }),
+      { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
+      deps,
+    );
+    assert.equal(response.status, 201);
+    const json = (await response.json()) as { id: string };
+    const stored = repo.sessions.get(json.id);
+    assert.equal((stored?.metadata as Record<string, unknown>)?.patientSex, "MALE");
+  });
+
+  it("persists both patientSex and garmentSnapshot together", async () => {
+    const repo = buildInMemoryRepository();
+    const deps = collectionDeps({ repository: repo.repository });
+    const response = await handlePostMeasurementRequest(
+      postRequest({
+        measuredAt: "2026-04-28T10:00:00Z",
+        patientSex: "FEMALE",
+        metadata: { garmentSnapshot: VALID_SNAPSHOT },
+      }),
+      { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
+      deps,
+    );
+    assert.equal(response.status, 201);
+    const json = (await response.json()) as { id: string };
+    const stored = repo.sessions.get(json.id);
+    const meta = stored?.metadata as Record<string, unknown> | null;
+    assert.equal(meta?.patientSex, "FEMALE");
+    assert.deepEqual(meta?.garmentSnapshot, VALID_SNAPSHOT);
+  });
+
+  it("stores null metadata when neither patientSex nor garmentSnapshot is provided", async () => {
+    const repo = buildInMemoryRepository();
+    const deps = collectionDeps({ repository: repo.repository });
+    const response = await handlePostMeasurementRequest(
+      postRequest({ measuredAt: "2026-04-28T10:00:00Z" }),
+      { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
+      deps,
+    );
+    assert.equal(response.status, 201);
+    const json = (await response.json()) as { id: string };
+    const stored = repo.sessions.get(json.id);
+    assert.equal(stored?.metadata, null);
+  });
+
+  it("ignores a malformed garmentSnapshot without failing the request", async () => {
+    const repo = buildInMemoryRepository();
+    const deps = collectionDeps({ repository: repo.repository });
+    const response = await handlePostMeasurementRequest(
+      postRequest({
+        measuredAt: "2026-04-28T10:00:00Z",
+        patientSex: "MALE",
+        metadata: { garmentSnapshot: { bad: "shape" } },
+      }),
+      { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
+      deps,
+    );
+    assert.equal(response.status, 201);
+    const json = (await response.json()) as { id: string };
+    const stored = repo.sessions.get(json.id);
+    // patientSex must still be stored; invalid snapshot is dropped
+    assert.equal((stored?.metadata as Record<string, unknown>)?.patientSex, "MALE");
+    assert.equal((stored?.metadata as Record<string, unknown>)?.garmentSnapshot, undefined);
+  });
+});
+
+describe("PATCH /api/patients/[id]/measurements/[sessionId] — garmentSnapshot metadata", () => {
+  const VALID_SNAPSHOT = {
+    reference: "BP",
+    label: "Bermuda Ambas Piernas Adulto",
+    family: "Lower limb",
+    figureKey: GARMENT_FIGURE_KEY.LOWER_LIMB,
+  };
+
+  it("forwards garmentSnapshot into session metadata on PATCH", async () => {
+    const repo = buildInMemoryRepository();
+    const created = await repo.repository.createDraft({
+      patientId: "pat-1",
+      templateId: "tpl-1",
+      measuredAt: new Date("2026-04-29T10:00:00Z"),
+      notes: null,
+      diagnosis: null,
+      garmentType: null,
+      compressionClass: null,
+      productFlags: null,
+      metadata: { patientSex: "FEMALE" },
+      templateSnapshot: buildSnapshot(),
+    });
+    const deps = sessionDeps({ repository: repo.repository });
+    const response = await handlePatchMeasurementRequest(
+      patchRequest(`/api/patients/pat-1/measurements/${created.id}`, {
+        valuesByKey: { legRight1: 24.5 },
+        metadata: { garmentSnapshot: VALID_SNAPSHOT },
+      }),
+      { params: Promise.resolve({ id: "pat-1", sessionId: created.id }) },
+      staffUser,
+      deps,
+    );
+    assert.equal(response.status, 200);
+    const stored = repo.sessions.get(created.id);
+    assert.deepEqual((stored?.metadata as Record<string, unknown>)?.garmentSnapshot, VALID_SNAPSHOT);
+  });
+
+  it("preserves existing patientSex in metadata when PATCH provides garmentSnapshot", async () => {
+    const repo = buildInMemoryRepository();
+    const created = await repo.repository.createDraft({
+      patientId: "pat-1",
+      templateId: "tpl-1",
+      measuredAt: new Date("2026-04-29T10:00:00Z"),
+      notes: null,
+      diagnosis: null,
+      garmentType: null,
+      compressionClass: null,
+      productFlags: null,
+      metadata: { patientSex: "MALE" },
+      templateSnapshot: buildSnapshot(),
+    });
+    const deps = sessionDeps({ repository: repo.repository });
+    await handlePatchMeasurementRequest(
+      patchRequest(`/api/patients/pat-1/measurements/${created.id}`, {
+        valuesByKey: { legRight1: 24.5 },
+        metadata: { garmentSnapshot: VALID_SNAPSHOT },
+      }),
+      { params: Promise.resolve({ id: "pat-1", sessionId: created.id }) },
+      staffUser,
+      deps,
+    );
+    const stored = repo.sessions.get(created.id);
+    assert.equal((stored?.metadata as Record<string, unknown>)?.patientSex, "MALE");
+  });
+
+  it("does not touch metadata when PATCH provides no metadata field", async () => {
+    const repo = buildInMemoryRepository();
+    const created = await repo.repository.createDraft({
+      patientId: "pat-1",
+      templateId: "tpl-1",
+      measuredAt: new Date("2026-04-29T10:00:00Z"),
+      notes: null,
+      diagnosis: null,
+      garmentType: null,
+      compressionClass: null,
+      productFlags: null,
+      metadata: { patientSex: "FEMALE" },
+      templateSnapshot: buildSnapshot(),
+    });
+    const deps = sessionDeps({ repository: repo.repository });
+    await handlePatchMeasurementRequest(
+      patchRequest(`/api/patients/pat-1/measurements/${created.id}`, {
+        valuesByKey: { legRight1: 24.5 },
+      }),
+      { params: Promise.resolve({ id: "pat-1", sessionId: created.id }) },
+      staffUser,
+      deps,
+    );
+    const stored = repo.sessions.get(created.id);
+    // no metadata key in request → session metadata unchanged
+    assert.equal((stored?.metadata as Record<string, unknown>)?.patientSex, "FEMALE");
+  });
+
+  it("ignores a malformed garmentSnapshot on PATCH without failing the request", async () => {
+    const repo = buildInMemoryRepository();
+    const created = await repo.repository.createDraft({
+      patientId: "pat-1",
+      templateId: "tpl-1",
+      measuredAt: new Date("2026-04-29T10:00:00Z"),
+      notes: null,
+      diagnosis: null,
+      garmentType: null,
+      compressionClass: null,
+      productFlags: null,
+      metadata: { patientSex: "FEMALE" },
+      templateSnapshot: buildSnapshot(),
+    });
+    const deps = sessionDeps({ repository: repo.repository });
+    const response = await handlePatchMeasurementRequest(
+      patchRequest(`/api/patients/pat-1/measurements/${created.id}`, {
+        valuesByKey: { legRight1: 24.5 },
+        metadata: { garmentSnapshot: "bad-value" },
+      }),
+      { params: Promise.resolve({ id: "pat-1", sessionId: created.id }) },
+      staffUser,
+      deps,
+    );
+    assert.equal(response.status, 200);
+    const stored = repo.sessions.get(created.id);
+    // patientSex preserved; invalid snapshot not written
+    assert.equal((stored?.metadata as Record<string, unknown>)?.patientSex, "FEMALE");
+  });
+
+  it("preserves an existing valid garmentSnapshot when PATCH sends a malformed one", async () => {
+    const repo = buildInMemoryRepository();
+    const created = await repo.repository.createDraft({
+      patientId: "pat-1",
+      templateId: "tpl-1",
+      measuredAt: new Date("2026-04-29T10:00:00Z"),
+      notes: null,
+      diagnosis: null,
+      garmentType: null,
+      compressionClass: null,
+      productFlags: null,
+      metadata: { patientSex: "MALE", garmentSnapshot: VALID_SNAPSHOT },
+      templateSnapshot: buildSnapshot(),
+    });
+    const deps = sessionDeps({ repository: repo.repository });
+    const response = await handlePatchMeasurementRequest(
+      patchRequest(`/api/patients/pat-1/measurements/${created.id}`, {
+        valuesByKey: { legRight1: 24.5 },
+        metadata: { garmentSnapshot: { bad: "shape" } },
+      }),
+      { params: Promise.resolve({ id: "pat-1", sessionId: created.id }) },
+      staffUser,
+      deps,
+    );
+    assert.equal(response.status, 200);
+    const stored = repo.sessions.get(created.id);
+    const meta = stored?.metadata as Record<string, unknown> | null;
+    // malformed snapshot is ignored → existing valid snapshot stays intact
+    assert.deepEqual(meta?.garmentSnapshot, VALID_SNAPSHOT);
+    // patientSex preserved
+    assert.equal(meta?.patientSex, "MALE");
   });
 });
