@@ -68,16 +68,17 @@ enum PatientSex {
 }
 
 model Patient {
-  id             String                @id @default(cuid())
-  documentType   String?
-  documentNumber String?
-  fullName       String
-  sex            PatientSex?
-  birthDate      DateTime?
-  phone          String?
-  email          String?
-  address        String?
-  notes          String?
+  id              String                @id @default(cuid())
+  documentType    String?
+  documentNumber  String?
+  fullName        String
+  sex             PatientSex?
+  birthDate       DateTime?
+  phone           String?
+  email           String?
+  address         String?
+  healthInsurance String?
+  notes           String?
   sessions       MeasurementSession[]
   operations     CommercialOperation[]
   payments       PaymentMovement[]

@@ -246,6 +246,7 @@ function buildMeasurementPatient(overrides: Partial<Patient> = {}): Patient {
     documentNumber: null,
     birthDate: null,
     address: null,
+    healthInsurance: null,
     phone: null,
     email: null,
     notes: null,

@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { ageToApproxBirthDate, formatISODate } from "../lib/patient-age";
-import { patientToFormState, type PatientDetail } from "../app/patients/[id]/patient-detail-helpers";
+import {
+  patientToFormState,
+  resolveHealthInsuranceFormValues,
+  type PatientDetail,
+} from "../app/patients/[id]/patient-detail-helpers";
+import { COLOMBIA_HEALTH_INSURERS, HEALTH_INSURANCE_OTHER } from "../lib/health-insurance-catalog";
 
 // ---------------------------------------------------------------------------
 // Age/DOB disambiguation contract
@@ -79,6 +84,7 @@ describe("patientToFormState", () => {
       documentNumber: "12345",
       birthDate: "1990-03-15",
       address: null,
+      healthInsurance: null,
       phone: null,
       email: null,
       notes: null,
@@ -125,5 +131,48 @@ describe("patientToFormState", () => {
     const patient = makePatient({ sex: "OTHER" });
     const state = patientToFormState(patient);
     assert.equal(state.sex, "OTHER");
+  });
+
+  it("sets healthInsurance to empty string and healthInsuranceCustom to empty when healthInsurance is null", () => {
+    const patient = makePatient({ healthInsurance: null });
+    const state = patientToFormState(patient);
+    assert.equal(state.healthInsurance, "");
+    assert.equal(state.healthInsuranceCustom, "");
+  });
+
+  it("sets healthInsurance to the known EPS when stored value is in the catalog", () => {
+    const known = COLOMBIA_HEALTH_INSURERS[0]!;
+    const patient = makePatient({ healthInsurance: known });
+    const state = patientToFormState(patient);
+    assert.equal(state.healthInsurance, known);
+    assert.equal(state.healthInsuranceCustom, "");
+  });
+
+  it("sets healthInsurance to HEALTH_INSURANCE_OTHER and prefills custom text for unknown EPS", () => {
+    const patient = makePatient({ healthInsurance: "EPS Desconocida S.A." });
+    const state = patientToFormState(patient);
+    assert.equal(state.healthInsurance, HEALTH_INSURANCE_OTHER);
+    assert.equal(state.healthInsuranceCustom, "EPS Desconocida S.A.");
+  });
+});
+
+describe("resolveHealthInsuranceFormValues", () => {
+  it("returns empty strings for null input", () => {
+    const result = resolveHealthInsuranceFormValues(null);
+    assert.equal(result.healthInsurance, "");
+    assert.equal(result.healthInsuranceCustom, "");
+  });
+
+  it("returns the known EPS as the select value when it is in the catalog", () => {
+    const eps = COLOMBIA_HEALTH_INSURERS[0]!;
+    const result = resolveHealthInsuranceFormValues(eps);
+    assert.equal(result.healthInsurance, eps);
+    assert.equal(result.healthInsuranceCustom, "");
+  });
+
+  it("returns HEALTH_INSURANCE_OTHER and the custom text when value is not in catalog", () => {
+    const result = resolveHealthInsuranceFormValues("EPS Personalizada");
+    assert.equal(result.healthInsurance, HEALTH_INSURANCE_OTHER);
+    assert.equal(result.healthInsuranceCustom, "EPS Personalizada");
   });
 });

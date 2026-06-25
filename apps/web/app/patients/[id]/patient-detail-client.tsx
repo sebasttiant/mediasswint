@@ -31,6 +31,7 @@ import {
   type PatientMeasurementSummary,
   type PatientTimelineItem,
 } from "./patient-detail-helpers";
+import { COLOMBIA_HEALTH_INSURERS, HEALTH_INSURANCE_OTHER } from "@/lib/health-insurance-catalog";
 import {
   buildCommercialSummary,
   buildOperationFinancials,
@@ -185,17 +186,26 @@ export default function PatientDetailClient({
     try {
       // Apply age/DOB disambiguation: if user deliberately edited Edad (ageTouched),
       // compute an approximate birthDate from the age. Otherwise send the exact stored value.
-      // Strip UI-only keys (ageInput, ageTouched) so rejectUnknownFields doesn't 400.
-      const { ageInput, ageTouched, ...rest } = form;
+      // Strip UI-only keys (ageInput, ageTouched, healthInsuranceCustom) so rejectUnknownFields
+      // doesn't 400. Resolve the final healthInsurance value from the select + free-text.
+      const { ageInput, ageTouched, healthInsuranceCustom, ...rest } = form;
       const outgoingBirthDate =
         ageTouched && ageInput.trim() !== "" && !Number.isNaN(Number(ageInput))
           ? formatISODate(ageToApproxBirthDate(Number(ageInput)))
           : rest.birthDate;
+      const outgoingHealthInsurance =
+        rest.healthInsurance === HEALTH_INSURANCE_OTHER
+          ? healthInsuranceCustom.trim() || null
+          : rest.healthInsurance || null;
 
       const response = await fetch(`/api/patients/${encodeURIComponent(initialPatient.id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...rest, birthDate: outgoingBirthDate }),
+        body: JSON.stringify({
+          ...rest,
+          birthDate: outgoingBirthDate,
+          healthInsurance: outgoingHealthInsurance,
+        }),
       });
 
       if (!response.ok) {
@@ -478,13 +488,44 @@ export default function PatientDetailClient({
             />
           </label>
 
-          {/* 5. Email */}
+          {/* 5. Email | Entidad de salud */}
           <label>
             Email
             <input
               value={form.email}
               onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
             />
+          </label>
+          <label>
+            Entidad de salud
+            <select
+              value={form.healthInsurance}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  healthInsurance: event.target.value,
+                  healthInsuranceCustom:
+                    event.target.value !== HEALTH_INSURANCE_OTHER ? "" : current.healthInsuranceCustom,
+                }))
+              }
+            >
+              <option value="">Seleccionar…</option>
+              {COLOMBIA_HEALTH_INSURERS.map((eps) => (
+                <option key={eps} value={eps}>{eps}</option>
+              ))}
+              <option value={HEALTH_INSURANCE_OTHER}>Otra…</option>
+            </select>
+            {form.healthInsurance === HEALTH_INSURANCE_OTHER && (
+              <input
+                style={{ marginTop: "0.35rem" }}
+                placeholder="Nombre de la entidad"
+                value={form.healthInsuranceCustom}
+                maxLength={120}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, healthInsuranceCustom: event.target.value }))
+                }
+              />
+            )}
           </label>
 
           {/* 6. Dirección — full width */}

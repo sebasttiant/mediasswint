@@ -43,6 +43,7 @@ describe("patient detail client helpers", () => {
       documentNumber: "123",
       birthDate: "1815-12-10T00:00:00.000Z",
       address: null,
+      healthInsurance: null,
       phone: null,
       email: "ada@example.com",
       notes: null,
@@ -59,6 +60,8 @@ describe("patient detail client helpers", () => {
       ageInput: formState.ageInput, // computed from birthDate, value depends on current date
       ageTouched: false,
       address: "",
+      healthInsurance: "",
+      healthInsuranceCustom: "",
       phone: "",
       email: "ada@example.com",
       notes: "",
