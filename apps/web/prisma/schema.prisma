@@ -64,6 +64,7 @@ enum MeasurementSessionStatus {
 enum PatientSex {
   FEMALE
   MALE
+  OTHER
 }
 
 model Patient {
@@ -75,6 +76,7 @@ model Patient {
   birthDate      DateTime?
   phone          String?
   email          String?
+  address        String?
   notes          String?
   sessions       MeasurementSession[]
   operations     CommercialOperation[]
