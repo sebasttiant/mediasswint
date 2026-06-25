@@ -88,6 +88,15 @@ export async function handlePatchMeasurementRequest(
     return notFound("Measurement");
   }
 
+  // Only rewrite metadata when the PATCH carried a VALID garmentSnapshot.
+  // A malformed snapshot (parsed to null) is ignored so an existing snapshot and
+  // patientSex stay intact; an absent metadata field (undefined) is also no-touch.
+  let mergedMetadata: Record<string, unknown> | undefined = undefined;
+  if (parsed.value.garmentSnapshot != null) {
+    const existing = detail.value.metadata ?? {};
+    mergedMetadata = { ...existing, garmentSnapshot: parsed.value.garmentSnapshot };
+  }
+
   const updated = await updateMeasurementValues(
     sessionId,
     {
@@ -98,6 +107,7 @@ export async function handlePatchMeasurementRequest(
       garmentType: parsed.value.garmentType,
       compressionClass: parsed.value.compressionClass,
       productFlags: parsed.value.productFlags,
+      ...(mergedMetadata !== undefined ? { metadata: mergedMetadata } : {}),
     },
     deps.repository,
   );

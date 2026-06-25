@@ -6,6 +6,7 @@ import {
   parseListMeasurementsQuery,
   parseUpdateMeasurementValuesInput,
 } from "../lib/measurements-input";
+import { GARMENT_FIGURE_KEY } from "../lib/garment-catalog";
 
 describe("parseCreateMeasurementInput — body shape", () => {
   it("rejects null body", () => {
@@ -233,5 +234,163 @@ describe("parseListMeasurementsQuery", () => {
     assert.equal(result.ok, true);
     if (!result.ok) return;
     assert.equal(result.value.limit, 50);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 2: garmentSnapshot persistence contract
+// ---------------------------------------------------------------------------
+
+describe("parseCreateMeasurementInput — garmentSnapshot in metadata", () => {
+  const BASE = { measuredAt: "2026-04-28T10:00:00Z" };
+
+  const VALID_SNAPSHOT = {
+    reference: "MR",
+    label: "Media a la Rodilla Par Adulto",
+    family: "Lower limb",
+    figureKey: GARMENT_FIGURE_KEY.LOWER_LIMB,
+  };
+
+  it("returns garmentSnapshot: null when metadata is absent", () => {
+    const result = parseCreateMeasurementInput({ ...BASE });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.value.garmentSnapshot, null);
+  });
+
+  it("parses a valid garmentSnapshot from metadata", () => {
+    const result = parseCreateMeasurementInput({
+      ...BASE,
+      metadata: { garmentSnapshot: VALID_SNAPSHOT },
+    });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.deepEqual(result.value.garmentSnapshot, VALID_SNAPSHOT);
+  });
+
+  it("ignores a malformed garmentSnapshot (missing figureKey) without failing", () => {
+    const result = parseCreateMeasurementInput({
+      ...BASE,
+      metadata: { garmentSnapshot: { reference: "MR", label: "Media", family: "Lower limb" } },
+    });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.value.garmentSnapshot, null);
+  });
+
+  it("ignores a garmentSnapshot that is not an object without failing", () => {
+    const result = parseCreateMeasurementInput({
+      ...BASE,
+      metadata: { garmentSnapshot: "not-an-object" },
+    });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.value.garmentSnapshot, null);
+  });
+
+  it("ignores a garmentSnapshot with invalid figureKey value without failing", () => {
+    const result = parseCreateMeasurementInput({
+      ...BASE,
+      metadata: {
+        garmentSnapshot: {
+          reference: "MR",
+          label: "Media",
+          family: "Lower limb",
+          figureKey: "not-a-valid-figure-key",
+        },
+      },
+    });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.value.garmentSnapshot, null);
+  });
+
+  it("preserves patientSex alongside a valid garmentSnapshot", () => {
+    const result = parseCreateMeasurementInput({
+      ...BASE,
+      patientSex: "FEMALE",
+      metadata: { garmentSnapshot: VALID_SNAPSHOT },
+    });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.value.patientSex, "FEMALE");
+    assert.deepEqual(result.value.garmentSnapshot, VALID_SNAPSHOT);
+  });
+
+  it("preserves patientSex even when garmentSnapshot is absent", () => {
+    const result = parseCreateMeasurementInput({
+      ...BASE,
+      patientSex: "MALE",
+    });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.value.patientSex, "MALE");
+    assert.equal(result.value.garmentSnapshot, null);
+  });
+
+  it("accepts legacy free-text garmentType without garmentSnapshot", () => {
+    const result = parseCreateMeasurementInput({
+      ...BASE,
+      garmentType: "Media corta libre texto",
+    });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.value.garmentType, "Media corta libre texto");
+    assert.equal(result.value.garmentSnapshot, null);
+  });
+});
+
+describe("parseUpdateMeasurementValuesInput — garmentSnapshot in metadata", () => {
+  const BASE_VALUES = { valuesByKey: { legRight1: 24.5 } };
+
+  const VALID_SNAPSHOT = {
+    reference: "BP",
+    label: "Bermuda Ambas Piernas Adulto",
+    family: "Lower limb",
+    figureKey: GARMENT_FIGURE_KEY.LOWER_LIMB,
+  };
+
+  it("returns garmentSnapshot: undefined when metadata is absent", () => {
+    const result = parseUpdateMeasurementValuesInput({ ...BASE_VALUES });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.value.garmentSnapshot, undefined);
+  });
+
+  it("parses a valid garmentSnapshot from metadata", () => {
+    const result = parseUpdateMeasurementValuesInput({
+      ...BASE_VALUES,
+      metadata: { garmentSnapshot: VALID_SNAPSHOT },
+    });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.deepEqual(result.value.garmentSnapshot, VALID_SNAPSHOT);
+  });
+
+  it("normalizes a malformed garmentSnapshot to null without failing", () => {
+    const result = parseUpdateMeasurementValuesInput({
+      ...BASE_VALUES,
+      metadata: { garmentSnapshot: { reference: 42 } },
+    });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.value.garmentSnapshot, null);
+  });
+
+  it("normalizes a garmentSnapshot with invalid figureKey to null without failing", () => {
+    const result = parseUpdateMeasurementValuesInput({
+      ...BASE_VALUES,
+      metadata: {
+        garmentSnapshot: {
+          reference: "MR",
+          label: "Media",
+          family: "Lower limb",
+          figureKey: "invalid-key",
+        },
+      },
+    });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.value.garmentSnapshot, null);
   });
 });

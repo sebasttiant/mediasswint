@@ -53,6 +53,7 @@ export default async function EditMeasurementPage({ params }: Params) {
         diagnosis: access.detail.diagnosis,
         notes: access.detail.notes,
         patientSex: getMeasurementSnapshotPatientSex(access.detail.metadata) ?? decision.patient.sex,
+        metadata: access.detail.metadata as Record<string, unknown> | null,
       }}
     />
   );

@@ -3,6 +3,10 @@ import {
   type CompressionMeasurementKey,
 } from "./compression-measurements";
 import { normalizePatientSex, type PatientSex } from "./body-figure-sex";
+import {
+  GARMENT_FIGURE_KEY,
+  type GarmentSnapshot,
+} from "./garment-catalog";
 
 type ValidationError = {
   field: string;
@@ -21,6 +25,7 @@ export type CreateMeasurementInput = {
   diagnosis: string | null;
   productFlags: ProductFlags | null;
   patientSex: PatientSex | null;
+  garmentSnapshot: GarmentSnapshot | null;
 };
 
 export type UpdateMeasurementValuesInput = {
@@ -32,6 +37,7 @@ export type UpdateMeasurementValuesInput = {
   compressionClass?: string | null;
   diagnosis?: string | null;
   productFlags?: ProductFlags | null;
+  garmentSnapshot?: GarmentSnapshot | null;
 };
 
 export type ListMeasurementsQuery = {
@@ -141,6 +147,34 @@ function parseProductFlags(value: unknown, errors: ValidationError[]): ProductFl
   return result;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isGarmentFigureKey(value: unknown): value is (typeof GARMENT_FIGURE_KEY)[keyof typeof GARMENT_FIGURE_KEY] {
+  return Object.values(GARMENT_FIGURE_KEY).some((k) => k === value);
+}
+
+function parseGarmentSnapshotFromMetadata(metadata: unknown): GarmentSnapshot | null {
+  if (!isRecord(metadata)) return null;
+  const raw = metadata.garmentSnapshot;
+  if (!isRecord(raw)) return null;
+  if (
+    typeof raw.reference !== "string" ||
+    typeof raw.label !== "string" ||
+    typeof raw.family !== "string" ||
+    !isGarmentFigureKey(raw.figureKey)
+  ) {
+    return null;
+  }
+  return {
+    reference: raw.reference,
+    label: raw.label,
+    family: raw.family,
+    figureKey: raw.figureKey,
+  };
+}
+
 export function parseCreateMeasurementInput(body: unknown): ValidationResult<CreateMeasurementInput> {
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
     return { ok: false, errors: [{ field: "body", message: "must be a JSON object" }] };
@@ -156,6 +190,7 @@ export function parseCreateMeasurementInput(body: unknown): ValidationResult<Cre
   const diagnosis = parseNullableText(source.diagnosis, "diagnosis", MAX_DIAGNOSIS_LENGTH, errors);
   const productFlags = parseProductFlags(source.productFlags, errors);
   const patientSex = normalizePatientSex(typeof source.patientSex === "string" ? source.patientSex : null);
+  const garmentSnapshot = parseGarmentSnapshotFromMetadata(source.metadata);
 
   if (errors.length > 0 || !measuredAt) {
     return { ok: false, errors };
@@ -171,6 +206,7 @@ export function parseCreateMeasurementInput(body: unknown): ValidationResult<Cre
       diagnosis,
       productFlags,
       patientSex,
+      garmentSnapshot,
     },
   };
 }
@@ -190,6 +226,7 @@ export function parseUpdateMeasurementValuesInput(
   const compressionClass = source.compressionClass === undefined ? undefined : parseNullableText(source.compressionClass, "compressionClass", MAX_SHORT_TEXT_LENGTH, errors);
   const diagnosis = source.diagnosis === undefined ? undefined : parseNullableText(source.diagnosis, "diagnosis", MAX_DIAGNOSIS_LENGTH, errors);
   const productFlags = source.productFlags === undefined ? undefined : parseProductFlags(source.productFlags, errors);
+  const garmentSnapshot = source.metadata === undefined ? undefined : parseGarmentSnapshotFromMetadata(source.metadata);
 
   const rawValues = source.valuesByKey;
   if (rawValues === undefined || rawValues === null) {
@@ -244,6 +281,7 @@ export function parseUpdateMeasurementValuesInput(
       ...(compressionClass !== undefined ? { compressionClass } : {}),
       ...(diagnosis !== undefined ? { diagnosis } : {}),
       ...(productFlags !== undefined ? { productFlags } : {}),
+      ...(garmentSnapshot !== undefined ? { garmentSnapshot } : {}),
     },
   };
 }
