@@ -49,6 +49,7 @@ function patientFixture(overrides: Partial<Patient> = {}): Patient {
     documentType: "DNI",
     documentNumber: "123",
     birthDate: null,
+    address: null,
     phone: null,
     email: null,
     notes: null,

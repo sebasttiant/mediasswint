@@ -2,6 +2,8 @@
 
 import { FormEvent, useState } from "react";
 import Link from "next/link";
+
+import { ageToApproxBirthDate, computeAge, formatISODate } from "@/lib/patient-age";
 import { useRouter } from "next/navigation";
 
 import { PATIENT_TIMELINE_EVENT_TYPE } from "@/lib/patient-timeline";
@@ -181,10 +183,19 @@ export default function PatientDetailClient({
     setError(null);
 
     try {
+      // Apply age/DOB disambiguation: if user deliberately edited Edad (ageTouched),
+      // compute an approximate birthDate from the age. Otherwise send the exact stored value.
+      // Strip UI-only keys (ageInput, ageTouched) so rejectUnknownFields doesn't 400.
+      const { ageInput, ageTouched, ...rest } = form;
+      const outgoingBirthDate =
+        ageTouched && ageInput.trim() !== "" && !Number.isNaN(Number(ageInput))
+          ? formatISODate(ageToApproxBirthDate(Number(ageInput)))
+          : rest.birthDate;
+
       const response = await fetch(`/api/patients/${encodeURIComponent(initialPatient.id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...rest, birthDate: outgoingBirthDate }),
       });
 
       if (!response.ok) {
@@ -372,7 +383,8 @@ export default function PatientDetailClient({
         <h2>Datos demográficos</h2>
         {error ? <p className={styles.error}>{error}</p> : null}
         <form onSubmit={onSubmit} className={styles.formGrid}>
-          <label>
+          {/* 1. Nombre completo — full width */}
+          <label className={styles.fullWidthField}>
             Nombre completo*
             <input
               required
@@ -380,6 +392,8 @@ export default function PatientDetailClient({
               onChange={(event) => setForm((current) => ({ ...current, fullName: event.target.value }))}
             />
           </label>
+
+          {/* 2. Sexo | Tipo de documento */}
           <label>
             Sexo
             <select
@@ -404,6 +418,8 @@ export default function PatientDetailClient({
               ))}
             </select>
           </label>
+
+          {/* 3. Número de documento | Fecha de nacimiento */}
           <label>
             Número de documento
             <input
@@ -416,10 +432,43 @@ export default function PatientDetailClient({
             <input
               type="date"
               value={form.birthDate}
-              className={styles.dateInput}
-              onChange={(event) => setForm((current) => ({ ...current, birthDate: event.target.value }))}
+              onChange={(event) => setForm((current) => ({
+                ...current,
+                birthDate: event.target.value,
+                // When user edits DOB directly, update the read-only ageInput display
+                ageInput: event.target.value
+                  ? String(computeAge(new Date(event.target.value)))
+                  : "",
+                ageTouched: false,
+              }))}
             />
-            <span className={styles.fieldHint}>Formato: AAAA-MM-DD</span>
+          </label>
+
+          {/* 4. Edad | Teléfono */}
+          <label>
+            Edad
+            {form.birthDate ? (
+              <input
+                type="number"
+                value={form.ageInput}
+                readOnly
+                disabled
+                aria-label="Edad calculada (solo lectura cuando la fecha de nacimiento está establecida)"
+              />
+            ) : (
+              <input
+                type="number"
+                min="0"
+                max="130"
+                value={form.ageInput}
+                placeholder="Ej: 35"
+                onChange={(event) => setForm((current) => ({
+                  ...current,
+                  ageInput: event.target.value,
+                  ageTouched: true,
+                }))}
+              />
+            )}
           </label>
           <label>
             Teléfono
@@ -428,6 +477,8 @@ export default function PatientDetailClient({
               onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
             />
           </label>
+
+          {/* 5. Email */}
           <label>
             Email
             <input
@@ -435,6 +486,19 @@ export default function PatientDetailClient({
               onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
             />
           </label>
+
+          {/* 6. Dirección — full width */}
+          <label className={styles.fullWidthField}>
+            Dirección
+            <input
+              value={form.address}
+              onChange={(event) => setForm((current) => ({ ...current, address: event.target.value }))}
+              placeholder="Ej: Calle 123, Barrio Centro"
+              maxLength={160}
+            />
+          </label>
+
+          {/* 7. Notas — full width */}
           <label className={styles.fullWidthField}>
             Notas
             <textarea

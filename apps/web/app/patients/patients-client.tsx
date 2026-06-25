@@ -1,7 +1,9 @@
 "use client";
 
 import { FormEvent, type ReactNode, useEffect, useState } from "react";
-import { Calendar, Hash, Mail, Phone, Search, User, UserPlus, Users } from "lucide-react";
+import { Calendar, Hash, Mail, MapPin, Phone, Search, User, UserPlus, Users } from "lucide-react";
+
+import { ageToApproxBirthDate, formatISODate } from "@/lib/patient-age";
 
 import { Button } from "../_components/ui/button";
 import { Card, CardBody, CardHeader } from "../_components/ui/card";
@@ -24,6 +26,9 @@ type FormState = {
   documentType: string;
   documentNumber: string;
   birthDate: string;
+  ageInput: string;
+  ageTouched: boolean;
+  address: string;
   phone: string;
   email: string;
   notes: string;
@@ -35,6 +40,9 @@ const INITIAL_FORM_STATE: FormState = {
   documentType: "",
   documentNumber: "",
   birthDate: "",
+  ageInput: "",
+  ageTouched: false,
+  address: "",
   phone: "",
   email: "",
   notes: "",
@@ -120,12 +128,26 @@ export default function PatientsClient({ initialQuery = "" }: PatientsClientProp
     setError(null);
 
     try {
+      // Apply age/DOB disambiguation: if user typed Edad and did NOT also fill birthDate,
+      // compute an approximate birthDate from the age. Exact date always takes precedence.
+      // Strip UI-only keys (ageInput, ageTouched) so the API never receives them.
+      const { ageInput, ageTouched, ...rest } = form;
+      let outgoingBirthDate = rest.birthDate;
+      if (
+        !outgoingBirthDate &&
+        ageTouched &&
+        ageInput.trim() !== "" &&
+        !Number.isNaN(Number(ageInput))
+      ) {
+        outgoingBirthDate = formatISODate(ageToApproxBirthDate(Number(ageInput)));
+      }
+
       const response = await fetch("/api/patients", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...rest, birthDate: outgoingBirthDate }),
       });
 
       if (!response.ok) {
@@ -145,6 +167,7 @@ export default function PatientsClient({ initialQuery = "" }: PatientsClientProp
 
       setForm(INITIAL_FORM_STATE);
       await loadPatients();
+
     } catch {
       setError("No se pudo crear el paciente");
     } finally {
@@ -271,6 +294,7 @@ export default function PatientsClient({ initialQuery = "" }: PatientsClientProp
           </p>
 
           <form onSubmit={onSubmit} className="space-y-5">
+            {/* 1. Nombre completo — full width */}
             <Field label="Nombre completo *" icon={<User className="h-4 w-4" />}>
               <input
                 required
@@ -281,6 +305,7 @@ export default function PatientsClient({ initialQuery = "" }: PatientsClientProp
               />
             </Field>
 
+            {/* 2. Sexo | Tipo de documento */}
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
               <Field label="Sexo">
                 <select
@@ -313,33 +338,62 @@ export default function PatientsClient({ initialQuery = "" }: PatientsClientProp
               </Field>
             </div>
 
-            <Field label="Número de documento" icon={<Hash className="h-4 w-4" />}>
-              <input
-                placeholder="Ej: 10203040"
-                value={form.documentNumber}
-                onChange={(event) => setForm((current) => ({ ...current, documentNumber: event.target.value }))}
-                className={cn(FIELD_CONTROL, "pl-11 pr-3.5")}
-              />
-            </Field>
+            {/* 3. Número de documento | Fecha de nacimiento */}
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              <Field label="Número de documento" icon={<Hash className="h-4 w-4" />}>
+                <input
+                  placeholder="Ej: 10203040"
+                  value={form.documentNumber}
+                  onChange={(event) => setForm((current) => ({ ...current, documentNumber: event.target.value }))}
+                  className={cn(FIELD_CONTROL, "pl-11 pr-3.5")}
+                />
+              </Field>
 
-            <Field label="Fecha de nacimiento" icon={<Calendar className="h-4 w-4" />}>
-              <input
-                type="date"
-                value={form.birthDate}
-                onChange={(event) => setForm((current) => ({ ...current, birthDate: event.target.value }))}
-                className={cn(FIELD_CONTROL, "pl-11 pr-3.5")}
-              />
-            </Field>
+              <Field label="Fecha de nacimiento" icon={<Calendar className="h-4 w-4" />}>
+                <input
+                  type="date"
+                  value={form.birthDate}
+                  onChange={(event) => setForm((current) => ({
+                    ...current,
+                    birthDate: event.target.value,
+                    // Filling an exact date clears the age entry so exact date takes precedence
+                    ageInput: "",
+                    ageTouched: false,
+                  }))}
+                  className={cn(FIELD_CONTROL, "pl-11 pr-3.5")}
+                />
+              </Field>
+            </div>
 
-            <Field label="Teléfono" icon={<Phone className="h-4 w-4" />}>
-              <input
-                placeholder="Ej: +57 300 000 0000"
-                value={form.phone}
-                onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
-                className={cn(FIELD_CONTROL, "pl-11 pr-3.5")}
-              />
-            </Field>
+            {/* 4. Edad | Teléfono */}
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              <Field label="Edad (si no tiene fecha exacta)">
+                <input
+                  type="number"
+                  min="0"
+                  max="130"
+                  placeholder="Ej: 35"
+                  value={form.ageInput}
+                  onChange={(event) => setForm((current) => ({
+                    ...current,
+                    ageInput: event.target.value,
+                    ageTouched: true,
+                  }))}
+                  className={cn(FIELD_CONTROL, "px-3.5")}
+                />
+              </Field>
 
+              <Field label="Teléfono" icon={<Phone className="h-4 w-4" />}>
+                <input
+                  placeholder="Ej: +57 300 000 0000"
+                  value={form.phone}
+                  onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
+                  className={cn(FIELD_CONTROL, "pl-11 pr-3.5")}
+                />
+              </Field>
+            </div>
+
+            {/* 5. Email — full width */}
             <Field label="Email" icon={<Mail className="h-4 w-4" />}>
               <input
                 placeholder="Ej: paciente@email.com"
@@ -349,6 +403,18 @@ export default function PatientsClient({ initialQuery = "" }: PatientsClientProp
               />
             </Field>
 
+            {/* 6. Dirección — full width */}
+            <Field label="Dirección" icon={<MapPin className="h-4 w-4" />}>
+              <input
+                placeholder="Ej: Calle 123, Barrio Centro"
+                value={form.address}
+                onChange={(event) => setForm((current) => ({ ...current, address: event.target.value }))}
+                maxLength={160}
+                className={cn(FIELD_CONTROL, "pl-11 pr-3.5")}
+              />
+            </Field>
+
+            {/* 7. Notas — full width */}
             <label className="flex flex-col gap-1.5">
               <span className={FIELD_LABEL}>Notas</span>
               <textarea
