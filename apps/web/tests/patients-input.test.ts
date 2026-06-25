@@ -72,6 +72,7 @@ describe("parseUpdatePatientInput", () => {
       documentNumber: null,
       birthDate: null,
       address: null,
+      healthInsurance: null,
       phone: null,
       email: null,
       notes: null,
@@ -234,6 +235,69 @@ describe("address field parsing", () => {
     assert.equal(result.ok, true);
     if (!result.ok) return;
     assert.equal(result.value.address, "Calle 456");
+  });
+});
+
+describe("healthInsurance field parsing", () => {
+  it("parses and trims a valid health insurer in create", () => {
+    const result = parseCreatePatientInput({
+      fullName: "Test Patient",
+      healthInsurance: "  Nueva EPS  ",
+    });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.value.healthInsurance, "Nueva EPS");
+  });
+
+  it("normalizes an empty healthInsurance string to null", () => {
+    const result = parseCreatePatientInput({ fullName: "Test Patient", healthInsurance: "" });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.value.healthInsurance, null);
+  });
+
+  it("normalizes a missing healthInsurance key to null", () => {
+    const result = parseCreatePatientInput({ fullName: "Test Patient" });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.value.healthInsurance, null);
+  });
+
+  it("normalizes a whitespace-only healthInsurance to null", () => {
+    const result = parseCreatePatientInput({ fullName: "Test Patient", healthInsurance: "   " });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.value.healthInsurance, null);
+  });
+
+  it("rejects a healthInsurance that exceeds 120 characters", () => {
+    const longInsurer = "A".repeat(121);
+    const result = parseCreatePatientInput({ fullName: "Test Patient", healthInsurance: longInsurer });
+    assert.equal(result.ok, false);
+    if (result.ok) return;
+    assert.ok(result.errors.some((e) => e.field === "healthInsurance"));
+  });
+
+  it("accepts a healthInsurance of exactly 120 characters", () => {
+    const maxInsurer = "B".repeat(120);
+    const result = parseCreatePatientInput({ fullName: "Test Patient", healthInsurance: maxInsurer });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.value.healthInsurance, maxInsurer);
+  });
+
+  it("allows healthInsurance in PATCH (rejectUnknownFields)", () => {
+    const result = parseUpdatePatientInput({ fullName: "Test Patient", healthInsurance: "Sura EPS" });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.value.healthInsurance, "Sura EPS");
+  });
+
+  it("normalizes absent healthInsurance to null in full-form update", () => {
+    const result = parseUpdatePatientInput({ fullName: "Grace Hopper" });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.value.healthInsurance, null);
   });
 });
 

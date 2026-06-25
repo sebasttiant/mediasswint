@@ -26,6 +26,9 @@ importers:
       '@node-rs/argon2':
         specifier: ^2.0.2
         version: 2.0.2
+      '@node-rs/argon2-linux-x64-gnu':
+        specifier: ^2.0.2
+        version: 2.0.2
       '@prisma/adapter-pg':
         specifier: 7.8.0
         version: 7.8.0
@@ -738,7 +741,6 @@ packages:
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   '@node-rs/argon2-linux-x64-musl@2.0.2':
     resolution: {integrity: sha512-of5uPqk7oCRF/44a89YlWTEfjsftPywyTULwuFDKyD8QtVZoonrJR6ZWvfFE/6jBT68S0okAkAzzMEdBVWdxWw==}
@@ -3647,8 +3649,7 @@ snapshots:
   '@node-rs/argon2-linux-arm64-musl@2.0.2':
     optional: true
 
-  '@node-rs/argon2-linux-x64-gnu@2.0.2':
-    optional: true
+  '@node-rs/argon2-linux-x64-gnu@2.0.2': {}
 
   '@node-rs/argon2-linux-x64-musl@2.0.2':
     optional: true

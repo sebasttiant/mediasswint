@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, type ReactNode, useEffect, useState } from "react";
-import { Calendar, Hash, Mail, MapPin, Phone, Search, User, UserPlus, Users } from "lucide-react";
+import { Building2, Calendar, Hash, Mail, MapPin, Phone, Search, User, UserPlus, Users } from "lucide-react";
 
 import { ageToApproxBirthDate, formatISODate } from "@/lib/patient-age";
 
@@ -10,6 +10,7 @@ import { Card, CardBody, CardHeader } from "../_components/ui/card";
 import { cn } from "../_components/ui/cn";
 import { DataTable, type DataTableColumn } from "../_components/dashboard/data-table";
 import { buildPatientDetailHref, DOCUMENT_TYPE_OPTIONS, PATIENT_SEX_OPTIONS } from "./[id]/patient-detail-helpers";
+import { COLOMBIA_HEALTH_INSURERS, HEALTH_INSURANCE_OTHER } from "@/lib/health-insurance-catalog";
 import { formatClinicDate } from "@/lib/datetime";
 
 type Patient = {

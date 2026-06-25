@@ -332,6 +332,7 @@
 }
 
 .formGrid input,
+.formGrid select,
 .formGrid textarea,
 .searchForm input {
   border: 1px solid var(--border);

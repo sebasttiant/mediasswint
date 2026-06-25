@@ -20,6 +20,7 @@ export type CreatePatientInput = {
   documentNumber: string | null;
   birthDate: Date | null;
   address: string | null;
+  healthInsurance: string | null;
   phone: string | null;
   email: string | null;
   notes: string | null;
@@ -38,6 +39,7 @@ const MAX_NOTES_LENGTH = 1000;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 const MAX_ADDRESS_LENGTH = 160;
+const MAX_HEALTH_INSURANCE_LENGTH = 120;
 
 const EDITABLE_PATIENT_FIELDS = new Set([
   "fullName",
@@ -46,6 +48,7 @@ const EDITABLE_PATIENT_FIELDS = new Set([
   "documentNumber",
   "birthDate",
   "address",
+  "healthInsurance",
   "phone",
   "email",
   "notes",
@@ -190,6 +193,12 @@ function parsePatientFormInput(
   );
   const birthDate = parseBirthDate(source.birthDate, errors);
   const address = parseNullableString(source.address, "address", MAX_ADDRESS_LENGTH, errors);
+  const healthInsurance = parseNullableString(
+    source.healthInsurance,
+    "healthInsurance",
+    MAX_HEALTH_INSURANCE_LENGTH,
+    errors,
+  );
   const phone = parseNullableString(source.phone, "phone", MAX_SHORT_TEXT, errors);
   const email = parseNullableString(source.email, "email", MAX_SHORT_TEXT, errors);
   const notes = parseNullableString(source.notes, "notes", MAX_NOTES_LENGTH, errors);
@@ -207,6 +216,7 @@ function parsePatientFormInput(
       documentNumber,
       birthDate,
       address,
+      healthInsurance,
       phone,
       email,
       notes,
