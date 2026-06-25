@@ -26,6 +26,10 @@ describe("body figure sex helpers", () => {
     assert.equal(resolveBodyFigureSex(null), BODY_FIGURE_SEX.FEMALE);
   });
 
+  it("resolves OTHER to the female silhouette (regression)", () => {
+    assert.equal(resolveBodyFigureSex("OTHER"), BODY_FIGURE_SEX.FEMALE);
+  });
+
   it("prefers the measurement snapshot sex over the current patient sex", () => {
     assert.equal(
       resolveMeasurementBodyFigureSex({ patientSex: "MALE" }, "FEMALE"),

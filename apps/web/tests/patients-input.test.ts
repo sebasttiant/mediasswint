@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { parseCreatePatientInput, parseListPatientsQuery, parseUpdatePatientInput } from "../lib/patients-input";
+import { PATIENT_SEX } from "../lib/patients-input";
 
 describe("parseCreatePatientInput", () => {
   it("returns parsed payload for valid body", () => {
@@ -70,6 +71,7 @@ describe("parseUpdatePatientInput", () => {
       documentType: null,
       documentNumber: null,
       birthDate: null,
+      address: null,
       phone: null,
       email: null,
       notes: null,
@@ -127,12 +129,12 @@ describe("parseUpdatePatientInput", () => {
   });
 
   it("returns validation errors for unsupported sex values", () => {
-    const result = parseUpdatePatientInput({ fullName: "Ada Lovelace", sex: "OTHER" });
+    const result = parseUpdatePatientInput({ fullName: "Ada Lovelace", sex: "INVALID_VALUE" });
 
     assert.equal(result.ok, false);
     if (result.ok) return;
 
-    assert.deepEqual(result.errors, [{ field: "sex", message: "must be FEMALE or MALE" }]);
+    assert.deepEqual(result.errors, [{ field: "sex", message: "must be FEMALE, MALE, or OTHER" }]);
   });
 
   it("rejects fields outside the editable patient shape", () => {
@@ -142,5 +144,118 @@ describe("parseUpdatePatientInput", () => {
       ok: false,
       errors: [{ field: "isDeleted", message: "is not allowed" }],
     });
+  });
+});
+
+describe("PATIENT_SEX — OTHER value", () => {
+  it("exports OTHER as a valid key", () => {
+    assert.equal(PATIENT_SEX.OTHER, "OTHER");
+  });
+
+  it("parseCreatePatientInput accepts OTHER as a valid sex value", () => {
+    const result = parseCreatePatientInput({ fullName: "Test Patient", sex: "OTHER" });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.value.sex, "OTHER");
+  });
+
+  it("parseUpdatePatientInput accepts OTHER as a valid sex value", () => {
+    const result = parseUpdatePatientInput({ fullName: "Test Patient", sex: "OTHER" });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.value.sex, "OTHER");
+  });
+
+  it("parsePatientSex rejects an unrecognized value like UNKNOWN", () => {
+    const result = parseCreatePatientInput({ fullName: "Test Patient", sex: "UNKNOWN" });
+    assert.equal(result.ok, false);
+    if (result.ok) return;
+    assert.ok(result.errors.some((e) => e.field === "sex"));
+  });
+
+  it("parsePatientSex still accepts FEMALE and MALE", () => {
+    const female = parseCreatePatientInput({ fullName: "Test", sex: "FEMALE" });
+    const male = parseCreatePatientInput({ fullName: "Test", sex: "MALE" });
+    assert.equal(female.ok, true);
+    assert.equal(male.ok, true);
+  });
+});
+
+describe("address field parsing", () => {
+  it("parses and trims a valid address in create", () => {
+    const result = parseCreatePatientInput({
+      fullName: "Test Patient",
+      address: "  Calle 123  ",
+    });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.value.address, "Calle 123");
+  });
+
+  it("normalizes an empty address string to null", () => {
+    const result = parseCreatePatientInput({ fullName: "Test Patient", address: "" });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.value.address, null);
+  });
+
+  it("normalizes a missing address key to null", () => {
+    const result = parseCreatePatientInput({ fullName: "Test Patient" });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.value.address, null);
+  });
+
+  it("normalizes a whitespace-only address to null", () => {
+    const result = parseCreatePatientInput({ fullName: "Test Patient", address: "   " });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.value.address, null);
+  });
+
+  it("rejects an address that exceeds 160 characters", () => {
+    const longAddress = "A".repeat(161);
+    const result = parseCreatePatientInput({ fullName: "Test Patient", address: longAddress });
+    assert.equal(result.ok, false);
+    if (result.ok) return;
+    assert.ok(result.errors.some((e) => e.field === "address"));
+  });
+
+  it("accepts an address of exactly 160 characters", () => {
+    const maxAddress = "B".repeat(160);
+    const result = parseCreatePatientInput({ fullName: "Test Patient", address: maxAddress });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.value.address, maxAddress);
+  });
+
+  it("allows address in PATCH (rejectUnknownFields)", () => {
+    const result = parseUpdatePatientInput({ fullName: "Test Patient", address: "Calle 456" });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.value.address, "Calle 456");
+  });
+});
+
+describe("parseBirthDate regression", () => {
+  it("still parses valid YYYY-MM-DD birth dates", () => {
+    const result = parseCreatePatientInput({ fullName: "Test", birthDate: "1990-03-15" });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.value.birthDate?.toISOString(), "1990-03-15T00:00:00.000Z");
+  });
+
+  it("still rejects invalid birth date formats", () => {
+    const result = parseCreatePatientInput({ fullName: "Test", birthDate: "15/03/1990" });
+    assert.equal(result.ok, false);
+    if (result.ok) return;
+    assert.ok(result.errors.some((e) => e.field === "birthDate"));
+  });
+
+  it("still treats empty birthDate as null", () => {
+    const result = parseCreatePatientInput({ fullName: "Test", birthDate: "" });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.value.birthDate, null);
   });
 });

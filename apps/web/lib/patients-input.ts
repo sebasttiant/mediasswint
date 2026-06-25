@@ -8,6 +8,7 @@ type ValidationResult<T> = { ok: true; value: T } | { ok: false; errors: Validat
 export const PATIENT_SEX = {
   FEMALE: "FEMALE",
   MALE: "MALE",
+  OTHER: "OTHER",
 } as const;
 
 export type PatientSex = (typeof PATIENT_SEX)[keyof typeof PATIENT_SEX];
@@ -18,6 +19,7 @@ export type CreatePatientInput = {
   documentType: string | null;
   documentNumber: string | null;
   birthDate: Date | null;
+  address: string | null;
   phone: string | null;
   email: string | null;
   notes: string | null;
@@ -35,12 +37,15 @@ const MAX_SHORT_TEXT = 60;
 const MAX_NOTES_LENGTH = 1000;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
+const MAX_ADDRESS_LENGTH = 160;
+
 const EDITABLE_PATIENT_FIELDS = new Set([
   "fullName",
   "sex",
   "documentType",
   "documentNumber",
   "birthDate",
+  "address",
   "phone",
   "email",
   "notes",
@@ -57,14 +62,20 @@ function parsePatientSex(value: unknown, errors: ValidationError[]): PatientSex 
   if (value === undefined || value === null || value === "") return null;
 
   if (typeof value !== "string") {
-    errors.push({ field: "sex", message: "must be FEMALE or MALE" });
+    errors.push({ field: "sex", message: "must be FEMALE, MALE, or OTHER" });
     return null;
   }
 
   const trimmed = value.trim();
-  if (trimmed === PATIENT_SEX.FEMALE || trimmed === PATIENT_SEX.MALE) return trimmed;
+  if (
+    trimmed === PATIENT_SEX.FEMALE ||
+    trimmed === PATIENT_SEX.MALE ||
+    trimmed === PATIENT_SEX.OTHER
+  ) {
+    return trimmed;
+  }
 
-  errors.push({ field: "sex", message: "must be FEMALE or MALE" });
+  errors.push({ field: "sex", message: "must be FEMALE, MALE, or OTHER" });
   return null;
 }
 
@@ -178,6 +189,7 @@ function parsePatientFormInput(
     errors,
   );
   const birthDate = parseBirthDate(source.birthDate, errors);
+  const address = parseNullableString(source.address, "address", MAX_ADDRESS_LENGTH, errors);
   const phone = parseNullableString(source.phone, "phone", MAX_SHORT_TEXT, errors);
   const email = parseNullableString(source.email, "email", MAX_SHORT_TEXT, errors);
   const notes = parseNullableString(source.notes, "notes", MAX_NOTES_LENGTH, errors);
@@ -194,6 +206,7 @@ function parsePatientFormInput(
       documentType,
       documentNumber,
       birthDate,
+      address,
       phone,
       email,
       notes,
