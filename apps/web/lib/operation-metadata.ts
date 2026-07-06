@@ -1,5 +1,6 @@
-import { Prisma } from "@prisma/client";
+import { Prisma, type OperationBranch } from "@prisma/client";
 
+import { OPERATION_BRANCH_VALUES } from "@/lib/operation-branch";
 import type { OperationMetadataInput } from "@/lib/operations";
 
 /**
@@ -99,6 +100,16 @@ export function parseOperationMetadataInput(raw: Record<string, unknown>): Metad
       return { ok: false, field, message: "must be a valid date" };
     }
     value[field] = parsed;
+  }
+
+  if (raw.branch !== undefined && raw.branch !== null && raw.branch !== "") {
+    if (
+      typeof raw.branch !== "string" ||
+      !(OPERATION_BRANCH_VALUES as readonly string[]).includes(raw.branch)
+    ) {
+      return { ok: false, field: "branch", message: "must be a valid branch" };
+    }
+    value.branch = raw.branch as OperationBranch;
   }
 
   return { ok: true, value };

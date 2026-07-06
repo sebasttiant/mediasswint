@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { Prisma, type CommercialOperationStatus } from "@prisma/client";
+import { Prisma, type CommercialOperationStatus, type OperationBranch } from "@prisma/client";
 
 import { getSessionCookieName, type AuthUser } from "../lib/auth";
 import {
@@ -46,6 +46,7 @@ type MockOperation = {
   invoiceDate: Date | null;
   discount: Prisma.Decimal | null;
   exitDate: Date | null;
+  branch: OperationBranch | null;
   createdAt: Date;
   updatedAt: Date;
   patient: { id: string; fullName: string } | null;
@@ -67,6 +68,7 @@ function createOp(overrides: Partial<MockOperation> & { id: string; patientId: s
     invoiceDate: null,
     discount: null,
     exitDate: null,
+    branch: null,
     createdAt: new Date("2026-05-01T12:00:00Z"),
     updatedAt: new Date("2026-05-01T12:00:00Z"),
     patient: { id: overrides.patientId, fullName: "Test Patient" },
@@ -332,6 +334,7 @@ describe("POST /api/patients/[id]/operations", () => {
           invoiceDate: "2026-02-02",
           discount: "5000",
           exitDate: "2026-02-10",
+          branch: "ITAGUI",
         }),
       }),
       { params: Promise.resolve({ id: "pat-1" }) },
@@ -347,10 +350,28 @@ describe("POST /api/patients/[id]/operations", () => {
     assert.equal(forwarded.quantity, 2);
     assert.equal(forwarded.invoiceNumber, "6108");
     assert.equal(forwarded.discount?.toString(), "5000");
+    assert.equal(forwarded.branch, "ITAGUI");
     assert.ok(forwarded.orderedAt instanceof Date);
     assert.ok(forwarded.invoiceDate instanceof Date);
     assert.ok(forwarded.exitDate instanceof Date);
     assert.equal(forwarded.orderedAt?.toISOString(), "2026-02-01T12:00:00.000Z");
+  });
+
+  it("returns 400 when branch is not a known value", async () => {
+    const store = { operations: new Map<string, MockOperation>(), knownPatientIds: ["pat-1"] };
+    const deps = buildCollectionDeps(store);
+    const response = await handleCreateOperationRequest(
+      buildRequest("http://localhost/api/patients/pat-1/operations", {
+        method: "POST",
+        body: JSON.stringify({ garmentType: "Media", branch: "BOGOTA" }),
+      }),
+      { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
+      deps,
+    );
+    assert.equal(response.status, 400);
+    const json = (await response.json()) as { errors: Array<{ field: string }> };
+    assert.equal(json.errors[0].field, "branch");
   });
 
   it("returns 400 when quantity is below 1", async () => {

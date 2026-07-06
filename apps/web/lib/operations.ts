@@ -2,6 +2,7 @@ import {
   Prisma,
   type CommercialOperation,
   type CommercialOperationStatus,
+  type OperationBranch,
   type PaymentBank,
   type PaymentIncomeType,
   type PaymentMethod,
@@ -44,6 +45,7 @@ export type OperationMetadataInput = {
   invoiceDate?: Date;
   discount?: Prisma.Decimal;
   exitDate?: Date;
+  branch?: OperationBranch;
 };
 
 export type CreateOperationInput = {
@@ -328,6 +330,7 @@ export async function createOperation(
         invoiceDate: input.invoiceDate,
         discount: input.discount,
         exitDate: input.exitDate,
+        branch: input.branch,
       },
       include: {
         patient: {
@@ -405,6 +408,7 @@ export async function updateOperation(
         invoiceDate: input.invoiceDate,
         discount: input.discount,
         exitDate: input.exitDate,
+        branch: input.branch,
       },
       include: {
         patient: {

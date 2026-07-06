@@ -123,6 +123,7 @@ async function defaultResolveData(
         invoiceDate: op.invoiceDate?.toISOString() ?? null,
         discount: op.discount?.toString() ?? null,
         exitDate: op.exitDate?.toISOString() ?? null,
+        branch: op.branch,
         createdAt: op.createdAt.toISOString(),
         updatedAt: op.updatedAt.toISOString(),
       }))

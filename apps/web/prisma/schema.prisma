@@ -191,6 +191,16 @@ enum CommercialOperationStatus {
   CANCELADO
 }
 
+// Business branch (sucursal) where the order was taken. Controlled vocabulary
+// defined by the client (Centro, HSVP, Itagüí, Terminal). ITAGUI is stored
+// ASCII; the display label carries the accent.
+enum OperationBranch {
+  CENTRO
+  HSVP
+  ITAGUI
+  TERMINAL
+}
+
 // Etapa F: Caja y Finanzas — payment ledger + cashbox.
 //
 // PaymentMovement is the source of truth for "Caja y Finanzas". Each new deposit
@@ -295,6 +305,9 @@ model CommercialOperation {
   invoiceDate   DateTime?
   discount      Decimal?                  @db.Decimal(10, 2)
   exitDate      DateTime?
+  // Client improvement: sucursal where the order was taken. Additive, nullable;
+  // legacy rows have no branch. See OperationBranch enum.
+  branch        OperationBranch?
   patient       Patient                   @relation(fields: [patientId], references: [id], onDelete: Cascade)
   payments      PaymentMovement[]
   createdAt     DateTime                  @default(now())

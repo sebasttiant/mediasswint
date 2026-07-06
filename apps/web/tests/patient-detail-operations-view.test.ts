@@ -24,6 +24,7 @@ function operationFixture(overrides: Partial<OperationSummary> = {}): OperationS
     invoiceDate: null,
     discount: null,
     exitDate: null,
+    branch: null,
     createdAt: "2026-02-01T12:00:00.000Z",
     updatedAt: "2026-02-01T12:00:00.000Z",
     ...overrides,
