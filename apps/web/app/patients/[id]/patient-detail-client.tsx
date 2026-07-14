@@ -8,6 +8,8 @@ import { useRouter } from "next/navigation";
 
 import { PATIENT_TIMELINE_EVENT_TYPE } from "@/lib/patient-timeline";
 import { formatClinicDate, formatClinicDateTime } from "@/lib/datetime";
+import { normalizeHealthInsuranceForPayload } from "@/lib/patient-health-insurance";
+import { MAX_HEALTH_INSURANCE_LENGTH } from "@/lib/patients-input";
 import {
   PAYMENT_BANKS,
   PAYMENT_INCOME_TYPES,
@@ -201,10 +203,10 @@ export default function PatientDetailClient({
         ageTouched && ageInput.trim() !== "" && !Number.isNaN(Number(ageInput))
           ? formatISODate(ageToApproxBirthDate(Number(ageInput)))
           : rest.birthDate;
-      const outgoingHealthInsurance =
-        rest.healthInsurance === HEALTH_INSURANCE_OTHER
-          ? healthInsuranceCustom.trim() || null
-          : rest.healthInsurance || null;
+      const outgoingHealthInsurance = normalizeHealthInsuranceForPayload(
+        rest.healthInsurance,
+        healthInsuranceCustom,
+      );
 
       const response = await fetch(`/api/patients/${encodeURIComponent(initialPatient.id)}`, {
         method: "PATCH",
@@ -528,7 +530,7 @@ export default function PatientDetailClient({
                 style={{ marginTop: "0.35rem" }}
                 placeholder="Nombre de la entidad"
                 value={form.healthInsuranceCustom}
-                maxLength={120}
+                maxLength={MAX_HEALTH_INSURANCE_LENGTH}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, healthInsuranceCustom: event.target.value }))
                 }
