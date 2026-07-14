@@ -22,8 +22,14 @@ import {
   getFullBodyCalibration,
   MALE_FULL_BODY,
 } from "../app/_components/body-highlight/body-highlight-calibration";
-import { getFemaleZonePath } from "../app/_components/body-highlight/zones-female";
-import { getMaleZonePath } from "../app/_components/body-highlight/zones-male";
+import {
+  FULL_BODY_FEMALE_ZONES,
+  getFemaleZonePath,
+} from "../app/_components/body-highlight/zones-female";
+import {
+  FULL_BODY_MALE_ZONES,
+  getMaleZonePath,
+} from "../app/_components/body-highlight/zones-male";
 import { COMPRESSION_MEASUREMENTS } from "../lib/compression-measurements";
 
 describe("BODY_HIGHLIGHT_ZONES — derived from the catalog", () => {
@@ -353,6 +359,63 @@ describe("sex-specific full-body zone paths", () => {
     assert.notEqual(getFullZonePathForSex("female", femaleArmZone), getFemaleZonePath(femaleArmZone.zoneId));
     assert.equal(getFullZonePathForSex("female", femaleLegZone), getFemaleZonePath(femaleLegZone.zoneId));
     assert.equal(getFullZonePathForSex("male", maleLegZone), getMaleZonePath(maleLegZone.zoneId));
+  });
+});
+
+describe("traced leg paths stay in lockstep with the catalog", () => {
+  // Leg bands are hand-traced per sex and each path is drawn for one specific
+  // slot of the current leg-point count. Both drift directions are silent:
+  //  - an ADDED point has no traced path, and getFullZonePathForSex quietly
+  //    falls back to a generated marker rectangle;
+  //  - a REMOVED point still resolves, but the surviving paths were traced for
+  //    the old slot count, so the bands cover only part of the limb.
+  // Neither throws. Exact set equality is what makes a leg-count change fail
+  // loudly here instead of shipping a silently wrong body figure.
+  const catalogLegZones = () =>
+    BODY_HIGHLIGHT_ZONES.filter((zone) => zone.view === "legs")
+      .map((zone) => zone.zoneId)
+      .sort();
+
+  const tracedLegZones = (zones: Readonly<Partial<Record<string, string>>>) =>
+    Object.keys(zones)
+      .filter((zoneId) => zoneId.startsWith("legs."))
+      .sort();
+
+  it("the male traced leg zones are exactly the catalog leg zones", () => {
+    assert.deepEqual(tracedLegZones(FULL_BODY_MALE_ZONES), catalogLegZones());
+  });
+
+  it("the female traced leg zones are exactly the catalog leg zones", () => {
+    assert.deepEqual(tracedLegZones(FULL_BODY_FEMALE_ZONES), catalogLegZones());
+  });
+
+  it("every traced leg path is a non-empty string for both sexes", () => {
+    // Set equality alone would accept a zone whose path was blanked out to "".
+    // An empty `d` renders nothing at all, which is silent in exactly the same
+    // way as the fallback marker.
+    for (const zone of BODY_HIGHLIGHT_ZONES.filter((candidate) => candidate.view === "legs")) {
+      for (const [sex, path] of [
+        ["male", getMaleZonePath(zone.zoneId)],
+        ["female", getFemaleZonePath(zone.zoneId)],
+      ] as const) {
+        assert.equal(typeof path, "string", `${sex} ${zone.zoneId} traced path type`);
+        assert.ok((path ?? "").trim().length > 0, `${sex} ${zone.zoneId} traced path is empty`);
+      }
+    }
+  });
+
+  it("renders every leg zone from its traced path, never from the fallback marker", () => {
+    for (const sex of ["male", "female"] as const) {
+      const calibration = sex === "female" ? getFullBodyCalibration(sex) : MALE_FULL_BODY;
+
+      for (const zone of BODY_HIGHLIGHT_ZONES.filter((candidate) => candidate.view === "legs")) {
+        assert.notEqual(
+          getFullZonePathForSex(sex, zone),
+          getFullMarkerForSex(calibration, zone).path,
+          `${sex} ${zone.zoneId} rendered the fallback marker instead of its traced path`,
+        );
+      }
+    }
   });
 });
 

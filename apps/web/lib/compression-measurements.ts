@@ -7,6 +7,12 @@ const ARM_POINTS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 1
 type LegPoint = (typeof LEG_POINTS)[number];
 type ArmPoint = (typeof ARM_POINTS)[number];
 
+// Legs and arms are symmetric: both sides carry the same points, so these are
+// the per-side counts, not the totals. Anything that needs to state how many
+// points a limb has must read these rather than restate the number.
+export const LEG_POINTS_PER_SIDE = LEG_POINTS.length;
+export const ARM_POINTS_PER_SIDE = ARM_POINTS.length;
+
 export type CompressionMeasurementKey =
   | `legRight${LegPoint}`
   | `legLeft${LegPoint}`

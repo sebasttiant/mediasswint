@@ -8,14 +8,16 @@
 //  4. PDF_MEASUREMENT_FIELDS — every measurement-capable field on the PDF,
 //                              with status flag so the UI can mark pending
 //
-// The existing `compression-measurements.ts` catalog (arm 1-19 × 2,
-// leg 1-28 × 2) is the source of truth for persisted measurements and is
-// referenced here without mutation. Anything not in that catalog is `pending`
-// and rendered as visual reference until backed by storage.
+// The existing `compression-measurements.ts` catalog is the source of truth for
+// persisted measurements and is referenced here without mutation, counts
+// included. Anything not in that catalog is `pending` and rendered as visual
+// reference until backed by storage.
 
 import {
+  ARM_POINTS_PER_SIDE,
   COMPRESSION_MEASUREMENTS,
   type CompressionMeasurementKey,
+  LEG_POINTS_PER_SIDE,
 } from "./compression-measurements";
 
 export const ANATOMICAL_REGIONS = [
@@ -350,7 +352,7 @@ const REGION_LABELS: Record<AnatomicalRegion, { label: string; short: string; de
   arms: {
     label: "Brazos",
     short: "Brazos",
-    description: "19 puntos por lado y largo de manga",
+    description: `${ARM_POINTS_PER_SIDE} puntos por lado y largo de manga`,
   },
   hands: {
     label: "Manos",
@@ -360,7 +362,7 @@ const REGION_LABELS: Record<AnatomicalRegion, { label: string; short: string; de
   legs: {
     label: "Piernas",
     short: "Piernas",
-    description: "28 puntos por lado y largo de pierna",
+    description: `${LEG_POINTS_PER_SIDE} puntos por lado y largo de pierna`,
   },
   feet: {
     label: "Pies",
