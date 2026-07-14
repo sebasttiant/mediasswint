@@ -52,6 +52,7 @@ export type OperationSummary = {
   invoiceDate: string | null;
   discount: string | null;
   exitDate: string | null;
+  branch: string | null;
   createdAt: string;
   updatedAt: string;
 };

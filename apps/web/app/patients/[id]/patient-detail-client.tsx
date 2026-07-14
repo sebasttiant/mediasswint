@@ -33,6 +33,11 @@ import {
 } from "./patient-detail-helpers";
 import { COLOMBIA_HEALTH_INSURERS, HEALTH_INSURANCE_OTHER } from "@/lib/health-insurance-catalog";
 import {
+  formatOperationBranch,
+  OPERATION_BRANCH_LABELS,
+  OPERATION_BRANCH_VALUES,
+} from "@/lib/operation-branch";
+import {
   buildCommercialSummary,
   buildOperationFinancials,
   buildMeasurementsSectionViewModel,
@@ -87,6 +92,7 @@ const OPERATION_METADATA_FIELDS = [
   "invoiceDate",
   "discount",
   "exitDate",
+  "branch",
 ] as const;
 
 type OperationMetadataForm = Record<(typeof OPERATION_METADATA_FIELDS)[number], string>;
@@ -101,6 +107,7 @@ const EMPTY_OPERATION_METADATA_FORM: OperationMetadataForm = {
   invoiceDate: "",
   discount: "",
   exitDate: "",
+  branch: "",
 };
 
 // ISO timestamps → YYYY-MM-DD for native date inputs.
@@ -119,6 +126,7 @@ function operationToMetadataForm(op: OperationSummary): OperationMetadataForm {
     invoiceDate: toDateInputValue(op.invoiceDate),
     discount: op.discount ?? "",
     exitDate: toDateInputValue(op.exitDate),
+    branch: op.branch ?? "",
   };
 }
 
@@ -757,6 +765,21 @@ export default function PatientDetailClient({
                   className={styles.operationFormInput}
                 />
               </div>
+              <div>
+                <label className={styles.operationFormLabel}>Sucursal</label>
+                <select
+                  value={newOpMeta.branch}
+                  onChange={(e) => setNewOpMeta((p) => ({ ...p, branch: e.target.value }))}
+                  className={styles.operationFormSelect}
+                >
+                  <option value="">Sin especificar</option>
+                  {OPERATION_BRANCH_VALUES.map((value) => (
+                    <option key={value} value={value}>
+                      {OPERATION_BRANCH_LABELS[value]}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className={styles.operationNewFormFullWidth}>
                 <label className={styles.operationFormLabel}>
                   Notas (opcional)
@@ -942,6 +965,21 @@ export default function PatientDetailClient({
                             onChange={(e) => setEditForm((prev) => ({ ...prev, exitDate: e.target.value }))}
                           />
                         </div>
+                        <div>
+                          <label className={styles.operationFormLabel}>Sucursal</label>
+                          <select
+                            className={styles.operationFormSelect}
+                            value={editForm.branch}
+                            onChange={(e) => setEditForm((prev) => ({ ...prev, branch: e.target.value }))}
+                          >
+                            <option value="">Sin especificar</option>
+                            {OPERATION_BRANCH_VALUES.map((value) => (
+                              <option key={value} value={value}>
+                                {OPERATION_BRANCH_LABELS[value]}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
                         <div className={styles.operationFormFullWidth}>
                           <label className={styles.operationFormLabel}>Notas</label>
                           <textarea
@@ -1010,6 +1048,8 @@ export default function PatientDetailClient({
                         )}
                         {(() => {
                           const metaItems: Array<[string, string]> = [];
+                          const branchLabel = formatOperationBranch(op.branch);
+                          if (branchLabel) metaItems.push(["Sucursal", branchLabel]);
                           if (op.orderNumber) metaItems.push(["N° orden", op.orderNumber]);
                           if (op.orderedAt) metaItems.push(["Fecha orden", formatClinicDate(op.orderedAt)]);
                           const product = [op.productCode, op.productType].filter(Boolean).join(" · ");
