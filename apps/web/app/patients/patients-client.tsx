@@ -3,8 +3,6 @@
 import { FormEvent, type ReactNode, useEffect, useState } from "react";
 import { Building2, Calendar, Hash, Mail, MapPin, Phone, Search, User, UserPlus, Users } from "lucide-react";
 
-import { ageToApproxBirthDate, formatISODate } from "@/lib/patient-age";
-
 import { Button } from "../_components/ui/button";
 import { Card, CardBody, CardHeader } from "../_components/ui/card";
 import { cn } from "../_components/ui/cn";
@@ -12,6 +10,12 @@ import { DataTable, type DataTableColumn } from "../_components/dashboard/data-t
 import { buildPatientDetailHref, DOCUMENT_TYPE_OPTIONS, PATIENT_SEX_OPTIONS } from "./[id]/patient-detail-helpers";
 import { COLOMBIA_HEALTH_INSURERS, HEALTH_INSURANCE_OTHER } from "@/lib/health-insurance-catalog";
 import { formatClinicDate } from "@/lib/datetime";
+import { MAX_HEALTH_INSURANCE_LENGTH } from "@/lib/patients-input";
+import {
+  buildCreatePatientPayload,
+  INITIAL_FORM_STATE,
+  type PatientCreateFormState,
+} from "./patient-create-helpers";
 
 type Patient = {
   id: string;
@@ -19,34 +23,6 @@ type Patient = {
   documentType: string | null;
   documentNumber: string | null;
   createdAt: string;
-};
-
-type FormState = {
-  fullName: string;
-  sex: string;
-  documentType: string;
-  documentNumber: string;
-  birthDate: string;
-  ageInput: string;
-  ageTouched: boolean;
-  address: string;
-  phone: string;
-  email: string;
-  notes: string;
-};
-
-const INITIAL_FORM_STATE: FormState = {
-  fullName: "",
-  sex: "",
-  documentType: "",
-  documentNumber: "",
-  birthDate: "",
-  ageInput: "",
-  ageTouched: false,
-  address: "",
-  phone: "",
-  email: "",
-  notes: "",
 };
 
 const FIELD_LABEL = "text-sm font-medium text-slate-700";
@@ -86,7 +62,7 @@ type PatientsClientProps = {
 
 export default function PatientsClient({ initialQuery = "" }: PatientsClientProps) {
   const [patients, setPatients] = useState<Patient[]>([]);
-  const [form, setForm] = useState<FormState>(INITIAL_FORM_STATE);
+  const [form, setForm] = useState<PatientCreateFormState>(INITIAL_FORM_STATE);
   const [query, setQuery] = useState(initialQuery);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -129,26 +105,12 @@ export default function PatientsClient({ initialQuery = "" }: PatientsClientProp
     setError(null);
 
     try {
-      // Apply age/DOB disambiguation: if user typed Edad and did NOT also fill birthDate,
-      // compute an approximate birthDate from the age. Exact date always takes precedence.
-      // Strip UI-only keys (ageInput, ageTouched) so the API never receives them.
-      const { ageInput, ageTouched, ...rest } = form;
-      let outgoingBirthDate = rest.birthDate;
-      if (
-        !outgoingBirthDate &&
-        ageTouched &&
-        ageInput.trim() !== "" &&
-        !Number.isNaN(Number(ageInput))
-      ) {
-        outgoingBirthDate = formatISODate(ageToApproxBirthDate(Number(ageInput)));
-      }
-
       const response = await fetch("/api/patients", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ ...rest, birthDate: outgoingBirthDate }),
+        body: JSON.stringify(buildCreatePatientPayload(form)),
       });
 
       if (!response.ok) {
@@ -394,15 +356,54 @@ export default function PatientsClient({ initialQuery = "" }: PatientsClientProp
               </Field>
             </div>
 
-            {/* 5. Email — full width */}
-            <Field label="Email" icon={<Mail className="h-4 w-4" />}>
-              <input
-                placeholder="Ej: paciente@email.com"
-                value={form.email}
-                onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
-                className={cn(FIELD_CONTROL, "pl-11 pr-3.5")}
-              />
-            </Field>
+            {/* 5. Email | Entidad de salud */}
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              <Field label="Email" icon={<Mail className="h-4 w-4" />}>
+                <input
+                  placeholder="Ej: paciente@email.com"
+                  value={form.email}
+                  onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+                  className={cn(FIELD_CONTROL, "pl-11 pr-3.5")}
+                />
+              </Field>
+
+              <Field label="Entidad de salud" icon={<Building2 className="h-4 w-4" />}>
+                <select
+                  value={form.healthInsurance}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      healthInsurance: event.target.value,
+                      healthInsuranceCustom:
+                        event.target.value !== HEALTH_INSURANCE_OTHER ? "" : current.healthInsuranceCustom,
+                    }))
+                  }
+                  className={cn(FIELD_CONTROL, "pl-11 pr-3.5")}
+                >
+                  <option value="">Seleccionar…</option>
+                  {COLOMBIA_HEALTH_INSURERS.map((eps) => (
+                    <option key={eps} value={eps}>
+                      {eps}
+                    </option>
+                  ))}
+                  <option value={HEALTH_INSURANCE_OTHER}>Otra…</option>
+                </select>
+              </Field>
+            </div>
+
+            {form.healthInsurance === HEALTH_INSURANCE_OTHER && (
+              <Field label="Nombre de la entidad de salud">
+                <input
+                  placeholder="Ej: EPS personalizada"
+                  value={form.healthInsuranceCustom}
+                  maxLength={MAX_HEALTH_INSURANCE_LENGTH}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, healthInsuranceCustom: event.target.value }))
+                  }
+                  className={cn(FIELD_CONTROL, "px-3.5")}
+                />
+              </Field>
+            )}
 
             {/* 6. Dirección — full width */}
             <Field label="Dirección" icon={<MapPin className="h-4 w-4" />}>

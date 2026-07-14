@@ -12,10 +12,17 @@ import {
   patientToFormState,
 } from "../app/patients/[id]/patient-detail-helpers";
 import {
+  buildCreatePatientPayload,
+  INITIAL_FORM_STATE,
+  type PatientCreateFormState,
+  type PatientCreatePayload,
+} from "../app/patients/patient-create-helpers";
+import {
   renderPatientsView,
   resolveInitialPatientQuery,
 } from "../app/patients/patient-search-params";
 import { PatientsPage } from "../app/patients/page";
+import { HEALTH_INSURANCE_OTHER } from "../lib/health-insurance-catalog";
 
 type PatientsViewProps = {
   actions?: ReactNode;
@@ -28,6 +35,20 @@ type PatientsViewProps = {
 };
 
 const PatientsClientStub: ComponentType<{ initialQuery?: string }> = () => null;
+
+function createFormState(overrides: Partial<PatientCreateFormState> = {}): PatientCreateFormState {
+  return {
+    ...INITIAL_FORM_STATE,
+    fullName: "Ada Lovelace",
+    ...overrides,
+  };
+}
+
+function assertNoUiOnlyFields(payload: PatientCreatePayload): void {
+  assert.equal("healthInsuranceCustom" in payload, false);
+  assert.equal("ageInput" in payload, false);
+  assert.equal("ageTouched" in payload, false);
+}
 
 function readPatientsViewProps(view: ReactElement): PatientsViewProps {
   return view.props as PatientsViewProps;
@@ -114,6 +135,77 @@ describe("patients search params helpers", () => {
     assert.equal(resolveInitialPatientQuery(["ana", "lovelace"]), "ana");
     assert.equal(resolveInitialPatientQuery(["", "  ana  "]), "ana");
     assert.equal(resolveInitialPatientQuery([]), "");
+  });
+});
+
+describe("new patient create payload", () => {
+  it("sends selected catalog EPS as healthInsurance and strips UI-only fields", () => {
+    const payload = buildCreatePatientPayload(
+      createFormState({
+        healthInsurance: "Nueva EPS",
+        healthInsuranceCustom: "Should not be sent",
+        ageInput: "42",
+        ageTouched: true,
+        birthDate: "1984-01-24",
+      }),
+    );
+
+    assert.equal(payload.healthInsurance, "Nueva EPS");
+    assert.equal(payload.birthDate, "1984-01-24");
+    assertNoUiOnlyFields(payload);
+  });
+
+  it("sends trimmed custom EPS text when Otra is selected", () => {
+    const payload = buildCreatePatientPayload(
+      createFormState({
+        healthInsurance: HEALTH_INSURANCE_OTHER,
+        healthInsuranceCustom: "  Custom EPS  ",
+      }),
+    );
+
+    assert.equal(payload.healthInsurance, "Custom EPS");
+    assertNoUiOnlyFields(payload);
+  });
+
+  it("sends null healthInsurance when EPS selection is empty", () => {
+    const payload = buildCreatePatientPayload(createFormState({ healthInsurance: "" }));
+
+    assert.equal(payload.healthInsurance, null);
+    assertNoUiOnlyFields(payload);
+  });
+
+  it("successful create reset state clears both EPS fields", () => {
+    assert.equal(INITIAL_FORM_STATE.healthInsurance, "");
+    assert.equal(INITIAL_FORM_STATE.healthInsuranceCustom, "");
+  });
+
+  it("keeps exact birthDate precedence while stripping age UI fields", () => {
+    const payload = buildCreatePatientPayload(
+      createFormState({
+        birthDate: "1990-03-15",
+        ageInput: "20",
+        ageTouched: true,
+      }),
+    );
+
+    assert.equal(payload.birthDate, "1990-03-15");
+    assertNoUiOnlyFields(payload);
+  });
+
+  it("still normalizes touched age to an approximate birthDate when exact birthDate is empty", () => {
+    const age = 35;
+    const now = new Date(Date.UTC(2026, 0, 1));
+    const payload = buildCreatePatientPayload(
+      createFormState({
+        birthDate: "",
+        ageInput: String(age),
+        ageTouched: true,
+      }),
+      now,
+    );
+
+    assert.equal(payload.birthDate, "1991-07-01");
+    assertNoUiOnlyFields(payload);
   });
 });
 

@@ -1,5 +1,7 @@
 import { computeAge } from "@/lib/patient-age";
-import { COLOMBIA_HEALTH_INSURERS, HEALTH_INSURANCE_OTHER } from "@/lib/health-insurance-catalog";
+import { resolveHealthInsuranceFormValues } from "@/lib/patient-health-insurance";
+
+export { resolveHealthInsuranceFormValues } from "@/lib/patient-health-insurance";
 
 export type PatientDetail = {
   id: string;
@@ -113,20 +115,6 @@ export const PATIENT_SEX_OPTIONS = [
   { value: "MALE", label: "Masculino" },
   { value: "OTHER", label: "Otro" },
 ] as const;
-
-// Derive healthInsurance select value and custom text from the stored value.
-// If the stored value is a known EPS, pre-select it. Otherwise select "Otra"
-// and prefill the free-text with the stored custom value.
-export function resolveHealthInsuranceFormValues(stored: string | null): {
-  healthInsurance: string;
-  healthInsuranceCustom: string;
-} {
-  if (!stored) return { healthInsurance: "", healthInsuranceCustom: "" };
-  if ((COLOMBIA_HEALTH_INSURERS as readonly string[]).includes(stored)) {
-    return { healthInsurance: stored, healthInsuranceCustom: "" };
-  }
-  return { healthInsurance: HEALTH_INSURANCE_OTHER, healthInsuranceCustom: stored };
-}
 
 export function patientToFormState(patient: PatientDetail): PatientFormState {
   const birthDate = patient.birthDate ? new Date(patient.birthDate).toISOString().slice(0, 10) : "";
