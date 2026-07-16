@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { buildCompressionTemplate } from "../lib/compression-template";
+import { buildMentoneraTemplate } from "../lib/mentonera-template";
 import {
   syncMeasurementTemplate,
+  syncMentoneraTemplate,
   type MeasurementTemplatesRepository,
   type UpsertFieldInput,
   type UpsertSectionInput,
@@ -130,5 +132,68 @@ describe("syncMeasurementTemplate", () => {
         `${metadata.group}.${metadata.side}.${metadata.point}`,
       );
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Regression guard: syncMeasurementTemplate must accept a structurally
+// different (Mentonera-shaped) template without any change to compression
+// behavior, output, or field count/keys.
+// ---------------------------------------------------------------------------
+describe("syncMeasurementTemplate — Mentonera input (non-regression)", () => {
+  it("accepts a Mentonera-shaped template and syncs it as a separate template", async () => {
+    const compressionTemplate = buildCompressionTemplate();
+    const mentoneraTemplate = buildMentoneraTemplate();
+    const store = createInMemoryRepository();
+
+    const compressionResult = await syncMeasurementTemplate(compressionTemplate, store.repository);
+    const mentoneraResult = await syncMeasurementTemplate(mentoneraTemplate, store.repository);
+
+    assert.equal(compressionResult.fieldsCount, 94);
+    assert.equal(mentoneraResult.fieldsCount, 3);
+    assert.notEqual(compressionResult.templateId, mentoneraResult.templateId);
+    assert.equal(store.templates.size, 2);
+    assert.ok(store.templates.get(compressionTemplate.code));
+    assert.ok(store.templates.get(mentoneraTemplate.code));
+  });
+
+  it("leaves compression template output unchanged (field count/keys/values identical)", async () => {
+    const compressionTemplate = buildCompressionTemplate();
+    const store = createInMemoryRepository();
+
+    // Sync Mentonera first to prove it never mutates the compression path.
+    await syncMeasurementTemplate(buildMentoneraTemplate(), store.repository);
+    const result = await syncMeasurementTemplate(compressionTemplate, store.repository);
+
+    assert.equal(result.sectionsCount, 4);
+    assert.equal(result.fieldsCount, 94);
+    assert.equal(store.sections.size, 4 + 1);
+    assert.equal(store.fields.size, 94 + 3);
+  });
+});
+
+describe("syncMentoneraTemplate", () => {
+  it("syncs the mentonera-v1 template via an injectable repository", async () => {
+    const store = createInMemoryRepository();
+
+    const result = await syncMentoneraTemplate(store.repository);
+
+    assert.equal(result.sectionsCount, 1);
+    assert.equal(result.fieldsCount, 3);
+    const stored = store.templates.get("mentonera-v1");
+    assert.ok(stored);
+    assert.equal(result.templateId, stored.id);
+  });
+
+  it("is idempotent — second run does not duplicate rows", async () => {
+    const store = createInMemoryRepository();
+
+    const first = await syncMentoneraTemplate(store.repository);
+    const second = await syncMentoneraTemplate(store.repository);
+
+    assert.equal(second.templateId, first.templateId);
+    assert.equal(store.templates.size, 1);
+    assert.equal(store.sections.size, 1);
+    assert.equal(store.fields.size, 3);
   });
 });

@@ -1,10 +1,41 @@
 import { Prisma } from "@prisma/client";
 
-import {
-  buildCompressionTemplate,
-  type CompressionTemplate,
-} from "./compression-template";
+import { buildCompressionTemplate } from "./compression-template";
+import { buildMentoneraTemplate } from "./mentonera-template";
 import { getPrisma } from "./prisma";
+
+/**
+ * Structural shape accepted by `syncMeasurementTemplate`. Any concrete
+ * template type (e.g. `CompressionTemplate`, `MentoneraTemplate`) whose
+ * field metadata is a plain record stays assignable here — this is what
+ * lets the sync pipeline stay additive across garment-specific templates
+ * without narrowing to a single shape.
+ */
+export type MeasurementTemplateFieldInput = {
+  key: string;
+  label: string;
+  fieldType: "NUMBER";
+  unit: string;
+  isRequired: boolean;
+  sortOrder: number;
+  minValue: number;
+  maxValue: number;
+  metadata: Record<string, unknown>;
+};
+
+export type MeasurementTemplateSectionInput = {
+  title: string;
+  sortOrder: number;
+  fields: ReadonlyArray<MeasurementTemplateFieldInput>;
+};
+
+export type MeasurementTemplateInput = {
+  code: string;
+  name: string;
+  version: number;
+  description: string;
+  sections: ReadonlyArray<MeasurementTemplateSectionInput>;
+};
 
 export type UpsertTemplateInput = {
   code: string;
@@ -45,7 +76,7 @@ export type SyncTemplateResult = {
 };
 
 export async function syncMeasurementTemplate(
-  template: CompressionTemplate,
+  template: MeasurementTemplateInput,
   repository: MeasurementTemplatesRepository,
 ): Promise<SyncTemplateResult> {
   const tpl = await repository.upsertTemplate({
@@ -177,4 +208,10 @@ export async function syncCompressionTemplate(
   repository: MeasurementTemplatesRepository = defaultRepository,
 ): Promise<SyncTemplateResult> {
   return syncMeasurementTemplate(buildCompressionTemplate(), repository);
+}
+
+export async function syncMentoneraTemplate(
+  repository: MeasurementTemplatesRepository = defaultRepository,
+): Promise<SyncTemplateResult> {
+  return syncMeasurementTemplate(buildMentoneraTemplate(), repository);
 }

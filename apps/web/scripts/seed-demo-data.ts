@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 
-import { syncCompressionTemplate } from "@/lib/measurement-templates";
+import { syncCompressionTemplate, syncMentoneraTemplate } from "@/lib/measurement-templates";
 import { getPrisma } from "@/lib/prisma";
 
 import { DEMO_MARKER, resetDemoData } from "./reset-demo-data";
@@ -147,6 +147,10 @@ async function main(): Promise<void> {
   const prisma = getPrisma();
   const reset = await resetDemoData({ fullReset: false, deleteUsers: false });
   const templateResult = await syncCompressionTemplate();
+  // Additive: Mentonera must be seeded in every environment alongside
+  // compression, but the demo dataset itself still only seeds compression
+  // sessions/values below.
+  await syncMentoneraTemplate();
   const template = await prisma.measurementTemplate.findUniqueOrThrow({
     where: { id: templateResult.templateId },
     include: { sections: { include: { fields: true }, orderBy: { sortOrder: "asc" } } },
