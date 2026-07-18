@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { type AuthUser } from "@/lib/auth";
 import { withAuth } from "@/lib/with-auth";
+import { resolveTemplateCode } from "@/lib/garment-template-resolver";
 import {
   parseCreateMeasurementInput,
   parseListMeasurementsQuery,
@@ -13,20 +14,22 @@ import {
   type MeasurementsRepository,
 } from "@/lib/measurements";
 
-const DEFAULT_TEMPLATE_CODE = "compression-v1";
-
 type Params = {
   params: Promise<{ id: string }>;
 };
 
 export type MeasurementsCollectionDeps = {
   repository: MeasurementsRepository;
-  templateCode: string;
+  // Resolves the garment reference (parsed.value.garmentType) into a
+  // templateCode instead of a hardcoded constant, so each garment can carry
+  // its own dedicated measurement template — unmapped/unknown/empty garments
+  // safely fall back to compression-v1 (see garment-template-resolver.ts).
+  resolveTemplateCode: (reference: string | null | undefined) => string;
 };
 
 const defaultDeps: MeasurementsCollectionDeps = {
   repository: getDefaultMeasurementsRepository(),
-  templateCode: DEFAULT_TEMPLATE_CODE,
+  resolveTemplateCode,
 };
 
 export async function handlePostMeasurementRequest(
@@ -60,10 +63,12 @@ export async function handlePostMeasurementRequest(
   if (parsed.value.garmentSnapshot) metadataEntries.garmentSnapshot = parsed.value.garmentSnapshot;
   const metadata = Object.keys(metadataEntries).length > 0 ? metadataEntries : null;
 
+  const templateCode = deps.resolveTemplateCode(parsed.value.garmentType);
+
   const result = await createDraftMeasurement(
     {
       patientId: id,
-      templateCode: deps.templateCode,
+      templateCode,
       measuredAt: parsed.value.measuredAt,
       notes: parsed.value.notes,
       diagnosis: parsed.value.diagnosis,
@@ -80,6 +85,14 @@ export async function handlePostMeasurementRequest(
       return NextResponse.json({ error: "Patient not found" }, { status: 404 });
     }
     if (result.error === "TEMPLATE_NOT_FOUND") {
+      // Surface template-resolution failures: a garment resolved to a
+      // templateCode that has no active seeded template (e.g. mentonera-v1
+      // not seeded). Without this the 503 is silent in production.
+      console.error("[measurements:createDraft] active template not found", {
+        patientId: id,
+        garmentType: parsed.value.garmentType,
+        templateCode,
+      });
       return NextResponse.json(
         { error: "Active measurement template not found" },
         { status: 503 },

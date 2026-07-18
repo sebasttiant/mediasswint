@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import { getSessionCookieName, type AuthUser } from "../lib/auth";
 import { GARMENT_FIGURE_KEY } from "../lib/garment-catalog";
+import { resolveTemplateCode } from "../lib/garment-template-resolver";
 import {
   handleListMeasurementsRequest,
   handlePostMeasurementRequest,
@@ -22,6 +23,7 @@ import {
   type TemplateSnapshot,
 } from "../lib/measurements";
 import { buildCompressionTemplate } from "../lib/compression-template";
+import { buildMentoneraTemplate } from "../lib/mentonera-template";
 
 const staffUser: AuthUser = {
   id: "staff-1",
@@ -48,6 +50,37 @@ function buildSnapshot(): TemplateSnapshot {
         counter += 1;
         return {
           id: `fld-${counter}`,
+          key: field.key,
+          label: field.label,
+          fieldType: field.fieldType,
+          unit: field.unit,
+          isRequired: field.isRequired,
+          sortOrder: field.sortOrder,
+          minValue: field.minValue,
+          maxValue: field.maxValue,
+          metadata: field.metadata as unknown as Record<string, unknown>,
+        };
+      }),
+    })),
+  };
+}
+
+function buildMentoneraSnapshot(): TemplateSnapshot {
+  const tpl = buildMentoneraTemplate();
+  let counter = 0;
+  return {
+    templateId: "tpl-mentonera-1",
+    code: tpl.code,
+    name: tpl.name,
+    version: tpl.version,
+    description: tpl.description,
+    sections: tpl.sections.map((section) => ({
+      title: section.title,
+      sortOrder: section.sortOrder,
+      fields: section.fields.map((field) => {
+        counter += 1;
+        return {
+          id: `fld-mentonera-${counter}`,
           key: field.key,
           label: field.label,
           fieldType: field.fieldType,
@@ -209,7 +242,10 @@ function collectionDeps(
 ): MeasurementsCollectionDeps {
   return {
     repository: buildInMemoryRepository().repository,
-    templateCode: "compression-v1",
+    // Real resolver by default — this is what forces every existing POST
+    // test through route.ts's actual garment -> templateCode resolution
+    // instead of a hardcoded "compression-v1" dep.
+    resolveTemplateCode,
     ...overrides,
   };
 }
@@ -289,6 +325,56 @@ describe("POST /api/patients/[id]/measurements", () => {
     assert.equal(stored?.status, "DRAFT");
     assert.equal(stored?.diagnosis, "Insuficiencia venosa");
     assert.deepEqual(stored?.metadata, { patientSex: "MALE" });
+  });
+
+  it("resolves templateCode from the garment reference — ME creates a mentonera-v1 draft", async () => {
+    // Repo only knows the mentonera-v1 snapshot here — proves the route
+    // resolves the code from garmentType (not a hardcoded compression-v1)
+    // and passes it straight through to getActiveTemplateSnapshot.
+    const repo = buildInMemoryRepository({ snapshot: buildMentoneraSnapshot() });
+    const deps = collectionDeps({ repository: repo.repository });
+    const response = await handlePostMeasurementRequest(
+      postRequest({ measuredAt: "2026-04-28T10:00:00Z", garmentType: "ME" }),
+      { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
+      deps,
+    );
+    assert.equal(response.status, 201);
+    const json = (await response.json()) as { id: string; templateSnapshot: TemplateSnapshot };
+    assert.equal(json.templateSnapshot.code, "mentonera-v1");
+    assert.equal(json.templateSnapshot.sections[0]?.fields.length, 3);
+  });
+
+  it("returns 503 when ME resolves to mentonera-v1 but no active template is seeded for it", async () => {
+    // Reliability guard: resolveTemplateCode("ME") === "mentonera-v1" is
+    // correct, but the repo here only has compression-v1 registered (the
+    // seed hasn't run yet in this environment) — must fail loudly with the
+    // existing TEMPLATE_NOT_FOUND -> 503 branch, never crash or fall back
+    // silently to a mismatched snapshot.
+    const repo = buildInMemoryRepository();
+    assert.equal(resolveTemplateCode("ME"), "mentonera-v1");
+    const deps = collectionDeps({ repository: repo.repository });
+    const response = await handlePostMeasurementRequest(
+      postRequest({ measuredAt: "2026-04-28T10:00:00Z", garmentType: "ME" }),
+      { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
+      deps,
+    );
+    assert.equal(response.status, 503);
+  });
+
+  it("still resolves non-ME garments to compression-v1 (non-regression)", async () => {
+    const repo = buildInMemoryRepository();
+    const deps = collectionDeps({ repository: repo.repository });
+    const response = await handlePostMeasurementRequest(
+      postRequest({ measuredAt: "2026-04-28T10:00:00Z", garmentType: "MR" }),
+      { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
+      deps,
+    );
+    assert.equal(response.status, 201);
+    const json = (await response.json()) as { id: string; templateSnapshot: TemplateSnapshot };
+    assert.equal(json.templateSnapshot.code, "compression-v1");
   });
 });
 
