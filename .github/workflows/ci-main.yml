@@ -53,10 +53,58 @@ jobs:
       - name: Unit tests
         run: pnpm --filter @mediasswint/web test:unit
 
+      - name: Rendered behaviour tests
+        run: pnpm --filter @mediasswint/web test:render
+
       - name: Build
         run: pnpm build
         env:
           NEXT_TELEMETRY_DISABLED: "1"
+
+  integration:
+    name: Disposable PostgreSQL integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: mediass_ci_probe
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d mediass_ci_probe"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/mediass_ci_probe
+      INTEGRATION_DATABASE_URL: postgresql://ci:ci@localhost:5432/mediass_ci_probe
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Prisma validate
+        run: pnpm --filter @mediasswint/web prisma:validate
+
+      - name: Apply migrations to disposable PostgreSQL
+        run: pnpm --filter @mediasswint/web exec prisma migrate deploy --schema prisma/schema.prisma
+
+      - name: Integration tests
+        run: pnpm --filter @mediasswint/web test:integration:ci
 
   docker-image:
     name: Docker image (runner)

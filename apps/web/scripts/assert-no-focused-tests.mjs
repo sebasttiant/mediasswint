@@ -13,6 +13,11 @@ const FOCUSED_MEMBER = "only";
 // repository root or from apps/web.
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 export const DEFAULT_TESTS_DIR = path.resolve(SCRIPT_DIR, "..", "tests");
+export const DEFAULT_TEST_DIRECTORIES = [
+  DEFAULT_TESTS_DIR,
+  path.resolve(SCRIPT_DIR, "..", "tests-render"),
+  path.resolve(SCRIPT_DIR, "..", "tests-integration"),
+];
 
 function scriptKindFor(fileName) {
   if (fileName.endsWith("x")) return ts.ScriptKind.TSX;
@@ -122,19 +127,23 @@ export async function collectTestFiles(directory) {
   return files.flat();
 }
 
-export async function findFocusedTestFiles(directory = DEFAULT_TESTS_DIR) {
-  const testFiles = await collectTestFiles(directory);
+export async function findFocusedTestFiles(directories = DEFAULT_TEST_DIRECTORIES) {
+  const roots = Array.isArray(directories) ? directories : [directories];
   const focused = [];
 
-  for (const testFile of testFiles) {
-    const content = await readFile(testFile, "utf8");
-    const calls = findFocusedCalls(content, testFile);
+  for (const root of roots) {
+    const testFiles = await collectTestFiles(root);
+    for (const testFile of testFiles) {
+      const content = await readFile(testFile, "utf8");
+      const calls = findFocusedCalls(content, testFile);
 
-    if (calls.length > 0) {
-      focused.push({
-        file: path.relative(directory, testFile),
-        lines: calls.map((call) => call.line),
-      });
+      if (calls.length > 0) {
+        const relative = path.relative(root, testFile);
+        focused.push({
+          file: roots.length === 1 ? relative : path.join(path.basename(root), relative),
+          lines: calls.map((call) => call.line),
+        });
+      }
     }
   }
 
@@ -149,11 +158,11 @@ const isDirectRun =
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (isDirectRun) {
-  const directory = process.argv[2] ? path.resolve(process.argv[2]) : DEFAULT_TESTS_DIR;
-  const focused = await findFocusedTestFiles(directory);
+  const directories = process.argv[2] ? [path.resolve(process.argv[2])] : DEFAULT_TEST_DIRECTORIES;
+  const focused = await findFocusedTestFiles(directories);
 
   if (focused.length > 0) {
-    console.error("Focused tests are not allowed in committed unit tests:");
+    console.error("Focused tests are not allowed in committed tests:");
     for (const { file, lines } of focused) {
       console.error(`- ${file} (line${lines.length > 1 ? "s" : ""} ${lines.join(", ")})`);
     }
