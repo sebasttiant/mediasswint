@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { type AuthUser } from "@/lib/auth";
 import { withAuth } from "@/lib/with-auth";
-import { findGarmentTemplateMismatch } from "@/lib/garment-template-identity";
+import { resolveCanonicalGarmentIdentity } from "@/lib/garment-template-identity";
 import { getHeadSnapshotCompletionBlock } from "@/lib/head-measurement-layout";
 import {
   buildMeasurementKeyRanges,
@@ -29,6 +29,13 @@ export type MeasurementSessionDeps = {
 const defaultDeps: MeasurementSessionDeps = {
   repository: getDefaultMeasurementsRepository(),
 };
+
+function metadataGarmentReference(metadata: Record<string, unknown> | null): unknown {
+  if (!metadata || typeof metadata.garmentSnapshot !== "object" || metadata.garmentSnapshot === null) {
+    return undefined;
+  }
+  return (metadata.garmentSnapshot as { reference?: unknown }).reference;
+}
 
 function notFound(entity: string) {
   return NextResponse.json({ error: `${entity} not found` }, { status: 404 });
@@ -102,29 +109,99 @@ export async function handlePatchMeasurementRequest(
     return NextResponse.json({ errors: parsed.errors }, { status: 400 });
   }
 
-  // GARMENT IDENTITY IS IMMUTABLE ACROSS TEMPLATE BOUNDARIES.
+  // GARMENT IDENTITY IS CANONICAL, SINGULAR AND IMMUTABLE ACROSS TEMPLATES.
   //
-  // garmentType and metadata.garmentSnapshot are client input. Without this
-  // guard a caller could relabel a mascara-v1 session (2 measurements) as
-  // Mentonera (3 measurements) while keeping the Máscara schema, leaving the
-  // clinical label and the measurement schema permanently disagreeing.
+  // The request may name the garment in `garmentType` and again inside
+  // `metadata.garmentSnapshot`. Both must name the SAME garment: MA and MMA
+  // share the mascara-v1 measurement set but are different clinical products,
+  // so a payload mixing them would persist a record contradicting itself.
   //
-  // Identity is resolved on the SERVER, from the same resolver that chose the
-  // template at creation time. Changes that stay inside one template (MA <-> MMA,
-  // both mascara-v1) are allowed because they cannot create a disagreement.
+  // Whatever survives is then checked against the session's persisted template
+  // snapshot, and the display metadata written to the record is derived from
+  // the server catalog rather than trusted from the client.
+  //
   // This runs AFTER the ownership check above, so a caller who does not own the
   // session learns nothing about its garment, and BEFORE any write, so a
   // refused request changes nothing.
-  const identityMismatch = findGarmentTemplateMismatch({
-    sessionTemplateCode: detail.value.templateSnapshot?.code ?? null,
-    requestedGarmentType: parsed.value.garmentType,
-    requestedGarmentReference: parsed.value.garmentSnapshot?.reference ?? undefined,
+  const identity = resolveCanonicalGarmentIdentity({
+    garmentType: parsed.value.garmentType,
+    garmentSnapshot: { reference: parsed.value.garmentSnapshotReference },
   });
-  if (identityMismatch) {
+  // A reference the catalog does not know is legacy free text. The repository
+  // deliberately supports it (`resolveLegacyGarmentSelectOption`), so refusing
+  // it outright would make every historical session uneditable. It is allowed
+  // ONLY when it changes nothing: same value already on the session, and no
+  // garmentSnapshot trying to attach a canonical identity to it.
+  const unchangedLegacyGarment =
+    identity.ok === false &&
+    identity.reason === "UNKNOWN_REFERENCE" &&
+    parsed.value.garmentSnapshotReference == null &&
+    typeof parsed.value.garmentType === "string" &&
+    parsed.value.garmentType === detail.value.garmentType;
+
+  if (!identity.ok && !unchangedLegacyGarment) {
+    console.error("[measurements:patch] refused inconsistent garment identity", {
+      sessionId,
+      templateCode: detail.value.templateSnapshot?.code ?? null,
+      code: "GARMENT_TEMPLATE_MISMATCH",
+      reason: identity.reason,
+    });
+    return NextResponse.json(
+      {
+        error: "Garment identity is inconsistent",
+        code: "GARMENT_TEMPLATE_MISMATCH",
+        reason:
+          identity.reason === "UNKNOWN_REFERENCE"
+            ? "La prenda indicada no existe en el catálogo."
+            : "La prenda indicada no coincide entre los campos enviados.",
+      },
+      { status: 409 },
+    );
+  }
+
+  const sessionTemplateCode = detail.value.templateSnapshot?.code ?? null;
+  const canonicalIdentity = identity.ok ? identity.identity : null;
+  const persistedIdentity = resolveCanonicalGarmentIdentity({
+    garmentType: detail.value.garmentType,
+    garmentSnapshot: { reference: metadataGarmentReference(detail.value.metadata) },
+  });
+  const persistedLegacyFreeText =
+    persistedIdentity.ok === false &&
+    persistedIdentity.reason === "UNKNOWN_REFERENCE" &&
+    (metadataGarmentReference(detail.value.metadata) === undefined ||
+      metadataGarmentReference(detail.value.metadata) === detail.value.garmentType);
+  if (!persistedIdentity.ok && !persistedLegacyFreeText) {
+    return NextResponse.json(
+      {
+        error: "Stored garment identity is inconsistent",
+        code: "GARMENT_TEMPLATE_MISMATCH",
+      },
+      { status: 409 },
+    );
+  }
+  if (
+    canonicalIdentity !== null &&
+    persistedIdentity.ok &&
+    persistedIdentity.identity !== null &&
+    canonicalIdentity.reference !== persistedIdentity.identity.reference
+  ) {
+    return NextResponse.json(
+      {
+        error: "Garment does not match this measurement's canonical identity",
+        code: "GARMENT_TEMPLATE_MISMATCH",
+      },
+      { status: 409 },
+    );
+  }
+  if (
+    canonicalIdentity !== null &&
+    sessionTemplateCode !== null &&
+    canonicalIdentity.templateCode !== sessionTemplateCode
+  ) {
     console.error("[measurements:patch] refused cross-garment identity change", {
       sessionId,
-      templateCode: identityMismatch.sessionTemplateCode,
-      requestedTemplateCode: identityMismatch.requestedTemplateCode,
+      templateCode: sessionTemplateCode,
+      requestedTemplateCode: canonicalIdentity.templateCode,
       code: "GARMENT_TEMPLATE_MISMATCH",
     });
     return NextResponse.json(
@@ -143,9 +220,19 @@ export async function handlePatchMeasurementRequest(
   // A malformed snapshot (parsed to null) is ignored so an existing snapshot and
   // patientSex stay intact; an absent metadata field (undefined) is also no-touch.
   let mergedMetadata: Record<string, unknown> | undefined = undefined;
-  if (parsed.value.garmentSnapshot != null) {
+  if (parsed.value.garmentSnapshotReference != null && canonicalIdentity !== null) {
     const existing = detail.value.metadata ?? {};
-    mergedMetadata = { ...existing, garmentSnapshot: parsed.value.garmentSnapshot };
+    // The CANONICAL snapshot is persisted — label, family and figure come from
+    // the server catalog, so a spoofed display payload cannot be stored.
+    mergedMetadata = {
+      ...existing,
+      garmentSnapshot: {
+        reference: canonicalIdentity.reference,
+        label: canonicalIdentity.label,
+        family: canonicalIdentity.family,
+        figureKey: canonicalIdentity.figureKey,
+      },
+    };
   }
 
   const updated = await updateMeasurementValues(

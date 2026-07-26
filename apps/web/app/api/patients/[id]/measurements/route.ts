@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { resolveCanonicalGarmentIdentity } from "@/lib/garment-template-identity";
+
 import { type AuthUser } from "@/lib/auth";
 import { withAuth } from "@/lib/with-auth";
 import { resolveTemplateCode } from "@/lib/garment-template-resolver";
@@ -58,12 +60,59 @@ export async function handlePostMeasurementRequest(
     return NextResponse.json({ errors: parsed.errors }, { status: 400 });
   }
 
+  // The template used to be derived from `garmentType` while an INDEPENDENTLY
+  // supplied `metadata.garmentSnapshot` was persisted verbatim, so a draft could
+  // be created with a Máscara schema and a Mentonera label. Identity is resolved
+  // once, from the server catalog, and both fields must agree.
+  const identity = resolveCanonicalGarmentIdentity({
+    garmentType: parsed.value.garmentType,
+    garmentSnapshot: { reference: parsed.value.garmentSnapshotReference },
+  });
+  // An unknown reference with no garmentSnapshot is legacy free text, which the
+  // repository still supports for historical records; anything else must agree.
+  const legacyFreeTextGarment =
+    identity.ok === false &&
+    identity.reason === "UNKNOWN_REFERENCE" &&
+    parsed.value.garmentSnapshotReference == null;
+
+  if (!identity.ok && !legacyFreeTextGarment) {
+    console.error("[measurements:createDraft] refused inconsistent garment identity", {
+      patientId: id,
+      code: "GARMENT_TEMPLATE_MISMATCH",
+      reason: identity.reason,
+    });
+    return NextResponse.json(
+      {
+        error: "Garment identity is inconsistent",
+        code: "GARMENT_TEMPLATE_MISMATCH",
+        reason:
+          identity.reason === "UNKNOWN_REFERENCE"
+            ? "La prenda indicada no existe en el catálogo."
+            : "La prenda indicada no coincide entre los campos enviados.",
+      },
+      { status: 409 },
+    );
+  }
+
+  const canonicalIdentity = identity.ok ? identity.identity : null;
+
   const metadataEntries: Record<string, unknown> = {};
   if (parsed.value.patientSex) metadataEntries.patientSex = parsed.value.patientSex;
-  if (parsed.value.garmentSnapshot) metadataEntries.garmentSnapshot = parsed.value.garmentSnapshot;
+  // Persist the CANONICAL snapshot, never the client's display fields.
+  if (canonicalIdentity) {
+    metadataEntries.garmentSnapshot = {
+      reference: canonicalIdentity.reference,
+      label: canonicalIdentity.label,
+      family: canonicalIdentity.family,
+      figureKey: canonicalIdentity.figureKey,
+    };
+  }
   const metadata = Object.keys(metadataEntries).length > 0 ? metadataEntries : null;
 
-  const templateCode = deps.resolveTemplateCode(parsed.value.garmentType);
+  // One canonical source for the template too.
+  const templateCode = canonicalIdentity
+    ? canonicalIdentity.templateCode
+    : deps.resolveTemplateCode(parsed.value.garmentType);
 
   const result = await createDraftMeasurement(
     {

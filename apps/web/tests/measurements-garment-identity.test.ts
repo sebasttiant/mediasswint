@@ -7,6 +7,10 @@ import {
   type MeasurementSessionDeps,
 } from "../app/api/patients/[id]/measurements/[sessionId]/route";
 import {
+  handlePostMeasurementRequest,
+  type MeasurementsCollectionDeps,
+} from "../app/api/patients/[id]/measurements/route";
+import {
   type MeasurementSessionDetail,
   type MeasurementSessionStatus,
   type MeasurementsRepository,
@@ -185,8 +189,26 @@ function patchRequest(body: unknown): Request {
   });
 }
 
+function postRequest(body: unknown): Request {
+  return new Request("http://localhost/api/patients/pat-1/measurements", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      cookie: `${getSessionCookieName()}=token`,
+    },
+    body: JSON.stringify(body),
+  });
+}
+
 function deps(repository: MeasurementsRepository): MeasurementSessionDeps {
   return { repository };
+}
+
+function collectionDeps(repository: MeasurementsRepository): MeasurementsCollectionDeps {
+  return {
+    repository,
+    resolveTemplateCode: () => "compression-v1",
+  };
 }
 
 async function patch(repository: MeasurementsRepository, body: unknown, patientId = "pat-1") {
@@ -302,15 +324,30 @@ describe("PATCH garment identity — cross-template changes are refused", () => 
     assert.equal(response.status, 409);
   });
 
-  it("keeps compression sessions editable with any compression-resolving reference", async () => {
+  it("keeps a legacy free-text garment editable when the value does not change", async () => {
+    // Historical sessions carry free text the catalog never knew; refusing it
+    // outright would make them uneditable.
+    const store = buildRepository(compressionSnapshot(), "Media panty cintura alta");
+
+    const response = await patch(store.repository, {
+      valuesByKey: {},
+      garmentType: "Media panty cintura alta",
+      notes: "editando una sesión histórica",
+    });
+
+    assert.equal(response.status, 200);
+  });
+
+  it("refuses to CHANGE a session onto an unknown garment reference", async () => {
     const store = buildRepository(compressionSnapshot(), "MC");
 
     const response = await patch(store.repository, {
       valuesByKey: {},
-      garmentType: "PANTY",
+      garmentType: "NO-EXISTE-EN-CATALOGO",
     });
 
-    assert.equal(response.status, 200, "compression is the fallback template; no boundary crossed");
+    assert.equal(response.status, 409);
+    assert.deepEqual(store.writes, []);
   });
 
   it("refuses a metadata.garmentSnapshot whose reference crosses templates", async () => {
@@ -327,6 +364,52 @@ describe("PATCH garment identity — cross-template changes are refused", () => 
         },
       },
     });
+
+    assert.equal(response.status, 409);
+    assert.deepEqual(store.writes, []);
+  });
+
+  it("refuses MA-to-MMA relabelling even though the template is shared", async () => {
+    const store = buildRepository(mascaraSnapshot(), "MA");
+
+    const response = await patch(store.repository, {
+      valuesByKey: {},
+      garmentType: "MMA",
+      metadata: { garmentSnapshot: { reference: "MMA" } },
+    });
+
+    assert.equal(response.status, 409);
+    assert.deepEqual(store.writes, []);
+  });
+
+  it("refuses a malformed reference-only snapshot before any write", async () => {
+    const store = buildRepository(mascaraSnapshot(), "MA");
+
+    const response = await patch(store.repository, {
+      valuesByKey: {},
+      garmentType: "MA",
+      metadata: { garmentSnapshot: { reference: "MMA" } },
+    });
+
+    assert.equal(response.status, 409);
+    assert.deepEqual(store.writes, []);
+  });
+});
+
+describe("POST garment identity — canonical server identity", () => {
+  it("rejects MA/MMA disagreement before creating a draft", async () => {
+    const store = buildRepository(mascaraSnapshot(), "MA");
+
+    const response = await handlePostMeasurementRequest(
+      postRequest({
+        measuredAt: "2026-05-01T10:00:00Z",
+        garmentType: "MA",
+        metadata: { garmentSnapshot: { reference: "MMA" } },
+      }),
+      { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
+      collectionDeps(store.repository),
+    );
 
     assert.equal(response.status, 409);
     assert.deepEqual(store.writes, []);
