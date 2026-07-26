@@ -107,6 +107,17 @@ function buildRepository(snapshot: TemplateSnapshot, garmentType: string) {
       writes.push("createDraft");
       return { id: "ses-new" };
     },
+    // Atomic in the fake too: if any value fails, no draft is recorded.
+    async createDraftWithValues(input) {
+      const created = await repository.createDraft(input.draft);
+      const copied = await repository.replaceValues({
+        sessionId: created.id,
+        values: input.values,
+      });
+      if (!copied.ok) throw new Error("createDraftWithValues rolled back");
+      return { ok: true as const, id: created.id };
+    },
+
     async getDetail(id) {
       return sessions.get(id) ?? null;
     },

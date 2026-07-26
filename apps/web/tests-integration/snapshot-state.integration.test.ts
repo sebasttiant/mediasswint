@@ -325,3 +325,141 @@ describe(
     });
   },
 );
+
+/**
+ * B5 — duplication must never leave an orphan draft.
+ */
+describe(
+  "atomic duplication against real PostgreSQL",
+  { skip: isDisposable ? false : "INTEGRATION_DATABASE_URL must point at a *_probe database" },
+  () => {
+    let prisma: import("@prisma/client").PrismaClient;
+    let repositoryFactory: typeof import("../lib/measurements").getDefaultMeasurementsRepository;
+
+    let patientId = "";
+    let templateId = "";
+    let snapshot: unknown;
+
+    before(async () => {
+      const measurements = await import("../lib/measurements");
+      const templates = await import("../lib/measurement-templates");
+      const prismaModule = await import("../lib/prisma");
+      repositoryFactory = measurements.getDefaultMeasurementsRepository;
+      prisma = prismaModule.getPrisma();
+
+      const stale = await prisma.patient.findFirst({
+        where: { documentNumber: "PROBE-DUP-1" },
+        select: { id: true },
+      });
+      if (stale) {
+        await prisma.measurementValue.deleteMany({ where: { session: { patientId: stale.id } } });
+        await prisma.measurementSession.deleteMany({ where: { patientId: stale.id } });
+        await prisma.patient.delete({ where: { id: stale.id } });
+      }
+
+      const synced = await templates.syncCompressionTemplate(
+        templates.getDefaultMeasurementTemplatesRepository(),
+      );
+      templateId = synced.templateId;
+      snapshot = await repositoryFactory().getActiveTemplateSnapshot("compression-v1");
+
+      const patient = await prisma.patient.create({
+        data: {
+          documentType: "CC",
+          documentNumber: "PROBE-DUP-1",
+          fullName: "Probe Duplication",
+          sex: "FEMALE",
+        },
+        select: { id: true },
+      });
+      patientId = patient.id;
+    });
+
+    it("creates the draft and its values together", async () => {
+      const repository = repositoryFactory();
+      const field = await prisma.templateField.findFirstOrThrow({
+        where: { section: { templateId } },
+      });
+
+      const created = await repository.createDraftWithValues({
+        draft: {
+          patientId,
+          templateId,
+          measuredAt: new Date("2026-05-05T10:00:00.000Z"),
+          notes: "copiado",
+          diagnosis: null,
+          garmentType: "MC",
+          compressionClass: null,
+          productFlags: null,
+          metadata: null,
+          templateSnapshot: snapshot as never,
+        },
+        values: [{ fieldId: field.id, valueNumber: 33.5 }],
+      });
+
+      assert.ok(created.ok);
+      const session = await prisma.measurementSession.findUniqueOrThrow({
+        where: { id: created.id },
+        include: { values: true },
+      });
+      assert.equal(session.notes, "copiado");
+      assert.equal(session.values.length, 1);
+      assert.equal(Number(session.values[0]?.valueNumber), 33.5);
+    });
+
+    it("leaves NO draft behind when the value write fails", async () => {
+      const repository = repositoryFactory();
+      const before = await prisma.measurementSession.count({ where: { patientId } });
+
+      await assert.rejects(() =>
+        repository.createDraftWithValues({
+          draft: {
+            patientId,
+            templateId,
+            measuredAt: new Date("2026-05-05T11:00:00.000Z"),
+            notes: "no debe existir",
+            diagnosis: null,
+            garmentType: "MC",
+            compressionClass: null,
+            productFlags: null,
+            metadata: null,
+            templateSnapshot: snapshot as never,
+          },
+          // FK violation inside the transaction.
+          values: [{ fieldId: "does-not-exist", valueNumber: 1 }],
+        }),
+      );
+
+      const afterCount = await prisma.measurementSession.count({ where: { patientId } });
+      assert.equal(afterCount, before, "the destination draft must have rolled back");
+    });
+
+    it("repeated failed attempts do not accumulate drafts", async () => {
+      const repository = repositoryFactory();
+      const before = await prisma.measurementSession.count({ where: { patientId } });
+
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        await assert.rejects(() =>
+          repository.createDraftWithValues({
+            draft: {
+              patientId,
+              templateId,
+              measuredAt: new Date("2026-05-05T12:00:00.000Z"),
+              notes: null,
+              diagnosis: null,
+              garmentType: "MC",
+              compressionClass: null,
+              productFlags: null,
+              metadata: null,
+              templateSnapshot: snapshot as never,
+            },
+            values: [{ fieldId: "does-not-exist", valueNumber: 1 }],
+          }),
+        );
+      }
+
+      const afterCount = await prisma.measurementSession.count({ where: { patientId } });
+      assert.equal(afterCount, before, "no orphan may accumulate across retries");
+    });
+  },
+);

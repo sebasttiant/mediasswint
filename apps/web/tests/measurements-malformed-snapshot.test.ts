@@ -64,6 +64,16 @@ function buildRepository(detail: MeasurementSessionDetail) {
       createdDrafts.push(id);
       return { id };
     },
+    async createDraftWithValues(input) {
+      // Records the draft only on success, mirroring the real transaction.
+      const id = `ses_copy_${createdDrafts.length + 1}`;
+      if (input.values.some((value) => value.fieldId === "FAIL")) {
+        throw new Error("createDraftWithValues rolled back");
+      }
+      createdDrafts.push(id);
+      replacedFor.push(id);
+      return { ok: true as const, id };
+    },
     async getDetail() {
       return detail;
     },
@@ -196,8 +206,36 @@ describe("malformed persisted snapshots are refused, not crashed on", () => {
 /**
  * H — logical atomicity of duplication, and what is logged when it is not.
  */
+const VALID_SNAPSHOT: TemplateSnapshot = {
+  templateId: "tpl_1",
+  code: "compression-v1",
+  name: "Compresión v1",
+  version: 1,
+  description: null,
+  sections: [
+    {
+      title: "Pierna derecha",
+      sortOrder: 0,
+      fields: [
+        {
+          id: "fld_1",
+          key: "legRight1",
+          label: "Pierna derecha 1",
+          fieldType: "NUMBER",
+          unit: "cm",
+          isRequired: false,
+          sortOrder: 1,
+          minValue: 5,
+          maxValue: 200,
+          metadata: {},
+        },
+      ],
+    },
+  ],
+};
+
 describe("duplication write boundary under injected failure", () => {
-  it("fails safe when the values copy fails: source untouched, no partial clinical record", async () => {
+  it("leaves NO draft when the copy fails: duplication is atomic, not fail-safe-with-leftover", async () => {
     const valid: TemplateSnapshot = {
       templateId: "tpl_1",
       code: "compression-v1",
@@ -232,8 +270,10 @@ describe("duplication write boundary under injected failure", () => {
       values: { legRight1: 30 },
     });
     const { repository, createdDrafts } = buildRepository(source);
-    // Inject a failure in the SECOND write only.
-    repository.replaceValues = async () => ({ ok: false, status: null });
+    // Inject a failure inside the atomic duplication.
+    repository.createDraftWithValues = async () => {
+      throw new Error("value write failed inside the transaction");
+    };
 
     const result = await duplicateCompletedMeasurement("ses_1", repository);
 
@@ -241,9 +281,27 @@ describe("duplication write boundary under injected failure", () => {
     // The source record must be exactly as it was.
     assert.equal(source.status, "COMPLETED");
     assert.deepEqual(source.values, { legRight1: 30 });
-    // A draft was created before the failing write — the documented residual
-    // risk. It must be EMPTY, never a partially copied record.
-    assert.deepEqual(createdDrafts, ["ses_copy_1"]);
+    // No orphan: the destination draft rolls back with the values.
+    assert.deepEqual(createdDrafts, []);
+  });
+
+  it("repeated failed duplications accumulate no drafts at all", async () => {
+    const { repository, createdDrafts } = buildRepository(
+      buildDetail({
+        status: "COMPLETED",
+        templateSnapshot: VALID_SNAPSHOT,
+        templateSnapshotState: "valid",
+      }),
+    );
+    repository.createDraftWithValues = async () => {
+      throw new Error("value write failed inside the transaction");
+    };
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await duplicateCompletedMeasurement("ses_1", repository);
+    }
+
+    assert.deepEqual(createdDrafts, []);
   });
 
   it("logs only safe identifiers, never clinical values", async () => {

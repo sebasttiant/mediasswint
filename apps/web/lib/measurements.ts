@@ -175,6 +175,18 @@ export type SaveDraftRepositoryInput = {
   values: Array<{ fieldId: string; valueNumber: number | null }>;
 };
 
+/**
+ * Create a destination draft and its copied values in ONE transaction.
+ *
+ * Duplication used to create the draft and then write the values in a second
+ * call. A failure between them left an empty DRAFT session behind, and because
+ * the UI offers a retry, every retry could strand another one.
+ */
+export type CreateDraftWithValuesRepositoryInput = {
+  draft: CreateDraftRepositoryInput;
+  values: Array<{ fieldId: string; valueNumber: number | null }>;
+};
+
 export type MarkCompletedResult =
   | { status: "COMPLETED" }
   | { status: "NOT_FOUND" }
@@ -192,6 +204,10 @@ export type MeasurementsRepository = {
    * inside it so a concurrent completion cannot be half-applied.
    */
   saveDraft(input: SaveDraftRepositoryInput): Promise<{ ok: boolean; status: MeasurementSessionStatus | null }>;
+  /** Atomic duplication: destination draft and copied values commit together. */
+  createDraftWithValues(
+    input: CreateDraftWithValuesRepositoryInput,
+  ): Promise<{ ok: true; id: string }>;
   updateContext(input: UpdateContextRepositoryInput): Promise<{ ok: boolean; status: MeasurementSessionStatus | null }>;
   markCompleted(id: string): Promise<MarkCompletedResult>;
   reopenToDraft(id: string): Promise<{ ok: boolean; status: MeasurementSessionStatus | null }>;
@@ -404,46 +420,28 @@ export async function duplicateCompletedMeasurement(
       if (field) values.push({ fieldId: field.id, valueNumber });
     }
 
-    const created = await repository.createDraft({
-      patientId: detail.patientId,
-      templateId: detail.templateId,
-      measuredAt: detail.measuredAt,
-      notes: detail.notes,
-      diagnosis: detail.diagnosis,
-      garmentType: detail.garmentType,
-      compressionClass: detail.compressionClass,
-      productFlags: detail.productFlags,
-      metadata: detail.metadata,
-      // The ORIGINAL snapshot is copied, not the parsed projection: parsing
-      // normalizes and drops unknown extra keys, and a duplicated clinical
-      // record should carry the source snapshot verbatim.
-      templateSnapshot: detail.templateSnapshot,
-    });
-
-    // RESIDUAL RISK, deliberately bounded and reported.
-    //
-    // Every fallible READ (status, template, snapshot validation, field
-    // indexing) happens before the first write, so the common failure modes
-    // cannot strand a draft. The two writes below still live in separate
-    // repository calls, and the repository contract exposes no way to span
-    // them in one transaction and no way to delete a session, so a failure
-    // HERE leaves an empty DRAFT copy behind.
-    //
-    // It fails safe: the caller gets an error, the SOURCE measurement is
-    // untouched, and the leftover is an empty draft the clinician can discard —
-    // never a partially-copied clinical record presented as complete. Closing
-    // it properly needs a transactional createDraftWithValues on the repository,
-    // which is tracked as follow-up rather than widened into this change.
-    const copied = await repository.replaceValues({ sessionId: created.id, values });
-    if (!copied.ok) {
-      console.error("[measurements:duplicate] values copy failed after draft creation", {
-        sessionId,
-        createdSessionId: created.id,
+    // ONE transaction: the destination draft and its copied values commit
+    // together. Previously the draft was created first and the values written
+    // in a second call, so a failure between them stranded an empty DRAFT — and
+    // because the UI offers a retry, every retry could strand another one.
+    const created = await repository.createDraftWithValues({
+      draft: {
+        patientId: detail.patientId,
         templateId: detail.templateId,
-        valueCount: values.length,
-      });
-      return { ok: false, error: "UNKNOWN" };
-    }
+        measuredAt: detail.measuredAt,
+        notes: detail.notes,
+        diagnosis: detail.diagnosis,
+        garmentType: detail.garmentType,
+        compressionClass: detail.compressionClass,
+        productFlags: detail.productFlags,
+        metadata: detail.metadata,
+        // The ORIGINAL snapshot is copied, not the parsed projection: parsing
+        // normalizes and drops unknown extra keys, and a duplicated clinical
+        // record should carry the source snapshot verbatim.
+        templateSnapshot: detail.templateSnapshot,
+      },
+      values,
+    });
 
     await recordAudit({
       action: "CREATE",
@@ -778,6 +776,43 @@ const defaultRepository: MeasurementsRepository = {
         });
       }
       return { ok: true, status: "DRAFT" };
+    });
+  },
+
+  async createDraftWithValues(input) {
+    const prisma = getPrisma();
+    return prisma.$transaction(async (tx) => {
+      const created = await tx.measurementSession.create({
+        data: {
+          patientId: input.draft.patientId,
+          templateId: input.draft.templateId,
+          status: "DRAFT",
+          measuredAt: input.draft.measuredAt,
+          notes: input.draft.notes,
+          diagnosis: input.draft.diagnosis,
+          garmentType: input.draft.garmentType,
+          compressionClass: input.draft.compressionClass,
+          productFlags: input.draft.productFlags as Prisma.InputJsonValue,
+          metadata: input.draft.metadata as Prisma.InputJsonValue,
+          templateSnapshot: input.draft.templateSnapshot as unknown as Prisma.InputJsonValue,
+        },
+        select: { id: true },
+      });
+
+      // Any failure here rolls the session back with it, so a failed
+      // duplication can never strand an empty draft — not even across retries.
+      for (const value of input.values) {
+        if (value.valueNumber === null) continue;
+        await tx.measurementValue.create({
+          data: {
+            sessionId: created.id,
+            fieldId: value.fieldId,
+            valueNumber: new Prisma.Decimal(value.valueNumber),
+          },
+        });
+      }
+
+      return { ok: true as const, id: created.id };
     });
   },
 
