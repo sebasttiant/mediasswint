@@ -24,6 +24,7 @@ import {
 } from "../lib/measurements";
 import { buildCompressionTemplate } from "../lib/compression-template";
 import { buildMentoneraTemplate } from "../lib/mentonera-template";
+import { buildMascaraTemplate } from "../lib/mascara-template";
 
 const staffUser: AuthUser = {
   id: "staff-1",
@@ -96,6 +97,41 @@ function buildMentoneraSnapshot(): TemplateSnapshot {
   };
 }
 
+
+// Builds a mascara-v1 snapshot directly from the dormant template definition.
+// It does NOT go through garment-reference resolution, so the completion
+// invariant can be proven for Máscara-shaped snapshots without MA/MMA being
+// activated — that activation is deliberately the last commit in this chain.
+function buildMascaraSnapshot(): TemplateSnapshot {
+  const tpl = buildMascaraTemplate();
+  let counter = 0;
+  return {
+    templateId: "tpl-mascara-1",
+    code: tpl.code,
+    name: tpl.name,
+    version: tpl.version,
+    description: tpl.description,
+    sections: tpl.sections.map((section) => ({
+      title: section.title,
+      sortOrder: section.sortOrder,
+      fields: section.fields.map((field) => {
+        counter += 1;
+        return {
+          id: `fld-mascara-${counter}`,
+          key: field.key,
+          label: field.label,
+          fieldType: field.fieldType,
+          unit: field.unit,
+          isRequired: field.isRequired,
+          sortOrder: field.sortOrder,
+          minValue: field.minValue,
+          maxValue: field.maxValue,
+          metadata: field.metadata as unknown as Record<string, unknown>,
+        };
+      }),
+    })),
+  };
+}
 
 function buildInMemoryRepository(options: {
   knownPatientIds?: ReadonlyArray<string>;
@@ -835,6 +871,210 @@ describe("PATCH specialized head sessions — MA / MMA / ME can be saved and com
   });
 
 });
+
+// ---------------------------------------------------------------------------
+// SERVER-SIDE COMPLETION INVARIANT.
+//
+// A degraded/empty head session must not be finalizable. Disabling the UI
+// button is a convenience; the domain guard lives in completeMeasurement, so
+// it holds for any caller including a direct API call. These tests bypass the
+// UI entirely and drive the route handler.
+// ---------------------------------------------------------------------------
+describe("PATCH complete=true — server-side head snapshot invariant", () => {
+  function degrade(snapshot: TemplateSnapshot, fieldCount: number): TemplateSnapshot {
+    const section = snapshot.sections[0]!;
+    return {
+      ...snapshot,
+      sections: [{ ...section, fields: section.fields.slice(0, fieldCount) }],
+    };
+  }
+
+  function emptied(snapshot: TemplateSnapshot): TemplateSnapshot {
+    return { ...snapshot, sections: [] };
+  }
+
+  async function seedSession(snapshot: TemplateSnapshot, garmentType: string) {
+    const repo = buildInMemoryRepository({ snapshot });
+    const created = await repo.repository.createDraft({
+      patientId: "pat-1",
+      templateId: snapshot.templateId,
+      measuredAt: new Date("2026-04-29T10:00:00Z"),
+      notes: null,
+      diagnosis: null,
+      garmentType,
+      compressionClass: null,
+      productFlags: null,
+      metadata: null,
+      templateSnapshot: snapshot,
+    });
+    return { repo, sessionId: created.id, deps: sessionDeps({ repository: repo.repository }) };
+  }
+
+  const VALID_CASES = [
+    { label: "MA", garment: "MA", snapshot: buildMascaraSnapshot, values: { mascaraForehead: 56.5, mascaraNeck: 38 } },
+    { label: "MMA", garment: "MMA", snapshot: buildMascaraSnapshot, values: { mascaraForehead: 55, mascaraNeck: 37.5 } },
+    {
+      label: "ME",
+      garment: "ME",
+      snapshot: buildMentoneraSnapshot,
+      values: { mentoneraCrownChin: 62, mentoneraFaceLength: 21.5, mentoneraNeck: 36 },
+    },
+  ] as const;
+
+  for (const testCase of VALID_CASES) {
+    it(`completes a COMPLETE ${testCase.label} snapshot normally`, async () => {
+      const { repo, sessionId, deps } = await seedSession(testCase.snapshot(), testCase.garment);
+
+      const response = await handlePatchMeasurementRequest(
+        patchRequest(`/api/patients/pat-1/measurements/${sessionId}`, {
+          valuesByKey: testCase.values,
+          complete: true,
+        }),
+        { params: Promise.resolve({ id: "pat-1", sessionId }) },
+        staffUser,
+        deps,
+      );
+
+      assert.equal(response.status, 200);
+      assert.equal(repo.sessions.get(sessionId)?.status, "COMPLETED");
+    });
+  }
+
+  const BLOCKED_CASES = [
+    {
+      label: "PARTIAL Máscara (1 of 2 fields)",
+      snapshot: () => degrade(buildMascaraSnapshot(), 1),
+      garment: "MA",
+      values: { mascaraForehead: 56.5 },
+    },
+    {
+      label: "PARTIAL Mentonera (2 of 3 fields)",
+      snapshot: () => degrade(buildMentoneraSnapshot(), 2),
+      garment: "ME",
+      values: { mentoneraCrownChin: 62 },
+    },
+    {
+      label: "EMPTY recognized head snapshot",
+      snapshot: () => emptied(buildMentoneraSnapshot()),
+      garment: "ME",
+      values: {},
+    },
+  ] as const;
+
+  for (const testCase of BLOCKED_CASES) {
+    it(`REJECTS completion for a ${testCase.label} with 422`, async () => {
+      const { repo, sessionId, deps } = await seedSession(testCase.snapshot(), testCase.garment);
+
+      const response = await handlePatchMeasurementRequest(
+        patchRequest(`/api/patients/pat-1/measurements/${sessionId}`, {
+          valuesByKey: testCase.values,
+          complete: true,
+        }),
+        { params: Promise.resolve({ id: "pat-1", sessionId }) },
+        staffUser,
+        deps,
+      );
+
+      assert.equal(response.status, 422);
+      const json = (await response.json()) as { code: string; reason: string | null };
+      assert.equal(json.code, "INCOMPLETE_TEMPLATE_SNAPSHOT");
+      assert.ok(json.reason, "the refusal must explain itself");
+      // The invariant: the session is NOT completed.
+      assert.equal(repo.sessions.get(sessionId)?.status, "DRAFT");
+    });
+
+    it(`still allows DRAFT saving for a ${testCase.label}`, async () => {
+      const { repo, sessionId, deps } = await seedSession(testCase.snapshot(), testCase.garment);
+
+      const response = await handlePatchMeasurementRequest(
+        patchRequest(`/api/patients/pat-1/measurements/${sessionId}`, {
+          valuesByKey: testCase.values,
+        }),
+        { params: Promise.resolve({ id: "pat-1", sessionId }) },
+        staffUser,
+        deps,
+      );
+
+      assert.equal(response.status, 200);
+      assert.equal(repo.sessions.get(sessionId)?.status, "DRAFT");
+      assert.deepEqual(repo.sessions.get(sessionId)?.values, testCase.values);
+    });
+  }
+
+  it("keeps values written by the same request that was refused completion", async () => {
+    const { repo, sessionId, deps } = await seedSession(degrade(buildMascaraSnapshot(), 1), "MA");
+
+    const response = await handlePatchMeasurementRequest(
+      patchRequest(`/api/patients/pat-1/measurements/${sessionId}`, {
+        valuesByKey: { mascaraForehead: 56.5 },
+        complete: true,
+      }),
+      { params: Promise.resolve({ id: "pat-1", sessionId }) },
+      staffUser,
+      deps,
+    );
+
+    assert.equal(response.status, 422);
+    // Draft data must not be lost just because finalizing was refused.
+    assert.deepEqual(repo.sessions.get(sessionId)?.values, { mascaraForehead: 56.5 });
+    assert.equal(repo.sessions.get(sessionId)?.status, "DRAFT");
+  });
+
+  it("does NOT gate compression sessions (guard is head-only)", async () => {
+    const { repo, sessionId, deps } = await seedSession(buildSnapshot(), "MR");
+
+    const response = await handlePatchMeasurementRequest(
+      patchRequest(`/api/patients/pat-1/measurements/${sessionId}`, {
+        valuesByKey: { legRight1: 24.5 },
+        complete: true,
+      }),
+      { params: Promise.resolve({ id: "pat-1", sessionId }) },
+      staffUser,
+      deps,
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal(repo.sessions.get(sessionId)?.status, "COMPLETED");
+  });
+
+  it("a partially-populated but STRUCTURALLY COMPLETE head snapshot still completes", async () => {
+    // Missing VALUES are a clinical decision and stay allowed; only a broken
+    // TEMPLATE blocks completion.
+    const { repo, sessionId, deps } = await seedSession(buildMascaraSnapshot(), "MA");
+
+    const response = await handlePatchMeasurementRequest(
+      patchRequest(`/api/patients/pat-1/measurements/${sessionId}`, {
+        valuesByKey: { mascaraForehead: 56.5 },
+        complete: true,
+      }),
+      { params: Promise.resolve({ id: "pat-1", sessionId }) },
+      staffUser,
+      deps,
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal(repo.sessions.get(sessionId)?.status, "COMPLETED");
+  });
+
+  it("still rejects unknown keys on a degraded head session (400 before any completion attempt)", async () => {
+    const { repo, sessionId, deps } = await seedSession(degrade(buildMascaraSnapshot(), 1), "MA");
+
+    const response = await handlePatchMeasurementRequest(
+      patchRequest(`/api/patients/pat-1/measurements/${sessionId}`, {
+        valuesByKey: { mascaraNeck: 38 },
+        complete: true,
+      }),
+      { params: Promise.resolve({ id: "pat-1", sessionId }) },
+      staffUser,
+      deps,
+    );
+
+    // mascaraNeck was sliced out of this degraded snapshot, so it is unknown.
+    assert.equal(response.status, 400);
+    assert.equal(repo.sessions.get(sessionId)?.status, "DRAFT");
+  });
+});
+
 describe("POST /api/patients/[id]/measurements/[sessionId]/duplicate", () => {
   it("duplicates a completed measurement and returns the edit href", async () => {
     const repo = buildInMemoryRepository();

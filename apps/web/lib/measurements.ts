@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 
 import { getPrisma } from "./prisma";
+import { getHeadSnapshotCompletionBlock } from "./head-measurement-layout";
 import { parseTemplateSnapshot } from "./template-snapshot";
 import { recordAudit, toAuditPayload } from "@/lib/audit-log";
 
@@ -102,6 +103,11 @@ type ServiceErrorCode =
   | "MALFORMED_TEMPLATE_SNAPSHOT"
   | "PATIENT_NOT_FOUND"
   | "UNKNOWN_KEYS"
+  // The session's persisted template snapshot claims a head garment
+  // (mentonera-v1 / mascara-v1) but does not carry that garment's full
+  // measurement set, so finalizing it would freeze an incomplete clinical
+  // record. Draft saving stays allowed; only completion is refused.
+  | "INCOMPLETE_TEMPLATE_SNAPSHOT"
   | "UNKNOWN";
 
 export type ServiceResult<T> = { ok: true; value: T } | { ok: false; error: ServiceErrorCode };
@@ -446,6 +452,21 @@ export async function completeMeasurement(
     const detailBefore = await repository.getDetail(sessionId);
     if (!detailBefore) return { ok: false, error: "NOT_FOUND" };
     if (detailBefore.status !== "DRAFT") return { ok: false, error: "INVALID_STATE" };
+
+    // DOMAIN INVARIANT: a head-garment session whose snapshot is degraded or
+    // empty must never be finalized. Enforced here, in the service, so it holds
+    // for every caller — the UI's disabled button is a convenience, not the
+    // guard. Uses the same pure classifier the UI derives its layout from, so
+    // the two can never disagree. Non-head templates are untouched.
+    const completionBlock = getHeadSnapshotCompletionBlock(detailBefore.templateSnapshot);
+    if (completionBlock) {
+      console.error("[measurements:completeMeasurement] refused incomplete head snapshot", {
+        sessionId,
+        templateCode: detailBefore.templateSnapshot?.code ?? null,
+        reason: completionBlock,
+      });
+      return { ok: false, error: "INCOMPLETE_TEMPLATE_SNAPSHOT" };
+    }
 
     const result = await repository.markCompleted(sessionId);
     if (result.status === "COMPLETED") {

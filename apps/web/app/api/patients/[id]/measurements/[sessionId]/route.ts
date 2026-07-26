@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { type AuthUser } from "@/lib/auth";
 import { withAuth } from "@/lib/with-auth";
+import { getHeadSnapshotCompletionBlock } from "@/lib/head-measurement-layout";
 import {
   buildMeasurementKeyRanges,
   parseUpdateMeasurementValuesInput,
@@ -161,6 +162,19 @@ export async function handlePatchMeasurementRequest(
       if (completed.error === "NOT_FOUND") return notFound("Measurement");
       if (completed.error === "INVALID_STATE") {
         return NextResponse.json({ error: "Measurement is not editable" }, { status: 409 });
+      }
+      // The values written above are kept: the draft save succeeded, only the
+      // transition to COMPLETED is refused. 422 — the request was well formed
+      // but the session's persisted template snapshot cannot be finalized.
+      if (completed.error === "INCOMPLETE_TEMPLATE_SNAPSHOT") {
+        return NextResponse.json(
+          {
+            error: "Measurement template snapshot is incomplete",
+            code: "INCOMPLETE_TEMPLATE_SNAPSHOT",
+            reason: getHeadSnapshotCompletionBlock(detail.value.templateSnapshot),
+          },
+          { status: 422 },
+        );
       }
       return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
