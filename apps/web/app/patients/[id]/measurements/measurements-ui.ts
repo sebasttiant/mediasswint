@@ -30,7 +30,10 @@ export type MeasurementTableRow = {
 
 type MeasurementValue = string | number | null | undefined;
 
-const FACE_GUIDE_TERMS = ["head-face", "rostro", "cara", "face", "head", "cabeza"] as const;
+// The standalone FaceGuide is an explicit template opt-in. Dedicated head
+// measurement figures contain ordinary face/head words but must not render a
+// second, unrelated guide because of their copy or anatomy-zone identifiers.
+const REQUIRES_FACE_GUIDE_METADATA_KEY = "requiresFaceGuide";
 
 function getStringMetadata(field: TemplateSnapshotField | MeasurementUiField, key: string): string | null {
   const value = field.metadata[key];
@@ -60,23 +63,12 @@ function isFilledMeasurementValue(value: MeasurementValue): boolean {
   return false;
 }
 
-function textRequiresFaceGuide(value: string): boolean {
-  const normalized = value.toLocaleLowerCase("es-AR");
-  return FACE_GUIDE_TERMS.some((term) => normalized.includes(term));
-}
-
 function fieldRequiresFaceGuide(field: TemplateSnapshotField): boolean {
-  if (textRequiresFaceGuide(field.key) || textRequiresFaceGuide(field.label)) return true;
-
-  return Object.values(field.metadata).some((value) => {
-    return typeof value === "string" && textRequiresFaceGuide(value);
-  });
+  return field.metadata[REQUIRES_FACE_GUIDE_METADATA_KEY] === true;
 }
 
 export function measurementSnapshotRequiresFaceGuide(snapshot: TemplateSnapshot): boolean {
-  return snapshot.sections.some((section) => {
-    return textRequiresFaceGuide(section.title) || section.fields.some(fieldRequiresFaceGuide);
-  });
+  return snapshot.sections.some((section) => section.fields.some(fieldRequiresFaceGuide));
 }
 
 export function getActiveZoneIdForField(field: MeasurementUiField | null): AnatomyZoneId | null {

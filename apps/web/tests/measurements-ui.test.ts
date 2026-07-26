@@ -238,12 +238,12 @@ describe("measurement UI helpers", () => {
     assert.equal(measurementSnapshotRequiresFaceGuide(buildSnapshot()), false);
   });
 
-  it("requires a face guide when section, field, or metadata references head/face", () => {
+  it("does not infer a face guide from head and face words in ordinary metadata", () => {
     const snapshot = buildSnapshot();
     const firstSection = snapshot.sections[0]!;
     const firstField = firstSection.fields[0]!;
 
-    const faceSnapshot: TemplateSnapshot = {
+    const substringOnlySnapshot: TemplateSnapshot = {
       ...snapshot,
       sections: [
         {
@@ -261,7 +261,24 @@ describe("measurement UI helpers", () => {
       ],
     };
 
-    assert.equal(measurementSnapshotRequiresFaceGuide(faceSnapshot), true);
+    assert.equal(measurementSnapshotRequiresFaceGuide(substringOnlySnapshot), false);
+  });
+
+  it("requires an explicit metadata flag and keeps Mentonera out of FaceGuide", () => {
+    const snapshot = buildSnapshot();
+    const section = snapshot.sections[0]!;
+    const flagged: TemplateSnapshot = {
+      ...snapshot,
+      sections: [
+        {
+          ...section,
+          fields: [{ ...section.fields[0]!, metadata: { requiresFaceGuide: true } }],
+        },
+      ],
+    };
+
+    assert.equal(measurementSnapshotRequiresFaceGuide(flagged), true);
+    assert.equal(measurementSnapshotRequiresFaceGuide(buildMentoneraSnapshot()), false);
   });
 });
 
