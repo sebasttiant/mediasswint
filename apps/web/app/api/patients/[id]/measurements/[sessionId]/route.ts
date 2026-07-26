@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 
 import { type AuthUser } from "@/lib/auth";
 import { withAuth } from "@/lib/with-auth";
-import { parseUpdateMeasurementValuesInput } from "@/lib/measurements-input";
+import {
+  buildMeasurementKeyRanges,
+  parseUpdateMeasurementValuesInput,
+} from "@/lib/measurements-input";
 import {
   completeMeasurement,
   duplicateCompletedMeasurement,
@@ -74,11 +77,12 @@ export async function handlePatchMeasurementRequest(
     );
   }
 
-  const parsed = parseUpdateMeasurementValuesInput(body);
-  if (!parsed.ok) {
-    return NextResponse.json({ errors: parsed.errors }, { status: 400 });
-  }
-
+  // The session is loaded BEFORE the body is validated because the set of
+  // allowed measurement keys is a property of THIS session's template
+  // snapshot, not a global constant. Validating against the compression
+  // catalog rejected every Mentonera/Máscara key as unknown, so populated
+  // MA/MMA/ME sessions could never be saved (400). Ownership is still checked
+  // before anything is written.
   const detail = await getMeasurement(sessionId, deps.repository);
   if (!detail.ok) {
     if (detail.error === "NOT_FOUND") return notFound("Measurement");
@@ -86,6 +90,14 @@ export async function handlePatchMeasurementRequest(
   }
   if (detail.value.patientId !== id) {
     return notFound("Measurement");
+  }
+
+  const parsed = parseUpdateMeasurementValuesInput(
+    body,
+    buildMeasurementKeyRanges(detail.value.templateSnapshot),
+  );
+  if (!parsed.ok) {
+    return NextResponse.json({ errors: parsed.errors }, { status: 400 });
   }
 
   // Only rewrite metadata when the PATCH carried a VALID garmentSnapshot.

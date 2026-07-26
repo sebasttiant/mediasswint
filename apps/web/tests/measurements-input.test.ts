@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  buildMeasurementKeyRanges,
   parseCreateMeasurementInput,
   parseListMeasurementsQuery,
   parseUpdateMeasurementValuesInput,
@@ -392,5 +393,27 @@ describe("parseUpdateMeasurementValuesInput — garmentSnapshot in metadata", ()
     assert.equal(result.ok, true);
     if (!result.ok) return;
     assert.equal(result.value.garmentSnapshot, null);
+  });
+});
+
+// A sections-less snapshot really exists in the database (the demo seeder wrote
+// template identity with no `sections`). buildMeasurementKeyRanges is exported,
+// so it must not turn that data problem into a thrown TypeError.
+describe("buildMeasurementKeyRanges — unvalidated snapshot shapes", () => {
+  it("falls back to the compression allow-list for a snapshot with no sections", () => {
+    const seeded = { templateCode: "compression-v1", version: 1 } as never;
+
+    const ranges = buildMeasurementKeyRanges(seeded);
+
+    assert.ok(ranges.size > 0);
+    assert.ok(ranges.has("legRight1"));
+  });
+
+  it("skips a malformed section instead of throwing", () => {
+    const broken = { sections: [null, { title: "x", fields: null }] } as never;
+
+    const ranges = buildMeasurementKeyRanges(broken);
+
+    assert.ok(ranges.has("legRight1"), "must fall back rather than throw");
   });
 });

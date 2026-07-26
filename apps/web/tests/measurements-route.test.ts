@@ -96,6 +96,7 @@ function buildMentoneraSnapshot(): TemplateSnapshot {
   };
 }
 
+
 function buildInMemoryRepository(options: {
   knownPatientIds?: ReadonlyArray<string>;
   snapshot?: TemplateSnapshot | null;
@@ -636,6 +637,204 @@ describe("PATCH /api/patients/[id]/measurements/[sessionId]", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Specialized head garments end-to-end through the real route handlers.
+//
+// Regression target: parseUpdateMeasurementValuesInput derived its allowed key
+// set from COMPRESSION_MEASUREMENTS alone, so every Mentonera/Máscara key was
+// rejected as "unknown measurement key" and a populated MA/MMA/ME session
+// could never be draft-saved or completed — PATCH answered 400. Validation is
+// now built from the session's own persisted template snapshot.
+// ---------------------------------------------------------------------------
+describe("PATCH specialized head sessions — MA / MMA / ME can be saved and completed", () => {
+  async function createHeadSession(
+    garmentReference: string,
+    snapshot: TemplateSnapshot,
+  ): Promise<{ repo: ReturnType<typeof buildInMemoryRepository>; sessionId: string }> {
+    const repo = buildInMemoryRepository({ snapshot });
+    const response = await handlePostMeasurementRequest(
+      postRequest({ measuredAt: "2026-04-28T10:00:00Z", garmentType: garmentReference }),
+      { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
+      collectionDeps({ repository: repo.repository }),
+    );
+    assert.equal(response.status, 201);
+    const json = (await response.json()) as { id: string; templateSnapshot: TemplateSnapshot };
+    assert.equal(json.templateSnapshot.code, snapshot.code);
+    return { repo, sessionId: json.id };
+  }
+
+  // Only ME is exercised here. MA and MMA do not resolve to a template yet —
+  // that mapping is deliberately the LAST commit in this chain, so Máscara is
+  // never exposed before the persistence support that makes it saveable. Its
+  // route coverage ships with that activation commit, not before it.
+  const CASES = [
+    {
+      reference: "ME",
+      code: "mentonera-v1",
+      buildSnapshotForCase: buildMentoneraSnapshot,
+      values: { mentoneraCrownChin: 62, mentoneraFaceLength: 21.5, mentoneraNeck: 36 },
+    },
+  ] as const;
+
+  for (const testCase of CASES) {
+    it(`draft-saves ${testCase.reference} values (${testCase.code}) with 200 and persists them`, async () => {
+      const { repo, sessionId } = await createHeadSession(
+        testCase.reference,
+        testCase.buildSnapshotForCase(),
+      );
+
+      const response = await handlePatchMeasurementRequest(
+        patchRequest(`/api/patients/pat-1/measurements/${sessionId}`, {
+          valuesByKey: testCase.values,
+        }),
+        { params: Promise.resolve({ id: "pat-1", sessionId }) },
+        staffUser,
+        sessionDeps({ repository: repo.repository }),
+      );
+
+      assert.equal(response.status, 200);
+      assert.deepEqual(repo.sessions.get(sessionId)?.values, testCase.values);
+      assert.equal(repo.sessions.get(sessionId)?.status, "DRAFT");
+    });
+
+    it(`completes a ${testCase.reference} session with complete=true`, async () => {
+      const { repo, sessionId } = await createHeadSession(
+        testCase.reference,
+        testCase.buildSnapshotForCase(),
+      );
+
+      const response = await handlePatchMeasurementRequest(
+        patchRequest(`/api/patients/pat-1/measurements/${sessionId}`, {
+          valuesByKey: testCase.values,
+          complete: true,
+        }),
+        { params: Promise.resolve({ id: "pat-1", sessionId }) },
+        staffUser,
+        sessionDeps({ repository: repo.repository }),
+      );
+
+      assert.equal(response.status, 200);
+      assert.equal(repo.sessions.get(sessionId)?.status, "COMPLETED");
+      assert.deepEqual(repo.sessions.get(sessionId)?.values, testCase.values);
+    });
+
+    it(`still rejects an unknown key on a ${testCase.reference} session with 400`, async () => {
+      const { repo, sessionId } = await createHeadSession(
+        testCase.reference,
+        testCase.buildSnapshotForCase(),
+      );
+
+      const response = await handlePatchMeasurementRequest(
+        patchRequest(`/api/patients/pat-1/measurements/${sessionId}`, {
+          valuesByKey: { ...testCase.values, totallyMadeUpKey: 12 },
+        }),
+        { params: Promise.resolve({ id: "pat-1", sessionId }) },
+        staffUser,
+        sessionDeps({ repository: repo.repository }),
+      );
+
+      assert.equal(response.status, 400);
+      const json = (await response.json()) as { errors: Array<{ field: string; message: string }> };
+      assert.ok(
+        json.errors.some(
+          (error) =>
+            error.field === "valuesByKey.totallyMadeUpKey" &&
+            error.message === "unknown measurement key",
+        ),
+      );
+      // Nothing was written.
+      assert.deepEqual(repo.sessions.get(sessionId)?.values, {});
+    });
+  }
+
+  it("rejects a COMPRESSION key on a head session (validation is per-snapshot, not widened)", async () => {
+    const { repo, sessionId } = await createHeadSession("ME", buildMentoneraSnapshot());
+
+    const response = await handlePatchMeasurementRequest(
+      patchRequest(`/api/patients/pat-1/measurements/${sessionId}`, {
+        valuesByKey: { legRight1: 24.5 },
+      }),
+      { params: Promise.resolve({ id: "pat-1", sessionId }) },
+      staffUser,
+      sessionDeps({ repository: repo.repository }),
+    );
+
+    assert.equal(response.status, 400);
+  });
+
+  it("rejects a MENTONERA key on a compression session (no global weakening)", async () => {
+    const repo = buildInMemoryRepository();
+    const created = await repo.repository.createDraft({
+      patientId: "pat-1",
+      templateId: "tpl-1",
+      measuredAt: new Date("2026-04-29T10:00:00Z"),
+      notes: null,
+      diagnosis: null,
+      garmentType: "MR",
+      compressionClass: null,
+      productFlags: null,
+      metadata: null,
+      templateSnapshot: buildSnapshot(),
+    });
+
+    const response = await handlePatchMeasurementRequest(
+      patchRequest(`/api/patients/pat-1/measurements/${created.id}`, {
+        valuesByKey: { mentoneraNeck: 36 },
+      }),
+      { params: Promise.resolve({ id: "pat-1", sessionId: created.id }) },
+      staffUser,
+      sessionDeps({ repository: repo.repository }),
+    );
+
+    assert.equal(response.status, 400);
+  });
+
+  it("enforces the head template's own numeric range", async () => {
+    const { repo, sessionId } = await createHeadSession("ME", buildMentoneraSnapshot());
+
+    const response = await handlePatchMeasurementRequest(
+      patchRequest(`/api/patients/pat-1/measurements/${sessionId}`, {
+        // The head template's own persisted minValue/maxValue must bound this,
+        // not the compression catalog.
+        valuesByKey: { mentoneraCrownChin: 5000 },
+      }),
+      { params: Promise.resolve({ id: "pat-1", sessionId }) },
+      staffUser,
+      sessionDeps({ repository: repo.repository }),
+    );
+
+    assert.equal(response.status, 400);
+  });
+
+  it("accepts null to clear a specialized value", async () => {
+    const { repo, sessionId } = await createHeadSession("ME", buildMentoneraSnapshot());
+    const deps = sessionDeps({ repository: repo.repository });
+
+    await handlePatchMeasurementRequest(
+      patchRequest(`/api/patients/pat-1/measurements/${sessionId}`, {
+        valuesByKey: { mentoneraNeck: 36 },
+      }),
+      { params: Promise.resolve({ id: "pat-1", sessionId }) },
+      staffUser,
+      deps,
+    );
+    assert.deepEqual(repo.sessions.get(sessionId)?.values, { mentoneraNeck: 36 });
+
+    const cleared = await handlePatchMeasurementRequest(
+      patchRequest(`/api/patients/pat-1/measurements/${sessionId}`, {
+        valuesByKey: { mentoneraNeck: null },
+      }),
+      { params: Promise.resolve({ id: "pat-1", sessionId }) },
+      staffUser,
+      deps,
+    );
+
+    assert.equal(cleared.status, 200);
+    assert.deepEqual(repo.sessions.get(sessionId)?.values, {});
+  });
+
+});
 describe("POST /api/patients/[id]/measurements/[sessionId]/duplicate", () => {
   it("duplicates a completed measurement and returns the edit href", async () => {
     const repo = buildInMemoryRepository();
