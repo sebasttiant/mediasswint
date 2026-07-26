@@ -11,13 +11,7 @@ import {
 
 import type { MeasurementUiField } from "../../measurements-ui";
 import { HeadMeasurementFieldStrip } from "./head-measurement-field-strip";
-import {
-  focusVisibleZoneInput,
-  HEAD_MEASUREMENT_DESKTOP_FIGURE_CARD_CLASS,
-  HEAD_MEASUREMENT_DESKTOP_FIGURE_PANEL_CLASS,
-  HEAD_MEASUREMENT_DESKTOP_LAYOUT_CLASS,
-  HEAD_MEASUREMENT_MOBILE_FIGURE_CLASS,
-} from "./head-measurement-shell-contract";
+import { focusVisibleZoneInput } from "./head-measurement-shell-contract";
 
 type HeadMeasurementShellLayoutProps = {
   /** Declares garment label, panels, crop and figure width cap. */
@@ -96,7 +90,10 @@ export function HeadMeasurementShellLayout({
       ) : null}
 
       {/* Mobile: figure on top, fields below in the page scroll. */}
-      <div className={HEAD_MEASUREMENT_MOBILE_FIGURE_CLASS}>
+      <div
+        data-head-layout="mobile"
+        className="lg:hidden border-b border-slate-200 bg-slate-50 px-3 py-3 sm:px-4"
+      >
         <div className="mx-auto flex max-w-sm flex-col items-center gap-2.5 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm sm:p-4">
           <div className="text-center">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</p>
@@ -124,7 +121,10 @@ export function HeadMeasurementShellLayout({
       </div>
 
       {/* Desktop: keep the compact field column beside a wide clinical figure. */}
-      <div className={HEAD_MEASUREMENT_DESKTOP_LAYOUT_CLASS}>
+      <div
+        data-head-layout="desktop"
+        className="hidden flex-1 min-h-0 overflow-hidden lg:grid lg:grid-cols-[minmax(360px,480px)_minmax(0,1fr)]"
+      >
         <div className="flex flex-col overflow-hidden border-r border-slate-200">
           {hasFields ? (
             <HeadMeasurementFieldStrip
@@ -140,8 +140,8 @@ export function HeadMeasurementShellLayout({
           )}
         </div>
 
-        <div className={HEAD_MEASUREMENT_DESKTOP_FIGURE_PANEL_CLASS}>
-          <div className={HEAD_MEASUREMENT_DESKTOP_FIGURE_CARD_CLASS}>
+        <div className="flex flex-col items-start justify-start overflow-y-auto bg-slate-50 px-4 py-4">
+          <div className="sticky top-3 flex w-full max-w-[820px] flex-col items-stretch gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-center">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                 {title}

@@ -140,10 +140,6 @@ export function buildMeasurementTableRows(
 // keeps this generic to any future head.* template, not just mentonera-v1.
 // ---------------------------------------------------------------------------
 
-export function buildMentoneraFields(snapshot: TemplateSnapshot): MeasurementUiField[] {
-  return buildHeadMeasurementFields(snapshot);
-}
-
 export function buildHeadMeasurementFields(snapshot: TemplateSnapshot): MeasurementUiField[] {
   const entries: Array<{ sortOrder: number; field: MeasurementUiField }> = [];
 

@@ -8,7 +8,6 @@ import type { TemplateSnapshot } from "../lib/measurements";
 import {
   buildMeasurementTableRows,
   buildHeadMeasurementFields,
-  buildMentoneraFields,
   getActiveZoneIdForField,
   getActiveZoneLabel,
   getFilledZoneIdsFromValues,
@@ -282,9 +281,9 @@ describe("measurement UI helpers", () => {
   });
 });
 
-describe("buildMentoneraFields — the SAME generic field-projection surface, filtered to head.* zones", () => {
+describe("buildHeadMeasurementFields — generic field projection filtered to head.* zones", () => {
   it("returns exactly the 3 Mentonera fields, in fixed order", () => {
-    const fields = buildMentoneraFields(buildMentoneraSnapshot());
+    const fields = buildHeadMeasurementFields(buildMentoneraSnapshot());
 
     assert.deepEqual(
       fields.map((f) => f.key),
@@ -293,7 +292,7 @@ describe("buildMentoneraFields — the SAME generic field-projection surface, fi
   });
 
   it("each field carries its head.* anatomyZone and kind in metadata", () => {
-    const fields = buildMentoneraFields(buildMentoneraSnapshot());
+    const fields = buildHeadMeasurementFields(buildMentoneraSnapshot());
 
     assert.equal(fields[0]?.metadata.anatomyZone, "head.crownChin");
     assert.equal(fields[0]?.metadata.kind, "circumference");
@@ -304,7 +303,7 @@ describe("buildMentoneraFields — the SAME generic field-projection surface, fi
   });
 
   it("returns an empty list for a non-Mentonera snapshot (no head.* fields)", () => {
-    assert.deepEqual(buildMentoneraFields(buildSnapshot()), []);
+    assert.deepEqual(buildHeadMeasurementFields(buildSnapshot()), []);
   });
 });
 
