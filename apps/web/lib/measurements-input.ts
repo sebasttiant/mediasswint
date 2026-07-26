@@ -25,6 +25,8 @@ export type CreateMeasurementInput = {
   productFlags: ProductFlags | null;
   patientSex: PatientSex | null;
   garmentSnapshot: GarmentSnapshot | null;
+  /** Raw reference retained even when the client display fields are malformed. */
+  garmentSnapshotReference: string | null;
 };
 
 export type UpdateMeasurementValuesInput = {
@@ -41,6 +43,8 @@ export type UpdateMeasurementValuesInput = {
   diagnosis?: string | null;
   productFlags?: ProductFlags | null;
   garmentSnapshot?: GarmentSnapshot | null;
+  /** Raw reference retained even when the client display fields are malformed. */
+  garmentSnapshotReference?: string | null;
 };
 
 export type ListMeasurementsQuery = {
@@ -228,6 +232,12 @@ function parseGarmentSnapshotFromMetadata(metadata: unknown): GarmentSnapshot | 
   };
 }
 
+function parseGarmentSnapshotReference(metadata: unknown): string | null {
+  if (!isRecord(metadata) || !isRecord(metadata.garmentSnapshot)) return null;
+  const reference = metadata.garmentSnapshot.reference;
+  return typeof reference === "string" && reference.trim() !== "" ? reference.trim() : null;
+}
+
 export function parseCreateMeasurementInput(body: unknown): ValidationResult<CreateMeasurementInput> {
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
     return { ok: false, errors: [{ field: "body", message: "must be a JSON object" }] };
@@ -244,6 +254,7 @@ export function parseCreateMeasurementInput(body: unknown): ValidationResult<Cre
   const productFlags = parseProductFlags(source.productFlags, errors);
   const patientSex = normalizePatientSex(typeof source.patientSex === "string" ? source.patientSex : null);
   const garmentSnapshot = parseGarmentSnapshotFromMetadata(source.metadata);
+  const garmentSnapshotReference = parseGarmentSnapshotReference(source.metadata);
 
   if (errors.length > 0 || !measuredAt) {
     return { ok: false, errors };
@@ -260,6 +271,7 @@ export function parseCreateMeasurementInput(body: unknown): ValidationResult<Cre
       productFlags,
       patientSex,
       garmentSnapshot,
+      garmentSnapshotReference,
     },
   };
 }
@@ -284,6 +296,9 @@ export function parseUpdateMeasurementValuesInput(
   const diagnosis = source.diagnosis === undefined ? undefined : parseNullableText(source.diagnosis, "diagnosis", MAX_DIAGNOSIS_LENGTH, errors);
   const productFlags = source.productFlags === undefined ? undefined : parseProductFlags(source.productFlags, errors);
   const garmentSnapshot = source.metadata === undefined ? undefined : parseGarmentSnapshotFromMetadata(source.metadata);
+  const garmentSnapshotReference = source.metadata === undefined
+    ? undefined
+    : parseGarmentSnapshotReference(source.metadata);
 
   const rawValues = source.valuesByKey;
   if (rawValues === undefined || rawValues === null) {
@@ -339,6 +354,7 @@ export function parseUpdateMeasurementValuesInput(
       ...(diagnosis !== undefined ? { diagnosis } : {}),
       ...(productFlags !== undefined ? { productFlags } : {}),
       ...(garmentSnapshot !== undefined ? { garmentSnapshot } : {}),
+      ...(garmentSnapshotReference !== undefined ? { garmentSnapshotReference } : {}),
     },
   };
 }

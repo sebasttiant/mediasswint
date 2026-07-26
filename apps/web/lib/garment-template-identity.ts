@@ -1,3 +1,4 @@
+import { getGarmentSnapshot } from "./garment-catalog";
 import { resolveTemplateCode } from "./garment-template-resolver";
 
 /**
@@ -79,4 +80,88 @@ export function findGarmentTemplateMismatch(
   }
 
   return null;
+}
+
+/**
+ * ONE canonical garment identity for a request.
+ *
+ * Comparing only the resolved TEMPLATE was insufficient. MA, MMA and ME are
+ * three distinct catalog references; MA and MMA merely share the mascara-v1
+ * measurement set. A payload could say `garmentType: "MA"` while carrying
+ * `garmentSnapshot.reference: "MMA"` and pass a template-only check, persisting
+ * a clinical record whose own identity fields contradict each other.
+ *
+ * So: the request may name the garment in more than one place, but every place
+ * must name the SAME garment, and the display metadata that gets persisted is
+ * always derived from the server catalog — never taken from the client.
+ */
+export type CanonicalGarmentIdentity = {
+  reference: string;
+  label: string;
+  family: string;
+  figureKey: string;
+  templateCode: string;
+};
+
+export type CanonicalGarmentIdentityResult =
+  | { ok: true; identity: CanonicalGarmentIdentity | null }
+  | { ok: false; reason: "INCONSISTENT_REFERENCES" | "UNKNOWN_REFERENCE"; detail: string };
+
+export type CanonicalGarmentIdentityInput = {
+  garmentType?: string | null | undefined;
+  garmentSnapshot?: Record<string, unknown> | null | undefined;
+};
+
+function normalizeReference(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed === "" ? null : trimmed;
+}
+
+export function resolveCanonicalGarmentIdentity(
+  input: CanonicalGarmentIdentityInput,
+): CanonicalGarmentIdentityResult {
+  const fromType = normalizeReference(input.garmentType);
+  const fromSnapshot = normalizeReference(input.garmentSnapshot?.reference);
+
+  if (fromType === null && fromSnapshot === null) {
+    // The request does not touch garment identity at all.
+    return { ok: true, identity: null };
+  }
+
+  const typeSnapshot = fromType === null ? null : getGarmentSnapshot(fromType);
+  const metadataSnapshot = fromSnapshot === null ? null : getGarmentSnapshot(fromSnapshot);
+
+  if (fromType !== null && typeSnapshot === null) {
+    return { ok: false, reason: "UNKNOWN_REFERENCE", detail: fromType };
+  }
+  if (fromSnapshot !== null && metadataSnapshot === null) {
+    return { ok: false, reason: "UNKNOWN_REFERENCE", detail: fromSnapshot };
+  }
+
+  if (
+    typeSnapshot !== null &&
+    metadataSnapshot !== null &&
+    typeSnapshot.reference !== metadataSnapshot.reference
+  ) {
+    return {
+      ok: false,
+      reason: "INCONSISTENT_REFERENCES",
+      detail: `garmentType=${typeSnapshot.reference} vs garmentSnapshot.reference=${metadataSnapshot.reference}`,
+    };
+  }
+
+  const snapshot = typeSnapshot ?? metadataSnapshot;
+  if (snapshot === null) return { ok: true, identity: null };
+
+  return {
+    ok: true,
+    identity: {
+      reference: snapshot.reference,
+      label: snapshot.label,
+      family: snapshot.family,
+      figureKey: snapshot.figureKey,
+      templateCode: resolveTemplateCode(snapshot.reference),
+    },
+  };
 }
