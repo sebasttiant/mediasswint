@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 
 import { buildCompressionTemplate } from "./compression-template";
+import { buildMascaraTemplate } from "./mascara-template";
 import { buildMentoneraTemplate } from "./mentonera-template";
 import { getPrisma } from "./prisma";
 
@@ -303,4 +304,10 @@ export async function syncMentoneraTemplate(
   repository: MeasurementTemplatesRepository = defaultRepository,
 ): Promise<SyncTemplateResult> {
   return syncMeasurementTemplate(buildMentoneraTemplate(), repository);
+}
+
+export async function syncMascaraTemplate(
+  repository: MeasurementTemplatesRepository = defaultRepository,
+): Promise<SyncTemplateResult> {
+  return syncMeasurementTemplate(buildMascaraTemplate(), repository);
 }

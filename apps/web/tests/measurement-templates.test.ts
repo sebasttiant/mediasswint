@@ -3,9 +3,11 @@ import { describe, it } from "node:test";
 
 import { buildCompressionTemplate } from "../lib/compression-template";
 import { buildMentoneraTemplate } from "../lib/mentonera-template";
+import { buildMascaraTemplate } from "../lib/mascara-template";
 import {
   syncMeasurementTemplate,
   syncMentoneraTemplate,
+  syncMascaraTemplate,
   type MeasurementTemplatesRepository,
   type UpsertFieldInput,
   type UpsertSectionInput,
@@ -224,5 +226,29 @@ describe("syncMentoneraTemplate", () => {
     assert.equal(store.templates.size, 1);
     assert.equal(store.sections.size, 1);
     assert.equal(store.fields.size, 3);
+  });
+});
+
+describe("syncMascaraTemplate", () => {
+  it("syncs the mascara-v1 template via an injectable repository", async () => {
+    const store = createInMemoryRepository();
+
+    const result = await syncMascaraTemplate(store.repository);
+
+    assert.equal(result.sectionsCount, 1);
+    assert.equal(result.fieldsCount, 2);
+    assert.equal(result.templateId, store.templates.get(buildMascaraTemplate().code)?.id);
+  });
+
+  it("is idempotent — second run does not duplicate rows", async () => {
+    const store = createInMemoryRepository();
+
+    const first = await syncMascaraTemplate(store.repository);
+    const second = await syncMascaraTemplate(store.repository);
+
+    assert.equal(second.templateId, first.templateId);
+    assert.equal(store.templates.size, 1);
+    assert.equal(store.sections.size, 1);
+    assert.equal(store.fields.size, 2);
   });
 });

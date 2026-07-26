@@ -8,6 +8,12 @@ describe("resolveTemplateCode", () => {
     assert.equal(resolveTemplateCode("ME"), "mentonera-v1");
   });
 
+  it("resolves MA and MMA (Máscara variants) to mascara-v1", () => {
+    assert.equal(resolveTemplateCode("MA"), "mascara-v1");
+    assert.equal(resolveTemplateCode("mma"), "mascara-v1");
+    assert.equal(resolveTemplateCode(" MMA "), "mascara-v1");
+  });
+
   it("is case-insensitive and trims whitespace around the reference", () => {
     assert.equal(resolveTemplateCode("me"), "mentonera-v1");
     assert.equal(resolveTemplateCode(" ME "), "mentonera-v1");
@@ -16,7 +22,6 @@ describe("resolveTemplateCode", () => {
   it("falls back to compression-v1 for garments without a dedicated template", () => {
     assert.equal(resolveTemplateCode("MR"), "compression-v1");
     assert.equal(resolveTemplateCode("BA"), "compression-v1");
-    assert.equal(resolveTemplateCode("MA"), "compression-v1");
     assert.equal(resolveTemplateCode("GLD"), "compression-v1");
   });
 

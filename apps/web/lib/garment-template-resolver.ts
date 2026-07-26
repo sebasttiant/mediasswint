@@ -1,4 +1,5 @@
 import { COMPRESSION_TEMPLATE_CODE } from "./compression-template";
+import { MASCARA_TEMPLATE_CODE } from "./mascara-template";
 import { MENTONERA_TEMPLATE_CODE } from "./mentonera-template";
 
 /**
@@ -8,6 +9,8 @@ import { MENTONERA_TEMPLATE_CODE } from "./mentonera-template";
  * other reference falls back to `compression-v1` in `resolveTemplateCode`.
  */
 const TEMPLATE_CODE_BY_REFERENCE: Record<string, string> = {
+  MA: MASCARA_TEMPLATE_CODE,
+  MMA: MASCARA_TEMPLATE_CODE,
   ME: MENTONERA_TEMPLATE_CODE,
 };
 
