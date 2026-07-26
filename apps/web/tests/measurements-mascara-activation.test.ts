@@ -275,7 +275,7 @@ describe("MA/MMA activation — Máscara resolves to its template", () => {
     assert.equal(response.status, 400);
   });
 
-  it("allows MA -> MMA: both resolve to mascara-v1, so the schema cannot disagree", async () => {
+  it("refuses MA -> MMA: shared template does not make distinct catalog identities interchangeable", async () => {
     const store = buildRepository(buildMascaraSnapshot());
     const created = await createSession(store.repository, "MA");
     const { id } = (await created.json()) as { id: string };
@@ -285,8 +285,10 @@ describe("MA/MMA activation — Máscara resolves to its template", () => {
       garmentType: "MMA",
     });
 
-    assert.equal(response.status, 200);
-    assert.equal(store.sessions.get(id)?.garmentType, "MMA");
+    assert.equal(response.status, 409);
+    const json = (await response.json()) as { code?: string };
+    assert.equal(json.code, "GARMENT_TEMPLATE_MISMATCH");
+    assert.equal(store.sessions.get(id)?.garmentType, "MA");
   });
 
   it("refuses MA -> ME, because that would cross a template boundary", async () => {

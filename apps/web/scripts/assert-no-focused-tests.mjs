@@ -127,6 +127,7 @@ export async function collectTestFiles(directory) {
   return files.flat();
 }
 
+/** @param {string | string[]} [directories] */
 export async function findFocusedTestFiles(directories = DEFAULT_TEST_DIRECTORIES) {
   const roots = Array.isArray(directories) ? directories : [directories];
   const focused = [];

@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 
 import { HeadMeasurementShellLayout } from "../app/patients/[id]/measurements/new/_components/head-measurement-shell-layout";
 import type { MeasurementUiField } from "../app/patients/[id]/measurements/measurements-ui";
+import type { AnatomyZoneId } from "../lib/compression-measurements";
 import { getHeadViewComposition } from "../lib/head-measurement-layout";
 import { attributeValues, render, textContent } from "./support/render";
 
@@ -45,9 +46,9 @@ function renderLayout(overrides: { fields?: MeasurementUiField[]; warning?: stri
     createElement(HeadMeasurementShellLayout, {
       composition: mentonera,
       visibleHeadZoneKeys: mentonera.zoneKeys,
-      sex: "FEMALE",
+      sex: "female",
       activeZoneId: null,
-      filledZoneIds: new Set(),
+      filledZoneIds: new Set<AnatomyZoneId>(),
       fields: overrides.fields ?? fields,
       valuesByKey: {},
       onFocus: () => undefined,

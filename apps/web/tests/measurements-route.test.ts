@@ -584,7 +584,7 @@ describe("PATCH /api/patients/[id]/measurements/[sessionId]", () => {
     assert.equal(json.values.legRight1, 24.5);
   });
 
-  it("updates DRAFT context fields when provided", async () => {
+  it("updates DRAFT non-garment context fields when provided", async () => {
     const repo = buildInMemoryRepository();
     const created = await repo.repository.createDraft({
       patientId: "pat-1",
@@ -603,7 +603,6 @@ describe("PATCH /api/patients/[id]/measurements/[sessionId]", () => {
       patchRequest(`/api/patients/pat-1/measurements/${created.id}`, {
         valuesByKey: { legRight1: 24.5 },
         measuredAt: "2026-05-01T10:00:00Z",
-        garmentType: "Media larga",
         notes: null,
       }),
       { params: Promise.resolve({ id: "pat-1", sessionId: created.id }) },
@@ -614,7 +613,7 @@ describe("PATCH /api/patients/[id]/measurements/[sessionId]", () => {
     assert.equal(response.status, 200);
     const stored = repo.sessions.get(created.id);
     assert.equal(stored?.measuredAt.toISOString(), "2026-05-01T10:00:00.000Z");
-    assert.equal(stored?.garmentType, "Media larga");
+    assert.equal(stored?.garmentType, null);
     assert.equal(stored?.notes, null);
   });
 
