@@ -181,3 +181,79 @@ describe("malformed persisted snapshots are refused, not crashed on", () => {
     assert.deepEqual(replacedFor, ["ses_1"]);
   });
 });
+
+/**
+ * H — logical atomicity of duplication, and what is logged when it is not.
+ */
+describe("duplication write boundary under injected failure", () => {
+  it("fails safe when the values copy fails: source untouched, no partial clinical record", async () => {
+    const valid: TemplateSnapshot = {
+      templateId: "tpl_1",
+      code: "compression-v1",
+      name: "Compresión v1",
+      version: 1,
+      description: null,
+      sections: [
+        {
+          title: "Pierna derecha",
+          sortOrder: 0,
+          fields: [
+            {
+              id: "fld_1",
+              key: "legRight1",
+              label: "Pierna derecha 1",
+              fieldType: "NUMBER",
+              unit: "cm",
+              isRequired: false,
+              sortOrder: 1,
+              minValue: 5,
+              maxValue: 200,
+              metadata: {},
+            },
+          ],
+        },
+      ],
+    };
+    const source = buildDetail({
+      status: "COMPLETED",
+      templateSnapshot: valid,
+      values: { legRight1: 30 },
+    });
+    const { repository, createdDrafts } = buildRepository(source);
+    // Inject a failure in the SECOND write only.
+    repository.replaceValues = async () => ({ ok: false, status: null });
+
+    const result = await duplicateCompletedMeasurement("ses_1", repository);
+
+    assert.equal(result.ok, false);
+    // The source record must be exactly as it was.
+    assert.equal(source.status, "COMPLETED");
+    assert.deepEqual(source.values, { legRight1: 30 });
+    // A draft was created before the failing write — the documented residual
+    // risk. It must be EMPTY, never a partially copied record.
+    assert.deepEqual(createdDrafts, ["ses_copy_1"]);
+  });
+
+  it("logs only safe identifiers, never clinical values", async () => {
+    const logged: unknown[] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => {
+      logged.push(...args);
+    };
+    try {
+      const { repository } = buildRepository(buildDetail({ status: "COMPLETED" }));
+      await duplicateCompletedMeasurement("ses_1", repository);
+    } finally {
+      console.error = original;
+    }
+
+    const serialized = JSON.stringify(logged);
+    for (const forbidden of ["dx original", "nota original", "56.5", "Probe Convergence"]) {
+      assert.equal(
+        serialized.includes(forbidden),
+        false,
+        `clinical/personal data leaked into logs: ${forbidden}`,
+      );
+    }
+  });
+});

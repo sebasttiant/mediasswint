@@ -386,8 +386,30 @@ export async function duplicateCompletedMeasurement(
       templateSnapshot: detail.templateSnapshot,
     });
 
+    // RESIDUAL RISK, deliberately bounded and reported.
+    //
+    // Every fallible READ (status, template, snapshot validation, field
+    // indexing) happens before the first write, so the common failure modes
+    // cannot strand a draft. The two writes below still live in separate
+    // repository calls, and the repository contract exposes no way to span
+    // them in one transaction and no way to delete a session, so a failure
+    // HERE leaves an empty DRAFT copy behind.
+    //
+    // It fails safe: the caller gets an error, the SOURCE measurement is
+    // untouched, and the leftover is an empty draft the clinician can discard —
+    // never a partially-copied clinical record presented as complete. Closing
+    // it properly needs a transactional createDraftWithValues on the repository,
+    // which is tracked as follow-up rather than widened into this change.
     const copied = await repository.replaceValues({ sessionId: created.id, values });
-    if (!copied.ok) return { ok: false, error: "UNKNOWN" };
+    if (!copied.ok) {
+      console.error("[measurements:duplicate] values copy failed after draft creation", {
+        sessionId,
+        createdSessionId: created.id,
+        templateId: detail.templateId,
+        valueCount: values.length,
+      });
+      return { ok: false, error: "UNKNOWN" };
+    }
 
     await recordAudit({
       action: "CREATE",
