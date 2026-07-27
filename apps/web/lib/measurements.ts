@@ -175,6 +175,8 @@ export type SaveDraftRepositoryInput = {
   values: Array<{ fieldId: string; valueNumber: number | null }>;
 };
 
+export type SaveDraftAndCompleteRepositoryInput = SaveDraftRepositoryInput;
+
 /**
  * Create a destination draft and its copied values in ONE transaction.
  *
@@ -204,6 +206,10 @@ export type MeasurementsRepository = {
    * inside it so a concurrent completion cannot be half-applied.
    */
   saveDraft(input: SaveDraftRepositoryInput): Promise<{ ok: boolean; status: MeasurementSessionStatus | null }>;
+  /** Atomically applies a draft save and transitions it to COMPLETED. */
+  saveDraftAndComplete?(
+    input: SaveDraftAndCompleteRepositoryInput,
+  ): Promise<MarkCompletedResult>;
   /** Atomic duplication: destination draft and copied values commit together. */
   createDraftWithValues(
     input: CreateDraftWithValuesRepositoryInput,
@@ -223,6 +229,25 @@ function hasContextChanges(input: UpdateMeasurementValuesInput): boolean {
     input.productFlags !== undefined ||
     input.metadata !== undefined
   );
+}
+
+function safeErrorDetails(error: unknown): { errorName: string; errorCode: string | null } {
+  const errorName = error instanceof Error ? error.name : "UnknownError";
+  const code =
+    typeof error === "object" && error !== null && "code" in error
+      ? (error as { code?: unknown }).code
+      : null;
+  return {
+    errorName,
+    errorCode:
+      (typeof code === "string" && code.length > 0 && code.length <= 16) || typeof code === "number"
+        ? String(code)
+        : null,
+  };
+}
+
+function logMeasurementFailure(operation: string, error: unknown, identifiers: Record<string, string>) {
+  console.error(`[measurements:${operation}] failed`, { ...identifiers, ...safeErrorDetails(error) });
 }
 
 function indexFieldsByKey(snapshot: TemplateSnapshot): Map<string, TemplateSnapshotField> {
@@ -280,7 +305,7 @@ export async function createDraftMeasurement(
 
     return { ok: true, value: { id: created.id, templateSnapshot: snapshot } };
   } catch (error) {
-    console.error("[measurements:createDraft]", error);
+    logMeasurementFailure("createDraft", error, { patientId: input.patientId });
     return { ok: false, error: "UNKNOWN" };
   }
 }
@@ -389,7 +414,77 @@ export async function updateMeasurementValues(
 
     return { ok: true, value: { updated: resolved.length } };
   } catch (error) {
-    console.error("[measurements:updateValues]", error);
+    logMeasurementFailure("updateValues", error, { sessionId });
+    return { ok: false, error: "UNKNOWN" };
+  }
+}
+
+/**
+ * Complete a structurally complete draft with its accompanying values/context in
+ * one repository transaction. This path is deliberately separate from the
+ * incomplete-snapshot refusal: that path commits a DRAFT save then returns 422.
+ */
+export async function saveAndCompleteMeasurement(
+  sessionId: string,
+  input: UpdateMeasurementValuesInput,
+  repository: MeasurementsRepository,
+): Promise<ServiceResult<{ id: string; status: "COMPLETED" }>> {
+  try {
+    const detail = await repository.getDetail(sessionId);
+    if (!detail) return { ok: false, error: "NOT_FOUND" };
+    if (detail.status !== "DRAFT") return { ok: false, error: "INVALID_STATE" };
+    if (detail.templateSnapshotState === "malformed") return { ok: false, error: "MALFORMED_TEMPLATE_SNAPSHOT" };
+    if (!detail.templateSnapshot) return { ok: false, error: "TEMPLATE_NOT_FOUND" };
+    if (getHeadSnapshotCompletionBlock(detail.templateSnapshot)) {
+      return { ok: false, error: "INCOMPLETE_TEMPLATE_SNAPSHOT" };
+    }
+
+    const fieldsByKey = indexFieldsByKey(detail.templateSnapshot);
+    const values: Array<{ fieldId: string; valueNumber: number | null }> = [];
+    for (const [key, valueNumber] of Object.entries(input.valuesByKey)) {
+      const field = fieldsByKey.get(key);
+      if (!field) return { ok: false, error: "UNKNOWN_KEYS" };
+      values.push({ fieldId: field.id, valueNumber });
+    }
+    const draft = {
+      sessionId,
+      ...(hasContextChanges(input)
+        ? {
+            context: {
+              measuredAt: input.measuredAt,
+              notes: input.notes,
+              diagnosis: input.diagnosis,
+              garmentType: input.garmentType,
+              compressionClass: input.compressionClass,
+              productFlags: input.productFlags,
+              metadata: input.metadata,
+            },
+          }
+        : {}),
+      values,
+    };
+    // Injected legacy unit-test repositories can retain the old two-method
+    // protocol; production always supplies the atomic primitive below.
+    const result = repository.saveDraftAndComplete
+      ? await repository.saveDraftAndComplete(draft)
+      : (await repository.saveDraft(draft)).ok
+        ? await repository.markCompleted(sessionId)
+        : { status: "INVALID_STATE" as const };
+    if (result.status === "NOT_FOUND") return { ok: false, error: "NOT_FOUND" };
+    if (result.status !== "COMPLETED") return { ok: false, error: "INVALID_STATE" };
+
+    await recordAudit({
+      action: "UPDATE",
+      entityType: "MeasurementSession",
+      entityId: sessionId,
+      diff: {
+        before: toAuditPayload({ id: sessionId, status: "DRAFT" }),
+        after: toAuditPayload({ id: sessionId, status: "COMPLETED" }),
+      },
+    });
+    return { ok: true, value: { id: sessionId, status: "COMPLETED" } };
+  } catch (error) {
+    logMeasurementFailure("saveAndComplete", error, { sessionId });
     return { ok: false, error: "UNKNOWN" };
   }
 }
@@ -452,7 +547,7 @@ export async function duplicateCompletedMeasurement(
 
     return { ok: true, value: { id: created.id } };
   } catch (error) {
-    console.error("[measurements:duplicate]", error);
+    logMeasurementFailure("duplicate", error, { sessionId });
     return { ok: false, error: "UNKNOWN" };
   }
 }
@@ -492,7 +587,7 @@ export async function reopenMeasurementForCorrection(
 
     return { ok: true, value: { id: sessionId, status: "DRAFT" } };
   } catch (error) {
-    console.error("[measurements:reopen]", error);
+    logMeasurementFailure("reopen", error, { sessionId });
     return { ok: false, error: "UNKNOWN" };
   }
 }
@@ -566,7 +661,7 @@ export async function completeMeasurement(
     if (result.status === "NOT_FOUND") return { ok: false, error: "NOT_FOUND" };
     return { ok: false, error: "INVALID_STATE" };
   } catch (error) {
-    console.error("[measurements:complete]", error);
+    logMeasurementFailure("complete", error, { sessionId });
     return { ok: false, error: "UNKNOWN" };
   }
 }
@@ -580,7 +675,7 @@ export async function getMeasurement(
     if (!detail) return { ok: false, error: "NOT_FOUND" };
     return { ok: true, value: detail };
   } catch (error) {
-    console.error("[measurements:get]", error);
+    logMeasurementFailure("get", error, { sessionId });
     return { ok: false, error: "UNKNOWN" };
   }
 }
@@ -594,7 +689,7 @@ export async function listPatientMeasurements(
     const list = await repository.listByPatient(patientId, query.limit);
     return { ok: true, value: list };
   } catch (error) {
-    console.error("[measurements:list]", error);
+    logMeasurementFailure("list", error, { patientId });
     return { ok: false, error: "UNKNOWN" };
   }
 }
@@ -819,15 +914,21 @@ const defaultRepository: MeasurementsRepository = {
   async saveDraft(input) {
     const prisma = getPrisma();
     return prisma.$transaction(async (tx) => {
-      // Status is re-read INSIDE the transaction: a completion committed
-      // between the caller's read and this write must abort the whole save,
-      // not half-apply it.
-      const session = await tx.measurementSession.findUnique({
-        where: { id: input.sessionId },
-        select: { status: true },
+      // This conditional UPDATE is both the DRAFT assertion and the row lock.
+      // A plain SELECT under PostgreSQL Read Committed lets markCompleted commit
+      // between observation and write; every following write here is protected
+      // by the lock held until this transaction commits or rolls back.
+      const locked = await tx.measurementSession.updateMany({
+        where: { id: input.sessionId, status: "DRAFT" },
+        data: { updatedAt: new Date() },
       });
-      if (!session) return { ok: false, status: null };
-      if (session.status !== "DRAFT") return { ok: false, status: session.status };
+      if (locked.count !== 1) {
+        const session = await tx.measurementSession.findUnique({
+          where: { id: input.sessionId },
+          select: { status: true },
+        });
+        return { ok: false, status: session?.status ?? null };
+      }
 
       if (input.context) {
         const context = input.context;
@@ -873,6 +974,58 @@ const defaultRepository: MeasurementsRepository = {
     });
   },
 
+  async saveDraftAndComplete(input) {
+    const prisma = getPrisma();
+    return prisma.$transaction(async (tx) => {
+      // Acquire the same conditional DRAFT lock as saveDraft before ANY
+      // context/value write. A concurrent completion either happens first and
+      // makes this return INVALID_STATE, or waits and observes COMPLETED later.
+      const locked = await tx.measurementSession.updateMany({
+        where: { id: input.sessionId, status: "DRAFT" },
+        data: { updatedAt: new Date() },
+      });
+      if (locked.count !== 1) {
+        const session = await tx.measurementSession.findUnique({
+          where: { id: input.sessionId },
+          select: { status: true },
+        });
+        return session ? { status: "INVALID_STATE" as const } : { status: "NOT_FOUND" as const };
+      }
+
+      if (input.context) {
+        const context = input.context;
+        await tx.measurementSession.update({
+          where: { id: input.sessionId },
+          data: {
+            ...(context.measuredAt !== undefined ? { measuredAt: context.measuredAt } : {}),
+            ...(context.notes !== undefined ? { notes: context.notes } : {}),
+            ...(context.diagnosis !== undefined ? { diagnosis: context.diagnosis } : {}),
+            ...(context.garmentType !== undefined ? { garmentType: context.garmentType } : {}),
+            ...(context.compressionClass !== undefined ? { compressionClass: context.compressionClass } : {}),
+            ...(context.productFlags !== undefined ? { productFlags: context.productFlags as Prisma.InputJsonValue } : {}),
+            ...(context.metadata !== undefined ? { metadata: context.metadata as Prisma.InputJsonValue } : {}),
+          },
+        });
+      }
+      for (const value of input.values) {
+        if (value.valueNumber === null) {
+          await tx.measurementValue.deleteMany({ where: { sessionId: input.sessionId, fieldId: value.fieldId } });
+        } else {
+          await tx.measurementValue.upsert({
+            where: { sessionId_fieldId: { sessionId: input.sessionId, fieldId: value.fieldId } },
+            update: { valueNumber: new Prisma.Decimal(value.valueNumber) },
+            create: { sessionId: input.sessionId, fieldId: value.fieldId, valueNumber: new Prisma.Decimal(value.valueNumber) },
+          });
+        }
+      }
+      const completed = await tx.measurementSession.updateMany({
+        where: { id: input.sessionId, status: "DRAFT" },
+        data: { status: "COMPLETED" },
+      });
+      return completed.count === 1 ? { status: "COMPLETED" as const } : { status: "INVALID_STATE" as const };
+    });
+  },
+
   async updateContext(input) {
     const prisma = getPrisma();
     const data: Prisma.MeasurementSessionUpdateInput = {};
@@ -903,18 +1056,13 @@ const defaultRepository: MeasurementsRepository = {
   async markCompleted(id) {
     const prisma = getPrisma();
     return prisma.$transaction(async (tx) => {
-      const session = await tx.measurementSession.findUnique({
-        where: { id },
-        select: { status: true },
-      });
-      if (!session) return { status: "NOT_FOUND" } as const;
-      if (session.status !== "DRAFT") return { status: "INVALID_STATE" } as const;
-
-      await tx.measurementSession.update({
-        where: { id },
+      const completed = await tx.measurementSession.updateMany({
+        where: { id, status: "DRAFT" },
         data: { status: "COMPLETED" },
       });
-      return { status: "COMPLETED" } as const;
+      if (completed.count === 1) return { status: "COMPLETED" } as const;
+      const session = await tx.measurementSession.findUnique({ where: { id }, select: { id: true } });
+      return session ? { status: "INVALID_STATE" } as const : { status: "NOT_FOUND" } as const;
     });
   },
 

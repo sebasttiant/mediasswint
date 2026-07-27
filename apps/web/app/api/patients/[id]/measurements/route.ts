@@ -68,14 +68,12 @@ export async function handlePostMeasurementRequest(
     garmentType: parsed.value.garmentType,
     garmentSnapshot: { reference: parsed.value.garmentSnapshotReference },
   });
-  // An unknown reference with no garmentSnapshot is legacy free text, which the
-  // repository still supports for historical records; anything else must agree.
-  const legacyFreeTextGarment =
-    identity.ok === false &&
-    identity.reason === "UNKNOWN_REFERENCE" &&
-    parsed.value.garmentSnapshotReference == null;
-
-  if (!identity.ok && !legacyFreeTextGarment) {
+  // Creation is not a legacy compatibility path. A new record must always
+  // carry a catalog identity; only PATCH may retain unchanged historical free
+  // text that is already persisted.
+  const hasNoGarmentIdentity =
+    parsed.value.garmentType == null && parsed.value.garmentSnapshotReference == null;
+  if (!identity.ok && !hasNoGarmentIdentity) {
     console.error("[measurements:createDraft] refused inconsistent garment identity", {
       patientId: id,
       code: "GARMENT_TEMPLATE_MISMATCH",
@@ -121,7 +119,7 @@ export async function handlePostMeasurementRequest(
       measuredAt: parsed.value.measuredAt,
       notes: parsed.value.notes,
       diagnosis: parsed.value.diagnosis,
-      garmentType: parsed.value.garmentType,
+      garmentType: canonicalIdentity?.reference ?? null,
       compressionClass: parsed.value.compressionClass,
       productFlags: parsed.value.productFlags,
       metadata,

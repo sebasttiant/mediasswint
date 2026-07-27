@@ -53,7 +53,7 @@ type Store = {
   calls: string[];
 };
 
-function buildStore(options: { failSave?: boolean; completeDuring?: boolean } = {}): Store {
+function buildStore(options: { failSave?: boolean; completeDuring?: boolean; throwSecret?: boolean } = {}): Store {
   const calls: string[] = [];
   const session: MeasurementSessionDetail = {
     id: "ses-1",
@@ -99,6 +99,11 @@ function buildStore(options: { failSave?: boolean; completeDuring?: boolean } = 
       }
       if (session.status !== "DRAFT") return { ok: false, status: session.status };
       if (options.failSave) return { ok: false, status: "DRAFT" };
+      if (options.throwSecret) {
+        const error = new Error("INSERT clinical value = 42.5");
+        Object.assign(error, { code: "P2003" });
+        throw error;
+      }
 
       if (input.context) {
         if (input.context.notes !== undefined) session.notes = input.context.notes;
@@ -201,5 +206,26 @@ describe("a draft save is one atomic clinical operation", () => {
     assert.equal(result.ok, true);
     assert.deepEqual(store.calls, ["saveDraft"]);
     assert.deepEqual(store.session.values, { legRight1: 55 });
+  });
+
+  it("never logs raw driver messages or clinical values when a save fails", async () => {
+    const store = buildStore({ throwSecret: true });
+    const calls: unknown[][] = [];
+    const originalError = console.error;
+    console.error = (...args: unknown[]) => calls.push(args);
+    try {
+      const result = await updateMeasurementValues(
+        "ses-1",
+        { valuesByKey: { legRight1: 42.5 } },
+        store.repository,
+      );
+      assert.equal(result.ok, false);
+    } finally {
+      console.error = originalError;
+    }
+
+    const output = JSON.stringify(calls);
+    assert.match(output, /P2003/);
+    assert.doesNotMatch(output, /INSERT clinical value|42\.5/);
   });
 });

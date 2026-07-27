@@ -373,7 +373,7 @@ describe("POST /api/patients/[id]/measurements", () => {
     const response = await handlePostMeasurementRequest(
       postRequest({
         measuredAt: "2026-04-28T10:00:00Z",
-        garmentType: "Media corta",
+        garmentType: "MR",
         compressionClass: "II",
         productFlags: { mediaCorta: true },
         diagnosis: "Insuficiencia venosa",
@@ -390,7 +390,15 @@ describe("POST /api/patients/[id]/measurements", () => {
     const stored = repo.sessions.get(json.id);
     assert.equal(stored?.status, "DRAFT");
     assert.equal(stored?.diagnosis, "Insuficiencia venosa");
-    assert.deepEqual(stored?.metadata, { patientSex: "MALE" });
+    assert.deepEqual(stored?.metadata, {
+      patientSex: "MALE",
+      garmentSnapshot: {
+        reference: "MR",
+        label: "Media a la Rodilla Par Adulto",
+        family: "Lower limb",
+        figureKey: GARMENT_FIGURE_KEY.LOWER_LIMB,
+      },
+    });
   });
 
   it("resolves templateCode from the garment reference — ME creates a mentonera-v1 draft", async () => {

@@ -13,6 +13,7 @@ import {
   duplicateCompletedMeasurement,
   getDefaultMeasurementsRepository,
   getMeasurement,
+  saveAndCompleteMeasurement,
   reopenMeasurementForCorrection,
   updateMeasurementValues,
   type MeasurementsRepository,
@@ -235,9 +236,7 @@ export async function handlePatchMeasurementRequest(
     };
   }
 
-  const updated = await updateMeasurementValues(
-    sessionId,
-    {
+  const updateInput = {
       valuesByKey: parsed.value.valuesByKey,
       measuredAt: parsed.value.measuredAt,
       notes: parsed.value.notes,
@@ -246,9 +245,26 @@ export async function handlePatchMeasurementRequest(
       compressionClass: parsed.value.compressionClass,
       productFlags: parsed.value.productFlags,
       ...(mergedMetadata !== undefined ? { metadata: mergedMetadata } : {}),
-    },
-    deps.repository,
-  );
+    };
+
+  // A complete, structurally valid snapshot must save and transition in the
+  // SAME database transaction. The incomplete path intentionally remains the
+  // existing save-then-422 flow so the clinician's draft values are retained.
+  if (parsed.value.complete && !getHeadSnapshotCompletionBlock(detail.value.templateSnapshot)) {
+    const completed = await saveAndCompleteMeasurement(sessionId, updateInput, deps.repository);
+    if (!completed.ok) {
+      if (completed.error === "NOT_FOUND") return notFound("Measurement");
+      if (completed.error === "INVALID_STATE") return NextResponse.json({ error: "Measurement is not editable" }, { status: 409 });
+      return NextResponse.json({ error: "Internal server error", committed: false }, { status: 500 });
+    }
+    const refreshedAfterCommit = await getMeasurement(sessionId, deps.repository);
+    if (!refreshedAfterCommit.ok) {
+      return NextResponse.json({ id: sessionId, status: "COMPLETED", committed: true }, { status: 202 });
+    }
+    return NextResponse.json(refreshedAfterCommit.value, { status: 200 });
+  }
+
+  const updated = await updateMeasurementValues(sessionId, updateInput, deps.repository);
   if (!updated.ok) {
     if (updated.error === "NOT_FOUND") return notFound("Measurement");
     if (updated.error === "INVALID_STATE") {

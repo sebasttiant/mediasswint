@@ -414,4 +414,23 @@ describe("POST garment identity — canonical server identity", () => {
     assert.equal(response.status, 409);
     assert.deepEqual(store.writes, []);
   });
+
+  it("rejects a new unknown free-text garment before creating a draft", async () => {
+    const store = buildRepository(compressionSnapshot(), "MC");
+
+    const response = await handlePostMeasurementRequest(
+      postRequest({
+        measuredAt: "2026-05-01T10:00:00Z",
+        garmentType: "New unlisted garment",
+      }),
+      { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
+      collectionDeps(store.repository),
+    );
+
+    assert.equal(response.status, 409);
+    const json = (await response.json()) as { code?: string };
+    assert.equal(json.code, "GARMENT_TEMPLATE_MISMATCH");
+    assert.deepEqual(store.writes, []);
+  });
 });

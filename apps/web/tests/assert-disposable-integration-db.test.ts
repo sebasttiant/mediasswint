@@ -17,4 +17,19 @@ describe("CI integration database guard", () => {
       /_probe/,
     );
   });
+
+  it("rejects non-PostgreSQL, malformed, and query-or-fragment probe tricks", () => {
+    for (const unsafeUrl of [
+      "mysql://ci:ci@localhost:3306/mediass_ci_probe",
+      "not a URL",
+      "postgresql://ci:ci@localhost:5432/mediass?database=mediass_ci_probe",
+      "postgresql://ci:ci@localhost:5432/mediass#mediass_ci_probe",
+      "postgresql://ci:ci@localhost:5432/mediass_ci_probe_extra",
+    ]) {
+      assert.throws(
+        () => assertDisposableIntegrationDatabaseUrl(unsafeUrl),
+        /INTEGRATION_DATABASE_URL/,
+      );
+    }
+  });
 });

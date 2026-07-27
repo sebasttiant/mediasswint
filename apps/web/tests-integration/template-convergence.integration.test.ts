@@ -13,12 +13,13 @@
  */
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
+import { isDisposableIntegrationDatabaseUrl } from "../scripts/assert-disposable-integration-db.mjs";
 
 const integrationUrl = process.env["INTEGRATION_DATABASE_URL"];
 
 // Refuse to run against anything that is not obviously disposable. Losing a
 // shared dev database to a test fixture is not an acceptable failure mode.
-const isDisposable = typeof integrationUrl === "string" && /_probe(\?|$)/.test(integrationUrl);
+const isDisposable = isDisposableIntegrationDatabaseUrl(integrationUrl);
 
 if (integrationUrl) {
   process.env["DATABASE_URL"] = integrationUrl;
