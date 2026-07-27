@@ -1,0 +1,181 @@
+/**
+ * B4 — absent vs malformed persisted snapshots, through the REAL repository.
+ *
+ * The service has a MALFORMED_TEMPLATE_SNAPSHOT branch, but the default
+ * repository parsed the Json column and returned `null` for anything it could
+ * not read. The service then saw a null snapshot, reported TEMPLATE_NOT_FOUND,
+ * and the route answered 500 — so the malformed branch was unreachable in
+ * production and the intentional recovery response never fired.
+ *
+ * Only a real database can prove this: an in-memory fake can hand the service a
+ * malformed object directly and reach a branch production never reaches.
+ */
+import assert from "node:assert/strict";
+import { after, before, describe, it } from "node:test";
+
+const integrationUrl = process.env["INTEGRATION_DATABASE_URL"];
+const isDisposable = typeof integrationUrl === "string" && /_probe(\?|$)/.test(integrationUrl);
+
+if (integrationUrl) {
+  process.env["DATABASE_URL"] = integrationUrl;
+}
+
+describe(
+  "persisted snapshot state through the real repository",
+  { skip: isDisposable ? false : "INTEGRATION_DATABASE_URL must point at a *_probe database" },
+  () => {
+    let prisma: import("@prisma/client").PrismaClient;
+    let getDefaultMeasurementsRepository: typeof import("../lib/measurements").getDefaultMeasurementsRepository;
+    let updateMeasurementValues: typeof import("../lib/measurements").updateMeasurementValues;
+    let duplicateCompletedMeasurement: typeof import("../lib/measurements").duplicateCompletedMeasurement;
+
+    let patientId = "";
+    let templateId = "";
+
+    before(async () => {
+      const measurements = await import("../lib/measurements");
+      const templates = await import("../lib/measurement-templates");
+      const prismaModule = await import("../lib/prisma");
+      getDefaultMeasurementsRepository = measurements.getDefaultMeasurementsRepository;
+      updateMeasurementValues = measurements.updateMeasurementValues;
+      duplicateCompletedMeasurement = measurements.duplicateCompletedMeasurement;
+      prisma = prismaModule.getPrisma();
+
+      // Order matters: MeasurementSession.patient is onDelete: Restrict, so the
+      // sessions (and their values) from a previous run must go first.
+      const stale = await prisma.patient.findFirst({
+        where: { documentNumber: "PROBE-SNAP-1" },
+        select: { id: true },
+      });
+      if (stale) {
+        await prisma.measurementValue.deleteMany({
+          where: { session: { patientId: stale.id } },
+        });
+        await prisma.measurementSession.deleteMany({ where: { patientId: stale.id } });
+        await prisma.patient.delete({ where: { id: stale.id } });
+      }
+      const synced = await templates.syncCompressionTemplate(
+        templates.getDefaultMeasurementTemplatesRepository(),
+      );
+      templateId = synced.templateId;
+
+      const patient = await prisma.patient.create({
+        data: {
+          documentType: "CC",
+          documentNumber: "PROBE-SNAP-1",
+          fullName: "Probe Snapshot",
+          sex: "FEMALE",
+        },
+        select: { id: true },
+      });
+      patientId = patient.id;
+    });
+
+    after(async () => {
+      await prisma.$disconnect();
+    });
+
+    async function createSession(
+      templateSnapshot: unknown,
+      status: "DRAFT" | "COMPLETED" = "DRAFT",
+    ): Promise<string> {
+      const session = await prisma.measurementSession.create({
+        data: {
+          patientId,
+          templateId,
+          status,
+          measuredAt: new Date("2026-05-03T10:00:00.000Z"),
+          templateSnapshot: templateSnapshot as never,
+        },
+        select: { id: true },
+      });
+      return session.id;
+    }
+
+    it("distinguishes a MALFORMED persisted snapshot from an ABSENT one", async () => {
+      const repository = getDefaultMeasurementsRepository();
+
+      // Exactly the shape the demo seeder used to write: identity, no sections.
+      const malformedId = await createSession({
+        templateCode: "compression-v1",
+        templateName: "Compresión v1",
+        version: 1,
+      });
+      const absentId = await createSession(null);
+
+      const malformed = await repository.getDetail(malformedId);
+      const absent = await repository.getDetail(absentId);
+
+      assert.ok(malformed);
+      assert.ok(absent);
+      assert.equal(
+        malformed.templateSnapshotState,
+        "malformed",
+        "a stored-but-unreadable snapshot must not look absent",
+      );
+      assert.equal(absent.templateSnapshotState, "absent");
+    });
+
+    it("PATCH on a malformed snapshot reports MALFORMED, not TEMPLATE_NOT_FOUND", async () => {
+      const repository = getDefaultMeasurementsRepository();
+      const sessionId = await createSession({ templateCode: "compression-v1", version: 1 });
+
+      const result = await updateMeasurementValues(
+        sessionId,
+        { valuesByKey: { legRight1: 30 }, notes: "intento" },
+        repository,
+      );
+
+      assert.equal(result.ok, false);
+      assert.equal(result.ok === false && result.error, "MALFORMED_TEMPLATE_SNAPSHOT");
+    });
+
+    it("a malformed-snapshot PATCH performs ZERO writes", async () => {
+      const repository = getDefaultMeasurementsRepository();
+      const sessionId = await createSession({ templateCode: "compression-v1", version: 1 });
+
+      await updateMeasurementValues(
+        sessionId,
+        { valuesByKey: { legRight1: 30 }, notes: "no debe persistir" },
+        repository,
+      );
+
+      const after = await prisma.measurementSession.findUniqueOrThrow({
+        where: { id: sessionId },
+        include: { values: true },
+      });
+      assert.equal(after.notes, null, "context must not have been written");
+      assert.equal(after.values.length, 0, "no value may have been written");
+    });
+
+    it("an ABSENT snapshot still reports TEMPLATE_NOT_FOUND", async () => {
+      const repository = getDefaultMeasurementsRepository();
+      const sessionId = await createSession(null);
+
+      const result = await updateMeasurementValues(
+        sessionId,
+        { valuesByKey: { legRight1: 30 } },
+        repository,
+      );
+
+      assert.equal(result.ok, false);
+      assert.equal(result.ok === false && result.error, "TEMPLATE_NOT_FOUND");
+    });
+
+    it("duplication of a malformed snapshot writes nothing at all", async () => {
+      const repository = getDefaultMeasurementsRepository();
+      const sessionId = await createSession(
+        { templateCode: "compression-v1", version: 1 },
+        "COMPLETED",
+      );
+      const before = await prisma.measurementSession.count({ where: { patientId } });
+
+      const result = await duplicateCompletedMeasurement(sessionId, repository);
+
+      assert.equal(result.ok, false);
+      assert.equal(result.ok === false && result.error, "MALFORMED_TEMPLATE_SNAPSHOT");
+      const afterCount = await prisma.measurementSession.count({ where: { patientId } });
+      assert.equal(afterCount, before, "no destination draft may exist");
+    });
+  },
+);

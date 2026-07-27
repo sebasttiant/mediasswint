@@ -35,7 +35,11 @@ function buildDetail(overrides: Partial<MeasurementSessionDetail> = {}): Measure
     compressionClass: null,
     productFlags: null,
     metadata: null,
-    templateSnapshot: SEEDER_SHAPED_SNAPSHOT,
+    // The repository boundary would classify this stored-but-unreadable JSON
+    // as "malformed"; the fake states it explicitly so the service sees exactly
+    // what production hands it.
+    templateSnapshot: null,
+    templateSnapshotState: "malformed",
     values: {},
     createdAt: new Date("2026-01-01T12:00:00.000Z"),
     updatedAt: new Date("2026-01-01T12:00:00.000Z"),
@@ -127,7 +131,7 @@ describe("malformed persisted snapshots are refused, not crashed on", () => {
   });
 
   it("still distinguishes a genuinely absent snapshot from a malformed one", async () => {
-    const { repository } = buildRepository(buildDetail({ templateSnapshot: null }));
+    const { repository } = buildRepository(buildDetail({ templateSnapshot: null, templateSnapshotState: "absent" }));
 
     const result = await updateMeasurementValues(
       "ses_1",
@@ -168,7 +172,7 @@ describe("malformed persisted snapshots are refused, not crashed on", () => {
       ],
     };
     const { repository, replacedFor } = buildRepository(
-      buildDetail({ templateSnapshot: valid }),
+      buildDetail({ templateSnapshot: valid, templateSnapshotState: "valid" }),
     );
 
     const result = await updateMeasurementValues(
@@ -217,6 +221,7 @@ describe("duplication write boundary under injected failure", () => {
     const source = buildDetail({
       status: "COMPLETED",
       templateSnapshot: valid,
+      templateSnapshotState: "valid",
       values: { legRight1: 30 },
     });
     const { repository, createdDrafts } = buildRepository(source);

@@ -13,13 +13,17 @@
 const GENERIC_FAILURE = "No se pudieron guardar las medidas. Revisá rangos y campos.";
 
 /**
- * Server codes that mean: the draft was written, only finalization was refused.
- * Both are returned with HTTP 422.
+ * The ONLY code that means "the draft was written, finalization was refused".
+ *
+ * MALFORMED_TEMPLATE_SNAPSHOT deliberately does NOT belong here. The service
+ * detects an unreadable stored snapshot BEFORE any write, so nothing was saved;
+ * telling the clinician their draft was kept would be exactly as false as the
+ * bug this contract exists to fix, only in the opposite direction.
  */
-const COMPLETION_REFUSED_CODES = new Set([
-  "INCOMPLETE_TEMPLATE_SNAPSHOT",
-  "MALFORMED_TEMPLATE_SNAPSHOT",
-]);
+const COMPLETION_REFUSED_CODE = "INCOMPLETE_TEMPLATE_SNAPSHOT";
+
+/** An unreadable stored snapshot: nothing was written, and it is not the user's input. */
+const UNREADABLE_SNAPSHOT_CODE = "MALFORMED_TEMPLATE_SNAPSHOT";
 
 export type SaveOutcome = {
   kind: "saved" | "draft-saved-completion-refused" | "failed";
@@ -57,7 +61,20 @@ export function interpretSaveResponse(status: number, body: unknown): SaveOutcom
   const code = readString(body, "code");
   const reason = readString(body, "reason");
 
-  if (status === 422 && code !== null && COMPLETION_REFUSED_CODES.has(code)) {
+  if (status === 422 && code === UNREADABLE_SNAPSHOT_CODE) {
+    return {
+      kind: "failed",
+      draftSaved: false,
+      keepEditing: true,
+      navigateToDetail: false,
+      message:
+        reason ??
+        "No pudimos leer la plantilla guardada de esta sesión, así que no se guardó nada. " +
+          "Avisá al equipo para regenerarla.",
+    };
+  }
+
+  if (status === 422 && code === COMPLETION_REFUSED_CODE) {
     // Deliberately explicit about BOTH halves: what was kept and what was not.
     const head = "Guardamos el borrador, pero no pudimos finalizar la sesión.";
     const tail = reason ?? "La plantilla de medidas de esta sesión no está completa.";

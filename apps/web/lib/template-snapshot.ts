@@ -120,3 +120,27 @@ export function parseTemplateSnapshot(value: unknown): TemplateSnapshot | null {
 export function isValidTemplateSnapshot(value: unknown): boolean {
   return parseTemplateSnapshot(value) !== null;
 }
+
+/**
+ * Classify the persisted Json column into the explicit tri-state the service
+ * reasons about, parsing exactly once.
+ *
+ * Returning a bare `TemplateSnapshot | null` was the defect: a malformed value
+ * and a genuinely absent one both became null, so the malformed branch could
+ * never fire through the real repository.
+ */
+export function classifyPersistedSnapshot(value: unknown): {
+  templateSnapshot: TemplateSnapshot | null;
+  templateSnapshotState: "absent" | "malformed" | "valid";
+} {
+  if (value === null || value === undefined) {
+    return { templateSnapshot: null, templateSnapshotState: "absent" };
+  }
+
+  const parsed = parseTemplateSnapshot(value);
+  if (!parsed) {
+    return { templateSnapshot: null, templateSnapshotState: "malformed" };
+  }
+
+  return { templateSnapshot: parsed, templateSnapshotState: "valid" };
+}

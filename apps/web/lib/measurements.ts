@@ -2,10 +2,24 @@ import { Prisma } from "@prisma/client";
 
 import { getPrisma } from "./prisma";
 import { getHeadSnapshotCompletionBlock } from "./head-measurement-layout";
-import { parseTemplateSnapshot } from "./template-snapshot";
+import { classifyPersistedSnapshot } from "./template-snapshot";
 import { recordAudit, toAuditPayload } from "@/lib/audit-log";
 
 export type MeasurementSessionStatus = "DRAFT" | "COMPLETED" | "VOID";
+
+/**
+ * What the persisted `templateSnapshot` Json column actually holds.
+ *
+ * "absent"    -> the column is null; the session never carried a snapshot.
+ * "malformed" -> the column holds JSON that is NOT a usable snapshot.
+ * "valid"     -> the column parsed into a TemplateSnapshot.
+ *
+ * These are deliberately three states, not two. Collapsing "malformed" into
+ * "absent" — which is what returning a bare null did — made the malformed
+ * branch unreachable through the real repository, so a stored-but-unreadable
+ * snapshot surfaced as a misleading 500 instead of its intended response.
+ */
+export type TemplateSnapshotState = "absent" | "malformed" | "valid";
 
 export type TemplateSnapshotField = {
   id: string;
@@ -71,6 +85,11 @@ export type MeasurementSessionDetail = {
   productFlags: Record<string, boolean> | null;
   metadata: Record<string, unknown> | null;
   templateSnapshot: TemplateSnapshot | null;
+  /**
+   * Distinguishes "no snapshot" from "unreadable snapshot". Required, so no
+   * repository implementation can silently reintroduce the collapse.
+   */
+  templateSnapshotState: TemplateSnapshotState;
   values: Record<string, number | null>;
   createdAt: Date;
   updatedAt: Date;
@@ -239,21 +258,19 @@ export async function updateMeasurementValues(
     const detail = await repository.getDetail(sessionId);
     if (!detail) return { ok: false, error: "NOT_FOUND" };
     if (detail.status !== "DRAFT") return { ok: false, error: "INVALID_STATE" };
-    if (!detail.templateSnapshot) return { ok: false, error: "TEMPLATE_NOT_FOUND" };
-
-    // Never index a snapshot that has not been validated: the column is Json?
-    // and really does hold rows without a `sections` key, which used to throw
-    // a TypeError here and surface as a 500.
-    const snapshot = parseTemplateSnapshot(detail.templateSnapshot);
-    if (!snapshot) {
+    // Malformed is checked BEFORE absent: both leave templateSnapshot null, and
+    // reporting an unreadable snapshot as a missing one hid the only branch that
+    // can answer with an intentional, machine-readable response.
+    if (detail.templateSnapshotState === "malformed") {
       console.error("[measurements:updateValues] malformed template snapshot", {
         sessionId,
         templateId: detail.templateId,
       });
       return { ok: false, error: "MALFORMED_TEMPLATE_SNAPSHOT" };
     }
+    if (!detail.templateSnapshot) return { ok: false, error: "TEMPLATE_NOT_FOUND" };
 
-    const fieldsByKey = indexFieldsByKey(snapshot);
+    const fieldsByKey = indexFieldsByKey(detail.templateSnapshot);
     const resolved: Array<{ fieldId: string; valueNumber: number | null }> = [];
 
     for (const [key, value] of Object.entries(input.valuesByKey)) {
@@ -348,22 +365,18 @@ export async function duplicateCompletedMeasurement(
     const detail = await repository.getDetail(sessionId);
     if (!detail) return { ok: false, error: "NOT_FOUND" };
     if (detail.status !== "COMPLETED") return { ok: false, error: "INVALID_STATE" };
-    if (!detail.templateId || !detail.templateSnapshot) return { ok: false, error: "TEMPLATE_NOT_FOUND" };
-
-    // ORDER MATTERS: validate and index the snapshot BEFORE creating anything.
-    // The draft used to be created first, so a malformed snapshot threw while
-    // indexing and left a stranded DRAFT session behind with no values. Doing
-    // all fallible reads up front makes the write side all-or-nothing.
-    const snapshot = parseTemplateSnapshot(detail.templateSnapshot);
-    if (!snapshot) {
+    if (detail.templateSnapshotState === "malformed") {
       console.error("[measurements:duplicate] malformed template snapshot", {
         sessionId,
         templateId: detail.templateId,
       });
       return { ok: false, error: "MALFORMED_TEMPLATE_SNAPSHOT" };
     }
+    if (!detail.templateId || !detail.templateSnapshot) return { ok: false, error: "TEMPLATE_NOT_FOUND" };
 
-    const fieldsByKey = indexFieldsByKey(snapshot);
+    // ORDER MATTERS: index the snapshot BEFORE opening any write, so a bad
+    // snapshot can never strand a destination draft.
+    const fieldsByKey = indexFieldsByKey(detail.templateSnapshot);
     const values: Array<{ fieldId: string; valueNumber: number | null }> = [];
     for (const [key, valueNumber] of Object.entries(detail.values)) {
       const field = fieldsByKey.get(key);
@@ -687,9 +700,9 @@ const defaultRepository: MeasurementsRepository = {
       compressionClass: session.compressionClass,
       productFlags: jsonToRecord<Record<string, boolean>>(session.productFlags),
       metadata: jsonToRecord<Record<string, unknown>>(session.metadata),
-      // Validated, never cast: a cast here is a lie the compiler cannot catch,
-      // and the column genuinely holds rows that do not match the contract.
-      templateSnapshot: parseTemplateSnapshot(session.templateSnapshot),
+      // Parsed exactly ONCE, here at the boundary, and classified so callers
+      // can tell "never had a snapshot" from "has one we cannot read".
+      ...classifyPersistedSnapshot(session.templateSnapshot),
       values: valuesByKey,
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,

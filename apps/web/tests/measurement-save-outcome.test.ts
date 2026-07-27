@@ -55,11 +55,24 @@ describe("interpretSaveResponse — partial success must not be reported as fail
     assert.equal(interpretSaveResponse(200, {}).navigateToDetail, true);
   });
 
-  it("an unreadable stored snapshot is also a refusal, not a lost save", () => {
+  // B4: an unreadable STORED snapshot is refused before any write, so claiming
+  // the draft was saved would be false in the opposite direction.
+  it("an unreadable stored snapshot must NOT claim the draft was saved", () => {
     const outcome = interpretSaveResponse(422, { code: "MALFORMED_TEMPLATE_SNAPSHOT" });
 
-    assert.equal(outcome.kind, "draft-saved-completion-refused");
-    assert.doesNotMatch(outcome.message, /no se pudieron guardar/i);
+    assert.equal(outcome.kind, "failed");
+    assert.equal(outcome.draftSaved, false);
+    assert.doesNotMatch(outcome.message, /[Gg]uardamos el borrador/);
+    assert.match(outcome.message, /no se guardó nada|plantilla/i);
+    assert.equal(outcome.keepEditing, true);
+  });
+
+  it("only INCOMPLETE_TEMPLATE_SNAPSHOT reports a saved draft", () => {
+    const incomplete = interpretSaveResponse(422, { code: "INCOMPLETE_TEMPLATE_SNAPSHOT" });
+    const malformed = interpretSaveResponse(422, { code: "MALFORMED_TEMPLATE_SNAPSHOT" });
+
+    assert.equal(incomplete.draftSaved, true);
+    assert.equal(malformed.draftSaved, false);
   });
 
   it("a cross-garment refusal is a genuine failure: nothing was written", () => {

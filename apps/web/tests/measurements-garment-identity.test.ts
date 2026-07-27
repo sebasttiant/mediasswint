@@ -12,6 +12,7 @@ import {
   type MeasurementsRepository,
   type TemplateSnapshot,
 } from "../lib/measurements";
+import { classifyPersistedSnapshot } from "../lib/template-snapshot";
 import { buildCompressionTemplate } from "../lib/compression-template";
 import { buildMentoneraTemplate } from "../lib/mentonera-template";
 import { buildMascaraTemplate } from "../lib/mascara-template";
@@ -89,7 +90,7 @@ function buildRepository(snapshot: TemplateSnapshot, garmentType: string) {
     compressionClass: null,
     productFlags: null,
     metadata: { patientSex: "FEMALE", garmentSnapshot: { reference: garmentType } },
-    templateSnapshot: snapshot,
+    ...classifyPersistedSnapshot(snapshot),
     values: {},
     createdAt: now,
     updatedAt: now,

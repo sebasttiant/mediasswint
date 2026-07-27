@@ -15,6 +15,7 @@ import {
   type MeasurementsRepository,
   type TemplateSnapshot,
 } from "../lib/measurements";
+import { classifyPersistedSnapshot } from "../lib/template-snapshot";
 
 function buildTemplateSnapshot(): TemplateSnapshot {
   const template = buildCompressionTemplate();
@@ -94,6 +95,7 @@ function createInMemoryRepository(options?: {
         productFlags: input.productFlags,
         metadata: input.metadata,
         templateSnapshot: input.templateSnapshot,
+        templateSnapshotState: classifyPersistedSnapshot(input.templateSnapshot).templateSnapshotState,
         values: {},
         createdAt: now,
         updatedAt: now,

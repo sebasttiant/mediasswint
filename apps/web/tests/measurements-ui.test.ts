@@ -579,6 +579,7 @@ function buildMeasurement(
     productFlags: null,
     metadata: null,
     templateSnapshot: null,
+    templateSnapshotState: "absent",
     values: {},
     createdAt: new Date("2026-02-01T10:00:00.000Z"),
     updatedAt: new Date("2026-02-01T10:00:00.000Z"),

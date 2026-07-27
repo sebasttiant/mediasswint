@@ -22,6 +22,7 @@ import {
   type MeasurementsRepository,
   type TemplateSnapshot,
 } from "../lib/measurements";
+import { classifyPersistedSnapshot } from "../lib/template-snapshot";
 import { buildCompressionTemplate } from "../lib/compression-template";
 import { buildMentoneraTemplate } from "../lib/mentonera-template";
 import { buildMascaraTemplate } from "../lib/mascara-template";
@@ -167,6 +168,7 @@ function buildInMemoryRepository(options: {
         productFlags: input.productFlags,
         metadata: input.metadata,
         templateSnapshot: input.templateSnapshot,
+        templateSnapshotState: classifyPersistedSnapshot(input.templateSnapshot).templateSnapshotState,
         values: {},
         createdAt: now,
         updatedAt: now,
