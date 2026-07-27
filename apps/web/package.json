@@ -11,6 +11,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test:unit": "node scripts/assert-no-focused-tests.mjs && node --test --import tsx \"tests/**/*.test.ts\"",
+    "test:integration": "node --test --import tsx \"tests-integration/**/*.integration.test.ts\"",
     "prisma:validate": "prisma validate --schema prisma/schema.prisma",
     "prisma:format": "prisma format --schema prisma/schema.prisma",
     "prisma:generate": "prisma generate --schema prisma/schema.prisma",
