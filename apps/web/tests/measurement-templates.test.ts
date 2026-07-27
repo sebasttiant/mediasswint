@@ -13,8 +13,8 @@ import {
 } from "../lib/measurement-templates";
 
 type TemplateRow = UpsertTemplateInput & { id: string };
-type SectionRow = UpsertSectionInput & { id: string };
-type FieldRow = UpsertFieldInput & { id: string };
+type SectionRow = UpsertSectionInput & { id: string; isActive?: boolean };
+type FieldRow = UpsertFieldInput & { id: string; isActive?: boolean };
 
 function createInMemoryRepository() {
   const templates = new Map<string, TemplateRow>();
@@ -65,6 +65,35 @@ function createInMemoryRepository() {
       const id = `fld-${fields.size + 1}`;
       fields.set(key, { ...input, id });
       return { id };
+    },
+
+    // Retirement is a state change, never a removal — the fake must model that
+    // faithfully or it would hide the very bug this contract exists to prevent.
+    async deactivateFieldsNotIn(input) {
+      let deactivated = 0;
+      for (const [key, field] of fields.entries()) {
+        if (field.sectionId !== input.sectionId) continue;
+        if (input.keys.includes(field.key)) continue;
+        if (field.isActive === false) continue;
+        fields.set(key, { ...field, isActive: false });
+        deactivated += 1;
+      }
+      return { deactivated };
+    },
+
+    async deactivateSectionsNotIn(input) {
+      let deactivated = 0;
+      for (const [key, section] of sections.entries()) {
+        if (section.templateId !== input.templateId) continue;
+        if (input.titles.includes(section.title)) continue;
+        if (section.isActive === false) continue;
+        sections.set(key, { ...section, isActive: false });
+        for (const [fieldKey, field] of fields.entries()) {
+          if (field.sectionId === section.id) fields.set(fieldKey, { ...field, isActive: false });
+        }
+        deactivated += 1;
+      }
+      return { deactivated };
     },
   };
 

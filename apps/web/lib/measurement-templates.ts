@@ -63,16 +63,42 @@ export type UpsertFieldInput = {
   metadata: Record<string, unknown>;
 };
 
+export type DeactivateFieldsNotInInput = {
+  sectionId: string;
+  keys: ReadonlyArray<string>;
+};
+
+export type DeactivateSectionsNotInInput = {
+  templateId: string;
+  titles: ReadonlyArray<string>;
+};
+
+export type DeactivateResult = {
+  deactivated: number;
+};
+
 export type MeasurementTemplatesRepository = {
   upsertTemplate(input: UpsertTemplateInput): Promise<{ id: string }>;
   upsertSection(input: UpsertSectionInput): Promise<{ id: string }>;
   upsertField(input: UpsertFieldInput): Promise<{ id: string }>;
+  /**
+   * Retire the fields of a section that the current definition no longer
+   * declares. Deactivates; never deletes. Deleting is not an option here:
+   * MeasurementValue.field is onDelete: Restrict, so removing a field that was
+   * ever measured is refused by Postgres, and a field referenced only by a
+   * draft's persisted snapshot would be deleted out from under a live draft.
+   */
+  deactivateFieldsNotIn(input: DeactivateFieldsNotInInput): Promise<DeactivateResult>;
+  deactivateSectionsNotIn(input: DeactivateSectionsNotInInput): Promise<DeactivateResult>;
 };
 
 export type SyncTemplateResult = {
   templateId: string;
   sectionsCount: number;
   fieldsCount: number;
+  /** Rows retired by this run because the definition no longer declares them. */
+  deactivatedFieldsCount: number;
+  deactivatedSectionsCount: number;
 };
 
 export async function syncMeasurementTemplate(
@@ -87,6 +113,7 @@ export async function syncMeasurementTemplate(
   });
 
   let fieldsCount = 0;
+  let deactivatedFieldsCount = 0;
 
   for (const section of template.sections) {
     const sec = await repository.upsertSection({
@@ -110,12 +137,36 @@ export async function syncMeasurementTemplate(
       });
       fieldsCount += 1;
     }
+
+    // Retire what this section no longer declares. Upserts run first so a key
+    // that moved WITHIN the section is revived before this pass sees it.
+    const retiredFields = await repository.deactivateFieldsNotIn({
+      sectionId: sec.id,
+      keys: section.fields.map((field) => field.key),
+    });
+    deactivatedFieldsCount += retiredFields.deactivated;
+  }
+
+  const retiredSections = await repository.deactivateSectionsNotIn({
+    templateId: tpl.id,
+    titles: template.sections.map((section) => section.title),
+  });
+
+  if (deactivatedFieldsCount > 0 || retiredSections.deactivated > 0) {
+    console.warn("[templates:sync] retired rows no longer in the definition", {
+      templateCode: template.code,
+      templateId: tpl.id,
+      deactivatedFields: deactivatedFieldsCount,
+      deactivatedSections: retiredSections.deactivated,
+    });
   }
 
   return {
     templateId: tpl.id,
     sectionsCount: template.sections.length,
     fieldsCount,
+    deactivatedFieldsCount,
+    deactivatedSectionsCount: retiredSections.deactivated,
   };
 }
 
@@ -151,7 +202,9 @@ const defaultRepository: MeasurementTemplatesRepository = {
           title: input.title,
         },
       },
-      update: { sortOrder: input.sortOrder },
+      // isActive: true on update revives a section that a previous definition
+      // had retired, instead of leaving it invisible to new snapshots.
+      update: { sortOrder: input.sortOrder, isActive: true },
       create: {
         templateId: input.templateId,
         title: input.title,
@@ -181,6 +234,8 @@ const defaultRepository: MeasurementTemplatesRepository = {
         minValue: new Prisma.Decimal(input.minValue),
         maxValue: new Prisma.Decimal(input.maxValue),
         metadata,
+        // Revive a field the definition brings back.
+        isActive: true,
       },
       create: {
         sectionId: input.sectionId,
@@ -197,6 +252,40 @@ const defaultRepository: MeasurementTemplatesRepository = {
       select: { id: true },
     });
     return record;
+  },
+
+  async deactivateFieldsNotIn(input) {
+    const prisma = getPrisma();
+    const result = await prisma.templateField.updateMany({
+      where: {
+        sectionId: input.sectionId,
+        key: { notIn: [...input.keys] },
+        isActive: true,
+      },
+      data: { isActive: false },
+    });
+    return { deactivated: result.count };
+  },
+
+  async deactivateSectionsNotIn(input) {
+    const prisma = getPrisma();
+    const obsolete = {
+      templateId: input.templateId,
+      title: { notIn: [...input.titles] },
+    };
+
+    // Retire the section's fields first: a field must never stay active under
+    // an inactive section, or it would still be projected into new snapshots.
+    await prisma.templateField.updateMany({
+      where: { section: obsolete, isActive: true },
+      data: { isActive: false },
+    });
+
+    const result = await prisma.templateSection.updateMany({
+      where: { ...obsolete, isActive: true },
+      data: { isActive: false },
+    });
+    return { deactivated: result.count };
   },
 };
 

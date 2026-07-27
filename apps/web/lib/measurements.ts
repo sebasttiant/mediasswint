@@ -547,10 +547,17 @@ const defaultRepository: MeasurementsRepository = {
     const template = await prisma.measurementTemplate.findUnique({
       where: { code },
       include: {
+        // Only the CURRENT definition is projected into a new session's
+        // snapshot. Retired rows stay in the database so history and existing
+        // draft snapshots keep resolving, but a new session must never inherit
+        // them — an obsolete field would make the head-garment classifier see a
+        // snapshot that does not match the declared set, marking every new
+        // session degraded and permanently unfinalizable.
         sections: {
+          where: { isActive: true },
           orderBy: { sortOrder: "asc" },
           include: {
-            fields: { orderBy: { sortOrder: "asc" } },
+            fields: { where: { isActive: true }, orderBy: { sortOrder: "asc" } },
           },
         },
       },
