@@ -1,56 +1,36 @@
-# Tasks: Per-Garment Measurement Figures (Mentonera pilot)
+# Tasks: Garment Measurement Figures — Audited Reconstruction
 
-## Review Workload Forecast
+## Candidate and Delivery Contract
 
-| Field | Value |
-|-------|-------|
-| Estimated changed lines | PR-A ~230 / PR-B ~250-350 |
-| 400-line budget risk | Low (PR-A) / Medium (PR-B) |
-| Chained PRs recommended | Yes |
-| Suggested split | PR-A (data/logic) → PR-B (figure/zones/UI) |
-| Delivery strategy | ask-on-risk |
-| Chain strategy | feature-branch-chain |
+- Candidate lineage: `5c942e1` → activation-order reconstruction → `0fa66ad`.
+- Current candidate: `0fa66ad723dbb1c101e50e70d6fc500839ebecb3`.
+- Base: `847e90ecfad75bcb2e4df7156961ba7a9ffc661b^`.
+- Strategy: feature-branch chain; every review diff MUST be at most 400 changed lines.
+- Status: implementation corrections are complete; independent audit and visual QA are **NOT VERIFIED**.
 
-Decision needed before apply: Yes
-Chained PRs recommended: Yes
-Chain strategy: feature-branch-chain
-400-line budget risk: Medium
+## Completed Corrections
 
-### Suggested Work Units
+- [x] C1 Prove atomic save-and-complete against real PostgreSQL, including rollback and concurrent completion.
+- [x] C2 Resolve malformed versus absent snapshot state before PATCH validation.
+- [x] C3 Restrict integration databases to an explicit disposable-host allow-list.
+- [x] C4 Build PostgreSQL 18 CI URLs at runtime without committed credentials.
+- [x] C5 Reconstruct the chain so repaired work units typecheck with their relevant tests.
+- [x] C6 Move MA/MMA activation after shell, finalization, snapshot, save, completion, and identity prerequisites; record the delivery-plan blocker for three oversized commits.
+- [x] C7 Replace stale OpenSpec execution records with this final-candidate-only record.
+- [x] C8 Name and validate the minimum compatible rollback point in `rollback-fix-forward.md`.
+- [x] C9 Record observability, deploy health, and audit reconciliation as residual follow-up only.
 
-| Unit | Goal | Likely PR | Notes |
-|------|------|-----------|-------|
-| 1 | Resolver + Mentonera template + generalized sync + seed wiring + route | PR-A | Base = feature/tracker branch; TDD throughout |
-| 2 | Head zones + BodyHighlight head branch + shell Mentonera layout | PR-B | Base = PR-A branch; re-forecast lines once traced paths land |
+## Remaining Verification
 
-## Phase 1: PR-A — Resolver & Template (Foundation)
+- [ ] Behaviorally split the three inherited oversized commits (`cca1828`, `88cf0f1`, `86a3283`) with their tests before creating any PR branches.
+- [ ] Run exact-checkout typecheck plus focused work-unit tests for every final commit in a new sibling worktree.
+- [ ] Run final-HEAD unit, render, PostgreSQL 18 `_probe` integration, Prisma validate/fresh migrate, typecheck, lint, build, scanner, and diff-check gates.
+- [ ] Obtain an independent audit and visual QA. Do not represent either as verified until evidence is attached.
 
-- [x] 1.1 RED: `apps/web/tests/garment-template-resolver.test.ts` — table test: `ME`→`mentonera-v1`; unmapped/unknown/empty/null/undefined→`compression-v1` (spec: Garment-to-Template Resolution, all 3 scenarios)
-- [x] 1.2 GREEN: Create `apps/web/lib/garment-template-resolver.ts` — `TEMPLATE_CODE_BY_REFERENCE` map + `resolveTemplateCode(reference)` pure function
-- [x] 1.3 RED: `apps/web/tests/mentonera-template.test.ts` — assert `buildMentoneraTemplate()` returns exactly 3 fields, fixed keys/order, cm unit, `kind` values (`circumference`/`circumference`/`length`) (spec: Mentonera Template Shape)
-- [x] 1.4 GREEN: Create `apps/web/lib/mentonera-template.ts` — `buildMentoneraTemplate()` with the 3 typed fields (`mentoneraCrownChin`, `mentoneraFaceLength`, `mentoneraNeck`), metadata `{anatomyZone, kind}`
-- [x] 1.5 RED: extend `apps/web/tests/measurement-templates.test.ts` — `syncMeasurementTemplate` accepts a Mentonera-shaped input (structural `MeasurementTemplateInput`) without type errors; existing `syncCompressionTemplate` behavior/output unchanged (regression guard, spec: Non-Regression + Additive Persistence)
-- [x] 1.6 GREEN: Widen `syncMeasurementTemplate` param in `apps/web/lib/measurement-templates.ts` to structural `MeasurementTemplateInput` (`metadata: Record<string, unknown>`); add `syncMentoneraTemplate()` calling `syncMeasurementTemplate(buildMentoneraTemplate(), repository)`
-- [x] 1.7 RED: extend `apps/web/tests/compression-measurements.test.ts` (or new zone-type test) — `AnatomyZoneId` accepts `` `head.${string}` `` values; existing `legs.*`/`arms.*` values still type-check
-- [x] 1.8 GREEN: Extend `AnatomyZoneId` union in `apps/web/lib/compression-measurements.ts` with `` `head.${string}` `` (additive, no behavior change)
-- [x] 1.9 Locate and modify seed call sites: `apps/web/scripts/seed-compression-template.ts` (invoked via `pnpm templates:seed`, wired into the `template-seeder` Docker target) and `apps/web/scripts/seed-demo-data.ts` (line ~149) — call `syncMentoneraTemplate()` alongside `syncCompressionTemplate()` in both, additively
-- [x] 1.10 RED: extend route integration test in `apps/web/tests/` for `POST /api/patients/[id]/measurements` — selecting garment `ME` creates a draft with `templateCode: "mentonera-v1"`; non-ME garments still create `compression-v1` (spec: Garment-to-Template Resolution scenarios)
-- [x] 1.11 GREEN: Modify `apps/web/app/api/patients/[id]/measurements/route.ts` — resolve `templateCode` via `deps.resolveTemplateCode(parsed.value.garmentType)` (default = real resolver) instead of hardcoded `compression-v1`
-- [x] 1.12 REFACTOR: run `node --test --import tsx "tests/**/*.test.ts"`, `pnpm typecheck`, `pnpm exec eslint` from `apps/web`; confirm compression field count/keys/values identical to pre-change baseline
+## TDD Cycle Evidence
 
-## Phase 2: PR-B — Head Figure, Zones & Shell Wiring
-
-- [ ] 2.1 RED: `apps/web/tests/body-highlight-zones.test.ts` (extend) — assert the 3 Mentonera zone ids (`head.crownChin`, `head.faceLength`, `head.neck`) exist and map onto `HeadDetailFemale`/`HeadDetailMale` silhouette regions
-- [ ] 2.2 GREEN: Extend `apps/web/app/_components/body-highlight/body-highlight-zones.ts` — define the 3 Mentonera zones traced against the existing `HeadDetailFemale`/`HeadDetailMale` (`silhouettes/head-detail-female.tsx`, `head-detail-male.tsx`) and `HEAD_DETAIL_VIEWBOX` from `silhouette-shared.ts`
-- [ ] 2.3 RED: `apps/web/tests/body-highlight.test.tsx` (extend) — non-regression guard: compression zones (legs/arms) still render `data-filled` via `ZoneMarker` on focus/fill; Mentonera head zones render `data-filled` equivalently (spec: Non-Regression of Compression Catalog and Highlight Sync, both scenarios)
-- [ ] 2.4 GREEN: Modify `apps/web/app/_components/body-highlight/body-highlight.tsx` — add head-view render branch driven by the SAME generic `filledZoneIds`/`activeZoneId` → `ZoneMarker` mechanism (no changes to existing leg/arm rendering path)
-- [ ] 2.5 RED: extend `apps/web/tests/measurement-shell.test.tsx` (or equivalent) — when `templateSnapshot.code === "mentonera-v1"`, shell renders the head figure + exactly 3 typed fields, and `getFilledZoneIdsFromValues` drives the highlight; assert fallback to the generic full-body figure + `compression-v1` template when `figureKey` has no matching config, without crash or blank render (spec: Graceful Fallback scenario)
-- [ ] 2.6 GREEN: Modify `apps/web/app/patients/[id]/measurements/new/_components/measurement-shell.tsx` — add guarded Mentonera branch (head figure + 3-field strip) alongside the existing compression legs/arms layout; keep compression path untouched
-- [ ] 2.7 REFACTOR: run `node --test --import tsx "tests/**/*.test.ts"`, `pnpm typecheck`, `pnpm exec eslint` from `apps/web`; re-forecast PR-B changed-line count once head-zone traced paths are final — if it exceeds 400 lines, split zone tracing into its own slice before requesting review
-
-## Non-Goals (explicitly out of scope for this change)
-
-- Leg (MR) 13-vs-15 measurement count — BLOCKED, see `leg-measurement-configuration/client-clarification.md`.
-- Variable-count interval bands (glove 5cm, chaqueta 4cm, stump 3.8cm).
-- Product sub-variants (e.g., máscara media/completa).
-- Embedding branded client PDFs as figures.
+| Task | RED | GREEN | REFACTOR |
+|---|---|---|---|
+| C1–C5 | Completed before this continuation; preserved without reimplementation | Evidence retained in code history | Reconstruction completed |
+| C6 | Existing activation test protects MA/MMA route behavior | Activation was reordered after the usable shell prerequisites | No behavioral source change |
+| C7–C9 | Documentation correction; no production behavior | Artifacts updated | Terminology consolidated |
