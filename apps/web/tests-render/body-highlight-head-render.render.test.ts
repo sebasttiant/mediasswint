@@ -89,3 +89,118 @@ describe("head figure — rendered garment composition", () => {
   });
 });
 
+describe("head figure — rendered markers", () => {
+  it("renders exactly the markers the garment declares, and no others", () => {
+    assert.ok(mascara && mentonera);
+
+    // Expected zone ids come from production's own parser, so this asserts the
+    // rendered result rather than re-implementing the filtering rule.
+    const expected = (composition: NonNullable<typeof mentonera>) =>
+      [...new Set(composition.zoneKeys.map((key) => parseHeadZoneKey(key)?.zoneId))].sort();
+
+    assert.deepEqual(
+      [...new Set(attributeValues(renderHead(mascara), "data-zone-id"))].sort(),
+      expected(mascara),
+    );
+    assert.deepEqual(
+      [...new Set(attributeValues(renderHead(mentonera), "data-zone-id"))].sort(),
+      expected(mentonera),
+    );
+    // Máscara must never paint a Mentonera-only measurement.
+    assert.equal(
+      attributeValues(renderHead(mascara), "data-zone-id").includes("head.crownChin"),
+      false,
+    );
+  });
+
+  it("a degraded garment paints only its surviving markers", () => {
+    assert.ok(mentonera);
+    const full = renderHead(mentonera);
+    const degraded = renderHead(mentonera, { visibleHeadZoneKeys: ["head.neck.front"] });
+
+    assert.deepEqual([...new Set(attributeValues(degraded, "data-zone-id"))], ["head.neck"]);
+    assert.deepEqual(attributeValues(degraded, "data-head-panel"), ["front"]);
+    assert.ok(
+      attributeValues(full, "data-zone-id").length >
+        attributeValues(degraded, "data-zone-id").length,
+      "the degraded figure must paint strictly fewer markers",
+    );
+  });
+
+  it("marks the active and filled zones so the figure follows the form", () => {
+    assert.ok(mentonera);
+    const markup = renderHead(mentonera, {
+      activeZoneId: "head.neck",
+      filledZoneIds: ["head.crownChin"],
+    });
+
+    assert.ok(hasAttributeValue(markup, "data-active", "true"));
+    assert.ok(hasAttributeValue(markup, "data-filled", "true"));
+    assert.equal(countAttributeValue(markup, "data-active", "true") > 0, true);
+  });
+});
+
+describe("head figure — rendered accessibility", () => {
+  it("announces the garment it is actually showing", () => {
+    assert.ok(mascara && mentonera);
+
+    const mascaraText = textContent(renderHead(mascara));
+    const mentoneraText = textContent(renderHead(mentonera));
+
+    assert.match(mascaraText, /Máscara/);
+    assert.doesNotMatch(mascaraText, /Mentonera/i);
+    assert.match(mentoneraText, /Mentonera/);
+  });
+
+  it("never announces the old hardcoded '3 medidas de mentonera' for Máscara", () => {
+    assert.ok(mascara);
+    const text = textContent(renderHead(mascara));
+
+    assert.doesNotMatch(text, /3 medidas de mentonera/i);
+    assert.match(text, /2 medidas/);
+  });
+
+  it("a degraded figure describes what is on screen, not the full set", () => {
+    assert.ok(mentonera);
+    const text = textContent(
+      renderHead(mentonera, { visibleHeadZoneKeys: ["head.neck.front"] }),
+    );
+
+    assert.match(text, /1 medida/);
+    assert.doesNotMatch(text, /3 medidas/);
+  });
+});
+
+describe("compression rendering is unaffected by the head branch", () => {
+  it("still renders the full-body figure with its leg and arm zones", () => {
+    const markup = render(
+      createElement(BodyHighlight, {
+        view: "full",
+        sex: "FEMALE",
+        filledZoneIds: ["legs.right.1"],
+        activeZoneId: null,
+      } as never),
+    );
+
+    // No head-view artefact may leak into the compression path.
+    assert.deepEqual(attributeValues(markup, "data-head-panel"), []);
+    assert.ok(markup.includes("<svg"), "the body figure must still render");
+  });
+
+  it("renders the isolated legs view without head markers", () => {
+    const markup = render(
+      createElement(BodyHighlight, {
+        view: "legs",
+        sex: "MALE",
+        filledZoneIds: [],
+        activeZoneId: null,
+      } as never),
+    );
+
+    assert.deepEqual(attributeValues(markup, "data-head-panel"), []);
+    assert.equal(
+      attributeValues(markup, "data-zone-key").some((zone) => zone.startsWith("head.")),
+      false,
+    );
+  });
+});
