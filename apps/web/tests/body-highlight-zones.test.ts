@@ -5,6 +5,12 @@ import {
   BODY_HIGHLIGHT_OUTLINES,
   BODY_HIGHLIGHT_VIEWBOX,
   BODY_HIGHLIGHT_ZONES,
+  HEAD_VIEW_CROP,
+  HEAD_ZONE_IDS,
+  buildHeadMarkerRenderContract,
+  findHeadZoneShape,
+  getHeadZonesForSex,
+  getHeadViewRenderContract,
   findMeasurementKeyForZone,
   findZoneShape,
   findViewForZone,
@@ -16,8 +22,14 @@ import {
   getZonePoint,
   getZoneSide,
   getZonesForView,
+  hasFilledZone,
+  isBodyHighlightCropped,
   hasZone,
 } from "../app/_components/body-highlight/body-highlight-zones";
+import {
+  HEAD_DETAIL_VIEWBOX,
+  HEAD_FIGURE_VIEWBOX,
+} from "../app/_components/body-highlight/silhouettes/silhouette-shared";
 import {
   getFullBodyCalibration,
   MALE_FULL_BODY,
@@ -31,6 +43,10 @@ import {
   getMaleZonePath,
 } from "../app/_components/body-highlight/zones-male";
 import { COMPRESSION_MEASUREMENTS } from "../lib/compression-measurements";
+import {
+  getHeadViewComposition,
+  type HeadViewComposition,
+} from "../lib/head-measurement-layout";
 
 describe("BODY_HIGHLIGHT_ZONES — derived from the catalog", () => {
   it("produces one shape per catalog measurement", () => {
@@ -416,6 +432,337 @@ describe("traced leg paths stay in lockstep with the catalog", () => {
         );
       }
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Máscara and Mentonera head zones. Landmarks are read from the
+// client's "Máscara y mentonera" PDF (its red tapes + face-length bracket) and
+// expressed in HEAD_FIGURE_VIEWBOX, the space of the PDF-traced HeadFigure:
+// the MENTONERA panel carries all three measurements on the side profile, and
+// the MÁSCARA panel repeats the neck circumference on the front view.
+// These zones are NOT derived from COMPRESSION_MEASUREMENTS (Mentonera fields
+// carry {anatomyZone, kind}, not {group, side, point}), so they live in a
+// parallel, additive array.
+// ---------------------------------------------------------------------------
+
+const HEAD_SEXES = ["female", "male"] as const;
+
+describe("getHeadZonesForSex — Mentonera zones", () => {
+  for (const sex of HEAD_SEXES) {
+    it(`[${sex}] draws every measurement carried by Máscara or Mentonera`, () => {
+      const drawn = new Set(getHeadZonesForSex(sex).map((zone) => zone.zoneId));
+      for (const zoneId of HEAD_ZONE_IDS) {
+        assert.ok(drawn.has(zoneId), `${zoneId} has no line on the ${sex} figure`);
+      }
+    });
+
+    it(`[${sex}] puts crown→chin and face length on the profile, per the form`, () => {
+      const panelOf = (zoneId: string) =>
+        getHeadZonesForSex(sex)
+          .filter((zone) => zone.zoneId === zoneId)
+          .map((zone) => zone.panel);
+
+      assert.deepEqual(panelOf("head.crownChin"), ["profile"]);
+      assert.deepEqual(panelOf("head.faceLength"), ["profile"]);
+    });
+
+    it(`[${sex}] puts the Máscara forehead circumference on the front view`, () => {
+      const panels = getHeadZonesForSex(sex)
+        .filter((zone) => zone.zoneId === "head.forehead")
+        .map((zone) => zone.panel);
+
+      assert.deepEqual(panels, ["front"]);
+    });
+
+    it(`[${sex}] draws the neck on both the profile and the front view`, () => {
+      const panels = getHeadZonesForSex(sex)
+        .filter((zone) => zone.zoneId === "head.neck")
+        .map((zone) => zone.panel);
+
+      assert.deepEqual([...panels].sort(), ["front", "profile"]);
+    });
+
+    it(`[${sex}] does not crowd every measurement onto a single panel`, () => {
+      const panels = new Set(getHeadZonesForSex(sex).map((zone) => zone.panel));
+      assert.deepEqual([...panels].sort(), ["front", "profile"]);
+    });
+
+    it(`[${sex}] every head zone has a non-empty traced measurement line`, () => {
+      for (const zone of getHeadZonesForSex(sex)) {
+        assert.equal(typeof zone.line, "string", `${zone.zoneId} line type`);
+        assert.ok(zone.line.trim().length > 0, `${zone.zoneId} line is empty`);
+        assert.ok(zone.line.startsWith("M "), `${zone.zoneId} line starts with move`);
+        assert.ok(!/NaN|Infinity/.test(zone.line), `${zone.zoneId} line has bad coords`);
+      }
+    });
+
+    it(`[${sex}] every head zone has two valid end bars`, () => {
+      for (const zone of getHeadZonesForSex(sex)) {
+        assert.equal(zone.endBars?.length, 2, `${zone.zoneId} end bar count`);
+        for (const bar of zone.endBars ?? []) {
+          assert.ok(bar.trim().startsWith("M "), `${zone.zoneId} end bar is empty`);
+          assert.ok(!/NaN|Infinity/.test(bar), `${zone.zoneId} end bar has bad coords`);
+        }
+      }
+    });
+
+    it(`[${sex}] every head zone carries a human label`, () => {
+      for (const zone of getHeadZonesForSex(sex)) {
+        assert.ok(zone.label.trim().length > 0, `${zone.zoneId} label is empty`);
+      }
+    });
+
+    it(`[${sex}] draws every line inside the visible crop`, () => {
+      const maxX = HEAD_VIEW_CROP.x + HEAD_VIEW_CROP.width;
+      const maxY = HEAD_VIEW_CROP.y + HEAD_VIEW_CROP.height;
+
+      for (const zone of getHeadZonesForSex(sex)) {
+        const paths = [zone.line, ...(zone.endBars ?? [])].join(" ");
+        const numbers = paths.match(/-?\d+(\.\d+)?/g)?.map(Number) ?? [];
+        for (let i = 0; i < numbers.length; i += 2) {
+          const [x, y] = [numbers[i], numbers[i + 1]];
+          assert.ok(x >= HEAD_VIEW_CROP.x && x <= maxX, `${zone.zoneId} x=${x} outside crop`);
+          assert.ok(y >= HEAD_VIEW_CROP.y && y <= maxY, `${zone.zoneId} y=${y} outside crop`);
+        }
+      }
+    });
+  }
+
+  it("uses one sex-neutral figure — the client form draws a single head", () => {
+    const female = getHeadZonesForSex("female").map((zone) => zone.line);
+    const male = getHeadZonesForSex("male").map((zone) => zone.line);
+    assert.deepEqual(female, male);
+  });
+
+  it("frames the traced front + profile figure with no back view", () => {
+    // The trace contains only the two heads, so the crop is the whole figure.
+    assert.equal(HEAD_VIEW_CROP.x, 0);
+    assert.equal(HEAD_VIEW_CROP.y, 0);
+    assert.ok(HEAD_VIEW_CROP.width > 200, "crop spans front + profile");
+    assert.ok(HEAD_VIEW_CROP.height > 200, "crop keeps full head height");
+  });
+
+  it("keeps Mentonera overlays in the PDF figure space, never the generic PNG space", () => {
+    // The Mentonera measurement lines live in HEAD_FIGURE_VIEWBOX (the traced
+    // figure). The generic full-body head-hotspot detail uses the separate,
+    // larger HEAD_DETAIL_VIEWBOX raster space. The two must never coincide, or
+    // a measurement line drawn for one would land in the wrong place on the
+    // other.
+    assert.deepEqual(
+      { width: HEAD_VIEW_CROP.width, height: HEAD_VIEW_CROP.height },
+      { width: HEAD_FIGURE_VIEWBOX.width, height: HEAD_FIGURE_VIEWBOX.height },
+    );
+    assert.notDeepEqual(HEAD_FIGURE_VIEWBOX, HEAD_DETAIL_VIEWBOX);
+
+    // Every head zone coordinate stays inside the PDF figure space and well
+    // inside the (much larger) generic PNG space — proving no leak either way.
+    for (const sex of HEAD_SEXES) {
+      for (const zone of getHeadZonesForSex(sex)) {
+        const nums = [zone.line, ...(zone.endBars ?? [])]
+          .join(" ")
+          .match(/-?\d+(\.\d+)?/g)
+          ?.map(Number) ?? [];
+        for (let i = 0; i < nums.length; i += 2) {
+          assert.ok(nums[i] <= HEAD_FIGURE_VIEWBOX.width, `x ${nums[i]} outside figure space`);
+          assert.ok(nums[i + 1] <= HEAD_FIGURE_VIEWBOX.height, `y ${nums[i + 1]} outside figure space`);
+        }
+      }
+    }
+  });
+
+  it("pins each line to the client PDF's measured tape positions", () => {
+    const zones = getHeadZonesForSex("female");
+    const at = (id: string) => zones.find((z) => z.zoneId === id && z.panel === "profile");
+    const front = zones.find((z) => z.zoneId === "head.neck" && z.panel === "front");
+
+    // crown→chin starts at the crown landmark (272.9, 55) read from the PDF tape.
+    const cc = at("head.crownChin");
+    assert.ok(cc?.line.startsWith("M 272.9 55"), `crownChin line: ${cc?.line}`);
+
+    // profile neck sits at the PDF tape's y (217.5), spanning throat→nape.
+    const pneck = zones.find((z) => z.zoneId === "head.neck" && z.panel === "profile");
+    assert.match(pneck?.line ?? "", /^M 232\.4 217\.5 L 298\.3 217\.5$/);
+
+    // front neck sits at the MÁSCARA tape's y (181.3).
+    assert.match(front?.line ?? "", /^M 40\.9 181\.3 L 108\.6 181\.3$/);
+
+    // front forehead sits at the MÁSCARA tape's y (73.5).
+    const forehead = zones.find((z) => z.zoneId === "head.forehead" && z.panel === "front");
+    assert.match(forehead?.line ?? "", /^M 27\.2 73\.5 L 122\.9 73\.5$/);
+
+    // face-length bracket runs vertically at the PDF bracket x (172).
+    const fl = at("head.faceLength");
+    assert.ok(fl?.line.startsWith("M 172 "), `faceLength line: ${fl?.line}`);
+  });
+
+  it("exposes the same head viewBox and hidden overflow contract used by the renderer", () => {
+    const contract = getHeadViewRenderContract();
+
+    assert.deepEqual(contract.viewBox, HEAD_VIEW_CROP);
+    assert.equal(contract.viewBoxAttribute, `${HEAD_VIEW_CROP.x} ${HEAD_VIEW_CROP.y} ${HEAD_VIEW_CROP.width} ${HEAD_VIEW_CROP.height}`);
+    assert.equal(contract.overflow, "hidden");
+    assert.deepEqual(contract.style, { overflow: "hidden" });
+    assert.equal(isBodyHighlightCropped("head", false), true);
+    assert.equal(isBodyHighlightCropped("full", true), true);
+    assert.equal(isBodyHighlightCropped("full", false), false);
+    assert.equal(isBodyHighlightCropped("legs", false), false);
+  });
+
+  it("exposes the inactive readonly marker contract consumed by the renderer", () => {
+    const zone = getHeadZonesForSex("female").find((candidate) => candidate.zoneId === "head.faceLength");
+    assert.ok(zone);
+
+    const marker = buildHeadMarkerRenderContract(zone, {
+      activeZoneId: "head.neck" as never,
+      filledZoneIds: new Set(["head.crownChin"] as never),
+      isInteractive: false,
+    });
+
+    assert.equal(marker.zoneId, "head.faceLength");
+    assert.equal(marker.active, "false");
+    assert.equal(marker.filled, "false");
+    assert.equal(marker.role, undefined);
+    assert.equal(marker.tabIndex, undefined);
+    assert.equal(marker.clickZoneId, "head.faceLength");
+    assert.equal(marker.ariaLabel, "Largo de cara (frente–mentón) (perfil), pendiente");
+  });
+
+  it("builds five marker contracts for the Máscara and Mentonera measurements", () => {
+    const markers = getHeadZonesForSex("female").map((zone) =>
+      buildHeadMarkerRenderContract(zone, {
+        activeZoneId: null,
+        filledZoneIds: undefined,
+        isInteractive: true,
+      }),
+    );
+
+    assert.equal(markers.length, 5);
+    assert.deepEqual(new Set(markers.map((marker) => marker.zoneId)), new Set(HEAD_ZONE_IDS));
+    assert.equal(markers.filter((marker) => marker.zoneId === "head.neck").length, 2);
+    assert.deepEqual(
+      markers.filter((marker) => marker.zoneId === "head.neck").map((marker) => marker.headPanel).sort(),
+      ["front", "profile"],
+    );
+    for (const marker of markers) {
+      assert.equal(marker.role, "button");
+      assert.equal(marker.tabIndex, 0);
+      assert.equal(marker.clickZoneId, marker.zoneId);
+    }
+  });
+
+  it("shares active and filled state across duplicate neck markers while keeping panel labels distinct", () => {
+    const neckMarkers = getHeadZonesForSex("female")
+      .filter((zone) => zone.zoneId === "head.neck")
+      .map((zone) =>
+        buildHeadMarkerRenderContract(zone, {
+          activeZoneId: "head.neck" as never,
+          filledZoneIds: new Set(["head.neck"] as never),
+          isInteractive: true,
+        }),
+      );
+
+    assert.equal(neckMarkers.length, 2);
+    assert.ok(neckMarkers.every((marker) => marker.active === "true"));
+    assert.ok(neckMarkers.every((marker) => marker.filled === "true"));
+    assert.deepEqual(
+      neckMarkers.map((marker) => marker.ariaLabel).sort(),
+      [
+        "Contorno de cuello (frente), zona activa, medida cargada",
+        "Contorno de cuello (perfil), zona activa, medida cargada",
+      ],
+    );
+    assert.ok(neckMarkers.every((marker) => marker.clickZoneId === "head.neck"));
+  });
+});
+
+describe("Mentonera crown→chin trajectory follows the form's profile path", () => {
+  for (const sex of HEAD_SEXES) {
+    it(`[${sex}] travels from the crown down to the chin`, () => {
+      const zone = getHeadZonesForSex(sex).find((z) => z.zoneId === "head.crownChin");
+      assert.ok(zone);
+      const [startX, startY, , , endX, endY] = (zone!.line.match(/-?\d+(\.\d+)?/g) ?? []).map(Number);
+
+      // Crown is above and behind the chin on a left-facing profile.
+      assert.ok(endY > startY, "line must descend from crown toward chin");
+      assert.ok(endX < startX, "line must travel forward from crown toward chin");
+      assert.ok(endY - startY > 100, "line must span the height of the head");
+    });
+
+    it(`[${sex}] face length spans forehead to chin tip vertically`, () => {
+      const zone = getHeadZonesForSex(sex).find((z) => z.zoneId === "head.faceLength");
+      assert.ok(zone);
+      const [x1, y1, x2, y2] = (zone!.line.match(/-?\d+(\.\d+)?/g) ?? []).map(Number);
+
+      assert.equal(x1, x2, "face length is a vertical bracket");
+      assert.ok(y2 - y1 > 80, "bracket must span the face");
+    });
+
+    it(`[${sex}] neck lines are horizontal at neck height`, () => {
+      for (const zone of getHeadZonesForSex(sex).filter((z) => z.zoneId === "head.neck")) {
+        const [x1, y1, x2, y2] = (zone.line.match(/-?\d+(\.\d+)?/g) ?? []).map(Number);
+        assert.equal(y1, y2, `${zone.panel} neck line is horizontal`);
+        assert.ok(x2 > x1, `${zone.panel} neck line runs left to right`);
+      }
+    });
+  }
+});
+
+describe("findHeadZoneShape", () => {
+  it("returns the zone shape for a known Mentonera zone id", () => {
+    const shape = findHeadZoneShape("head.crownChin" as never);
+    assert.ok(shape);
+    assert.equal(shape?.zoneId, "head.crownChin");
+  });
+
+  it("resolves the same sex-neutral geometry for both sexes", () => {
+    const female = findHeadZoneShape("head.neck" as never, "female");
+    const male = findHeadZoneShape("head.neck" as never, "male");
+    assert.equal(female?.line, male?.line);
+  });
+
+  it("returns null for a zone id outside the head catalog", () => {
+    assert.equal(findHeadZoneShape("legs.right.1" as never), null);
+    assert.equal(findHeadZoneShape("head.unknown" as never), null);
+  });
+});
+
+describe("getZoneLabel — resolves both compression AND head zones (same function)", () => {
+  it("still resolves compression zone labels unchanged (non-regression)", () => {
+    assert.equal(getZoneLabel("legs.right.7"), findZoneShape("legs.right.7")?.label);
+    assert.equal(getZoneLabel("arms.left.19"), findZoneShape("arms.left.19")?.label);
+  });
+
+  it("resolves Mentonera head zone labels via the same lookup", () => {
+    for (const zone of getHeadZonesForSex("female")) {
+      assert.equal(getZoneLabel(zone.zoneId), zone.label);
+    }
+  });
+
+  it("returns empty string for a zone id in neither catalog", () => {
+    assert.equal(getZoneLabel("torso.center.1" as never), "");
+  });
+});
+
+describe("hasFilledZone — same highlight primitive drives compression AND head zones", () => {
+  it("regression: reports filled compression zones from a Set, unchanged", () => {
+    assert.equal(hasFilledZone(new Set(["legs.right.1"] as never), "legs.right.1" as never), true);
+    assert.equal(hasFilledZone(new Set(["legs.right.1"] as never), "legs.right.2" as never), false);
+  });
+
+  it("regression: reports filled compression zones from an array, unchanged", () => {
+    assert.equal(hasFilledZone(["arms.left.5"] as never, "arms.left.5" as never), true);
+    assert.equal(hasFilledZone(["arms.left.5"] as never, "arms.right.5" as never), false);
+  });
+
+  it("regression: treats undefined filledZoneIds as nothing filled", () => {
+    assert.equal(hasFilledZone(undefined, "legs.right.1" as never), false);
+  });
+
+  it("resolves filled state for Mentonera head zones through the identical function", () => {
+    assert.equal(hasFilledZone(new Set(["head.crownChin"] as never), "head.crownChin" as never), true);
+    assert.equal(hasFilledZone(new Set(["head.crownChin"] as never), "head.faceLength" as never), false);
+    assert.equal(hasFilledZone(["head.neck"] as never, "head.neck" as never), true);
   });
 });
 
