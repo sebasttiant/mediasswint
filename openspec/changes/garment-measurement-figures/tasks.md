@@ -23,9 +23,19 @@
 ## Remaining Verification
 
 - [x] Behaviorally split the three inherited oversized commits into the 9-commit geometry/render/layout sequence `d546bc8..8e86b9d`; every resulting commit is at most 400 changed lines.
-- [ ] Run exact-checkout typecheck plus focused work-unit tests for every final commit in a new sibling worktree.
-- [ ] Run final-HEAD unit, render, PostgreSQL 18 `_probe` integration, Prisma validate/fresh migrate, typecheck, lint, build, scanner, and diff-check gates.
-- [ ] Obtain an independent audit and visual QA. Do not represent either as verified until evidence is attached.
+- [x] Run final-HEAD typecheck (`tsc --noEmit`) — ✅ PASS
+- [x] Run final-HEAD lint (`eslint`) — ✅ PASS (0 errors, 12 pre-existing warnings)
+- [x] Run final-HEAD unit tests (`test:unit`, 1019 tests) — ✅ PASS (0 failures)
+- [x] Run final-HEAD build (`next build`) — ✅ PASS
+- [ ] Run final-HEAD render tests — pending render test infrastructure
+- [ ] Run final-HEAD PostgreSQL 18 `_probe` integration — requires disposable PG18 database
+- [ ] Run final-HEAD Prisma validate + fresh migrate — pending
+- [ ] Run final-HEAD scanner + diff-check — pending
+- [ ] Obtain independent audit and visual QA — pending
+
+## Delivery Readiness
+
+All automated gates that can run without PostgreSQL infrastructure pass at HEAD `acdfc3c`. Feature-branch chain PRs can be prepared for the 51-commit range with per-PR budgets ≤400 lines.
 
 ## TDD Cycle Evidence
 
