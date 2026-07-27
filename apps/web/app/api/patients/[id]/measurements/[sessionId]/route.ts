@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { type AuthUser } from "@/lib/auth";
 import { withAuth } from "@/lib/with-auth";
+import { findGarmentTemplateMismatch } from "@/lib/garment-template-identity";
 import { getHeadSnapshotCompletionBlock } from "@/lib/head-measurement-layout";
 import {
   buildMeasurementKeyRanges,
@@ -99,6 +100,43 @@ export async function handlePatchMeasurementRequest(
   );
   if (!parsed.ok) {
     return NextResponse.json({ errors: parsed.errors }, { status: 400 });
+  }
+
+  // GARMENT IDENTITY IS IMMUTABLE ACROSS TEMPLATE BOUNDARIES.
+  //
+  // garmentType and metadata.garmentSnapshot are client input. Without this
+  // guard a caller could relabel a mascara-v1 session (2 measurements) as
+  // Mentonera (3 measurements) while keeping the Máscara schema, leaving the
+  // clinical label and the measurement schema permanently disagreeing.
+  //
+  // Identity is resolved on the SERVER, from the same resolver that chose the
+  // template at creation time. Changes that stay inside one template (MA <-> MMA,
+  // both mascara-v1) are allowed because they cannot create a disagreement.
+  // This runs AFTER the ownership check above, so a caller who does not own the
+  // session learns nothing about its garment, and BEFORE any write, so a
+  // refused request changes nothing.
+  const identityMismatch = findGarmentTemplateMismatch({
+    sessionTemplateCode: detail.value.templateSnapshot?.code ?? null,
+    requestedGarmentType: parsed.value.garmentType,
+    requestedGarmentReference: parsed.value.garmentSnapshot?.reference ?? undefined,
+  });
+  if (identityMismatch) {
+    console.error("[measurements:patch] refused cross-garment identity change", {
+      sessionId,
+      templateCode: identityMismatch.sessionTemplateCode,
+      requestedTemplateCode: identityMismatch.requestedTemplateCode,
+      code: "GARMENT_TEMPLATE_MISMATCH",
+    });
+    return NextResponse.json(
+      {
+        error: "Garment does not match this measurement's template",
+        code: "GARMENT_TEMPLATE_MISMATCH",
+        reason:
+          "La prenda solicitada usa una plantilla de medidas distinta a la de esta sesión. " +
+          "Creá una sesión nueva para esa prenda.",
+      },
+      { status: 409 },
+    );
   }
 
   // Only rewrite metadata when the PATCH carried a VALID garmentSnapshot.
