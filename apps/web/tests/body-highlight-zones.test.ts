@@ -779,3 +779,70 @@ describe("BODY_HIGHLIGHT_OUTLINES and viewbox constants", () => {
     assert.ok(BODY_HIGHLIGHT_VIEWBOX.height > 0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Front-only composition (Máscara). The traced HeadFigure always paints both
+// heads; what makes Máscara front-only is the composition's crop plus the
+// panel/zone-key filter BodyHighlight applies. This asserts the filter itself,
+// so a regression that leaks a profile tape onto the Máscara figure fails here.
+// ---------------------------------------------------------------------------
+describe("head composition filtering — Máscara front-only vs Mentonera front+profile", () => {
+  function visibleZonesFor(composition: HeadViewComposition, sex: "female" | "male") {
+    return getHeadZonesForSex(sex).filter((zone) => {
+      if (!composition.panels.includes(zone.panel)) return false;
+      return composition.zoneKeys.includes(`${zone.zoneId}.${zone.panel}`);
+    });
+  }
+
+  for (const sex of ["female", "male"] as const) {
+    it(`Máscara paints ONLY frontal markers (${sex})`, () => {
+      const composition = getHeadViewComposition("mascara-v1");
+      assert.ok(composition);
+      const zones = visibleZonesFor(composition, sex);
+
+      assert.equal(zones.length, 2);
+      assert.equal(
+        zones.every((zone) => zone.panel === "front"),
+        true,
+        "no profile marker may be painted for Máscara",
+      );
+      assert.deepEqual(
+        zones.map((zone) => zone.zoneId).sort(),
+        ["head.forehead", "head.neck"],
+      );
+    });
+
+    it(`Mentonera keeps its profile markers plus the frontal neck (${sex})`, () => {
+      const composition = getHeadViewComposition("mentonera-v1");
+      assert.ok(composition);
+      const zones = visibleZonesFor(composition, sex);
+
+      assert.equal(zones.length, 4);
+      assert.equal(zones.filter((zone) => zone.panel === "profile").length, 3);
+      assert.equal(zones.filter((zone) => zone.panel === "front").length, 1);
+      // Mentonera must never paint the Máscara-only forehead contour.
+      assert.equal(
+        zones.some((zone) => zone.zoneId === "head.forehead"),
+        false,
+      );
+    });
+  }
+
+  it("no Máscara marker falls outside the front-only crop", () => {
+    const composition = getHeadViewComposition("mascara-v1");
+    assert.ok(composition);
+    const zones = visibleZonesFor(composition, "female");
+
+    for (const zone of zones) {
+      const xs = (zone.line.match(/-?\d+\.?\d*/g) ?? [])
+        .map(Number)
+        .filter((_, index) => index % 2 === 0);
+      for (const x of xs) {
+        assert.ok(
+          x <= composition.crop.x + composition.crop.width,
+          `${zone.zoneId} draws at x=${x}, outside the ${composition.crop.width}px front crop`,
+        );
+      }
+    }
+  });
+});
