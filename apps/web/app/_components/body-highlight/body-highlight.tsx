@@ -6,6 +6,11 @@ import { useId, useState } from "react";
 import { type AnatomicalRegion, findRegionSummary, hasDetailView } from "@/lib/body-anatomy";
 import { BODY_FIGURE_SEX, type BodyFigureSex } from "@/lib/body-figure-sex";
 import type { AnatomyZoneId } from "@/lib/compression-measurements";
+import {
+  buildHeadFigureDescription,
+  type HeadPanelId,
+  type HeadViewComposition,
+} from "@/lib/head-measurement-layout";
 
 import {
   getFullBodyCalibration,
@@ -16,14 +21,22 @@ import {
   BODY_CLIP_PATHS,
   BODY_HIGHLIGHT_ARTICULATIONS,
   BODY_HIGHLIGHT_OUTLINES,
+  HEAD_VIEW_CROP,
   SIDE_LABEL_POSITIONS,
+  buildHeadMarkerRenderContract,
   getFullMarkerForSex,
+  getHeadZonesForSex,
+  getHeadViewRenderContract,
   getFullZonePathForSex,
   getSideSummaryForView,
   getZoneA11yLabel,
   getZoneLabel,
   getZonesForSide,
+  hasFilledZone,
+  isBodyHighlightCropped,
   type BodyView,
+  type HeadMarkerRenderContract,
+  type HeadZoneShape,
   type IsolatedBodyView,
 } from "./body-highlight-zones";
 import { DetailRegionPanel } from "./detail-region-panel";
@@ -37,6 +50,7 @@ import {
   HEAD_DETAIL_VIEWBOX,
   HeadDetailFemale,
   HeadDetailMale,
+  HeadFigure,
 } from "./silhouettes";
 import styles from "./body-highlight.module.css";
 
@@ -77,21 +91,30 @@ export type BodyHighlightProps = {
   // avoid showing the same fields twice. Defaults to false so other callers
   // keep the catalog reference.
   hideDetailCatalog?: boolean;
+  /**
+   * Head-view composition (crop, panels, accessible description). Supplied by
+   * the garment's contract — never inferred from labels. Required for
+   * view="head" to render anything garment-specific; falls back to the full
+   * front+profile figure when absent.
+   */
+  headComposition?: HeadViewComposition;
+  /**
+   * `${zoneId}.${panel}` keys actually painted. Defaults to the composition's
+   * own keys; the head shell narrows it for degraded snapshots so no marker is
+   * drawn without a matching input.
+   */
+  visibleHeadZoneKeys?: ReadonlyArray<string>;
 };
 
-function hasFilledZone(
-  filledZoneIds: ReadonlySet<AnatomyZoneId> | ReadonlyArray<AnatomyZoneId> | undefined,
-  zoneId: AnatomyZoneId,
-): boolean {
-  if (!filledZoneIds) return false;
-  if (Array.isArray(filledZoneIds)) return filledZoneIds.includes(zoneId);
-  return (filledZoneIds as ReadonlySet<AnatomyZoneId>).has(zoneId);
-}
+// hasFilledZone now lives in body-highlight-zones.ts (re-exported here via
+// the import above) so it is unit-testable — this .tsx module imports
+// body-highlight.module.css, which the Node test runner cannot load.
 
 const DEFAULT_ARIA_LABEL: Record<BodyView, string> = {
   full: "Diagrama corporal completo",
   legs: "Diagrama de piernas",
   arms: "Diagrama de brazos",
+  head: "Diagrama de cabeza",
 };
 
 type TooltipData = {
@@ -255,6 +278,173 @@ function DetailLayer({ region, sex }: DetailLayerProps) {
   return sex === "male" ? <HandDetailMale /> : <HandDetailFemale />;
 }
 
+type HeadZoneLayerProps = {
+  sex: BodyFigureSex;
+  activeZoneId: AnatomyZoneId | null;
+  filledZoneIds: ReadonlySet<AnatomyZoneId> | ReadonlyArray<AnatomyZoneId> | undefined;
+  isInteractive: boolean;
+  defsId: string;
+  onZoneClick?: (zoneId: AnatomyZoneId) => void;
+  onHoverChange: (data: TooltipData | null) => void;
+  visibleHeadZoneKeys?: ReadonlyArray<string>;
+  visiblePanels?: ReadonlyArray<HeadPanelId>;
+};
+
+// Standalone Mentonera head view: renders the Mentonera-only PDF-derived
+// figure (HeadFigure), NOT the generic head-detail PNG (HeadDetailFemale/Male,
+// used by the full-body head-hotspot flow). Keeping them separate means each
+// garment shows the figure from its own client PDF and the two never share a
+// coordinate space. Instead of ZoneMarker (which renders fill-bands for
+// compression limbs), it renders clinical measurement LINES (red with end
+// bars) — matching the PDF style. activeZoneId/filledZoneIds are still the
+// only inputs, exactly like every other view. The compression limb render
+// path below is never touched.
+type MeasurementLineMarkerProps = {
+  zone: HeadZoneShape;
+  marker: HeadMarkerRenderContract;
+  defsId: string;
+  onZoneClick?: (zoneId: AnatomyZoneId) => void;
+  onHoverChange: (data: TooltipData | null) => void;
+};
+
+function MeasurementLineMarker({
+  zone,
+  marker,
+  defsId,
+  onZoneClick,
+  onHoverChange,
+}: MeasurementLineMarkerProps) {
+  const isActive = marker.active === "true";
+  const isFilled = marker.filled === "true";
+  const isInteractive = marker.role === "button";
+  const lineColor = isActive ? "#dc2626" : isFilled ? "#10b981" : "#94a3b8";
+  // Widths are tuned for HEAD_FIGURE_VIEWBOX (331 wide), the PDF-traced head's
+  // coordinate space — roughly 1/2.3 of the old raster space, so strokes are
+  // proportionally thinner than the compression limb fill-bands.
+  const lineWidth = isActive ? 2.2 : isFilled ? 1.9 : 1.5;
+  const lineOpacity = isActive ? 1 : isFilled ? 0.85 : 0.5;
+  const barWidth = isActive ? 1.7 : isFilled ? 1.5 : 1.2;
+  const activeFilter = isActive ? `url(#${defsId}-head-glow)` : undefined;
+
+  return (
+    <g
+      data-zone-id={marker.zoneId}
+      data-head-panel={marker.headPanel}
+      data-active={marker.active}
+      data-filled={marker.filled}
+      aria-label={marker.ariaLabel}
+      role={marker.role}
+      tabIndex={marker.tabIndex}
+      className={isInteractive ? styles.zone : styles.zoneReadonly}
+      onClick={isInteractive ? () => onZoneClick?.(marker.clickZoneId) : undefined}
+      onKeyDown={
+        isInteractive
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onZoneClick?.(marker.clickZoneId);
+              }
+            }
+          : undefined
+      }
+      onMouseEnter={(event) => {
+        const svgEl = (event.currentTarget as SVGElement).closest("svg");
+        if (!svgEl) return;
+        const rect = svgEl.getBoundingClientRect();
+        onHoverChange({
+          zoneId: marker.zoneId,
+          label: zone.label,
+          x: event.clientX - rect.left,
+          y: event.clientY - rect.top,
+        });
+      }}
+      onMouseLeave={() => onHoverChange(null)}
+    >
+      {/* Measurement line — the red tape path */}
+      <path
+        d={zone.line}
+        fill="none"
+        stroke={lineColor}
+        strokeWidth={lineWidth}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity={lineOpacity}
+        filter={activeFilter}
+      />
+      {/* End bars (tape terminals) */}
+      {zone.endBars?.map((barD, i) => (
+        <path
+          key={`endbar-${i}`}
+          d={barD}
+          fill="none"
+          stroke={lineColor}
+          strokeWidth={barWidth}
+          strokeLinecap="round"
+          opacity={lineOpacity}
+        />
+      ))}
+      {/* Click-zone overlay (invisible wider rect for easier touch) */}
+      {isInteractive ? (
+        <path
+          d={zone.line}
+          fill="none"
+          stroke="transparent"
+          strokeWidth={9}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ cursor: "pointer" }}
+        />
+      ) : null}
+    </g>
+  );
+}
+
+function HeadZoneLayer({
+  sex,
+  activeZoneId,
+  filledZoneIds,
+  isInteractive,
+  defsId,
+  onZoneClick,
+  onHoverChange,
+  visibleHeadZoneKeys,
+  visiblePanels,
+}: HeadZoneLayerProps) {
+  return (
+    <>
+      <HeadFigure />
+      <g>
+        {getHeadZonesForSex(toFullBodySex(sex))
+          .filter((zone) => {
+            // Panel gate first: a marker must never be painted onto a head the
+            // composition crops out (Máscara is front-only), even if a stale
+            // zone key asks for it.
+            if (visiblePanels && !visiblePanels.includes(zone.panel)) return false;
+            return (
+              !visibleHeadZoneKeys || visibleHeadZoneKeys.includes(`${zone.zoneId}.${zone.panel}`)
+            );
+          })
+          .map((zone) => (
+            <MeasurementLineMarker
+              // Neck is drawn on both the front and profile heads, so the id
+              // alone is not unique — both share one field's state by design.
+              key={`${zone.panel}-${zone.zoneId}`}
+              zone={zone}
+              marker={buildHeadMarkerRenderContract(zone, {
+                activeZoneId,
+                filledZoneIds,
+                isInteractive,
+              })}
+              defsId={defsId}
+              onZoneClick={onZoneClick}
+              onHoverChange={onHoverChange}
+            />
+          ))}
+      </g>
+    </>
+  );
+}
+
 function getHandCropBoxes(sex: BodyFigureSex, detailSide: DetailSide | null): ReadonlyArray<HandCropBox> {
   const halfWidth = HAND_DETAIL_VIEWBOX.width / 2;
   const halfHeight = HAND_DETAIL_VIEWBOX.height / 2;
@@ -294,13 +484,21 @@ function getViewBoxForState(
   detailSide: DetailSide | null,
   fullBodyCalibration: FigureCalibration,
 ): { x: number; y: number; width: number; height: number } {
+  if (view === "head") {
+    // Standalone Mentonera head view (not the full-body hotspot "detail"
+    // flow below) — frames the front + profile pair the mentonera zones are
+    // traced against, dropping the reference PNG's blank upper band and its
+    // unused back-view head.
+    return { ...HEAD_VIEW_CROP };
+  }
   if (view !== "full") {
     return { x: 0, y: 0, width: 240, height: 480 };
   }
   if (detail === "head") {
-    // The reference PNG places the three faces in the upper band and leaves
-    // the bottom ~40% empty. Cropping to the faces band keeps the figure
-    // landscape (uses width) and avoids a tall whitespace letterbox.
+    // GENERIC full-body head hotspot detail — the original sex-specific
+    // reference PNG (3 heads in the upper band). Cropping to the faces band
+    // keeps it landscape and avoids a tall whitespace letterbox. This path is
+    // NOT the Mentonera figure (see the view === "head" branch above).
     return { x: 0, y: 0, width: HEAD_DETAIL_VIEWBOX.width, height: 820 };
   }
   if (detail === "hands") {
@@ -336,6 +534,8 @@ export function BodyHighlight({
   onZoneClick,
   onDetailChange,
   hideDetailCatalog = false,
+  headComposition,
+  visibleHeadZoneKeys,
 }: BodyHighlightProps) {
   const [tooltip, setTooltip] = useState<TooltipData | null>(null);
   const [detailRegion, setDetailRegionState] = useState<DetailRegion | null>(null);
@@ -356,16 +556,27 @@ export function BodyHighlight({
 
   const isFull = view === "full";
   const isDetail = isFull && detailRegion !== null;
+  // Standalone Mentonera head view — a sibling of "legs"/"arms", not part of
+  // the full-body hotspot "detail" flow (isDetail above stays gated on
+  // isFull, so a head-view instance can never enter that branch).
+  const isHeadView = view === "head";
   const isInteractive = Boolean(onZoneClick);
+  const isCropped = isBodyHighlightCropped(view, isDetail);
 
   const fullBodyCalibration = getFullBodyCalibration(toFullBodySex(sex));
-  const vb = getViewBoxForState(
+  // Crop comes from the garment composition, so Máscara frames the frontal
+  // head alone while Mentonera keeps the approved front+profile pair.
+  const headViewContract = isHeadView
+    ? getHeadViewRenderContract(headComposition?.crop)
+    : null;
+  const headZoneKeys = visibleHeadZoneKeys ?? headComposition?.zoneKeys;
+  const vb = headViewContract?.viewBox ?? getViewBoxForState(
     view,
     isDetail ? detailRegion : null,
     isDetail ? detailSide : null,
     fullBodyCalibration,
   );
-  const viewBox = `${vb.x} ${vb.y} ${vb.width} ${vb.height}`;
+  const viewBox = headViewContract?.viewBoxAttribute ?? `${vb.x} ${vb.y} ${vb.width} ${vb.height}`;
   const defsId = `bh-${view}-${detailRegion ?? "root"}-${detailSide ?? "x"}-${instanceId}`;
   const svgClassName = [styles.svg, className].filter(Boolean).join(" ");
   const summary = detailRegion ? findRegionSummary(detailRegion) : null;
@@ -381,7 +592,11 @@ export function BodyHighlight({
   // measured boxes because its PNG content is offset inside the sheet.
   const isHandDetail = isDetail && detailRegion === "hands";
   const handCrops = getHandCropBoxes(sex, detailSide);
-  const wrapperClassName = [styles.wrapper, isDetail ? styles.wrapperDetail : null]
+  const wrapperClassName = [
+    styles.wrapper,
+    isDetail ? styles.wrapperDetail : null,
+    isHeadView ? styles.wrapperHead : null,
+  ]
     .filter(Boolean)
     .join(" ");
 
@@ -405,8 +620,10 @@ export function BodyHighlight({
     : SIDE_LABEL_POSITIONS[view];
   // Isolated outlines/articulations live in body-highlight-zones; the
   // full-body silhouette comes from silhouettes/* and never reads from
-  // this module.
-  const isolatedView: IsolatedBodyView | null = isFull ? null : view;
+  // this module. "head" is excluded here (see IsolatedBodyView) — it has no
+  // outline/articulation entry and renders through HeadZoneLayer instead.
+  const isolatedView: IsolatedBodyView | null =
+    view === "legs" || view === "arms" ? view : null;
   const isolatedOutlines = isolatedView ? BODY_HIGHLIGHT_OUTLINES[isolatedView] : null;
   const isolatedArticulations = isolatedView ? BODY_HIGHLIGHT_ARTICULATIONS[isolatedView] : null;
 
@@ -480,13 +697,14 @@ export function BodyHighlight({
           data-detail-side={detailSide ?? "none"}
           data-active-zone={activeZoneId ?? ""}
           // Body view keeps overflow visible so the active-zone glow filter
-          // can extend past the SVG bounds. In detail mode the viewBox is
-          // intentionally cropped (e.g. half the hands PNG for a single side)
-          // so we MUST hide overflow or the rest of the asset leaks in.
+          // can extend past the SVG bounds. Detail mode and the head view both
+          // crop the viewBox (half the hands PNG for a single side; the
+          // front+profile pair out of the three-head sheet) so we MUST hide
+          // overflow or the rest of the asset leaks in.
           // The inline style is needed because .svg in CSS sets overflow:visible
           // and would otherwise win against the presentation attribute.
-          overflow={isDetail ? "hidden" : "visible"}
-          style={isDetail ? { overflow: "hidden" } : undefined}
+          overflow={headViewContract?.overflow ?? (isCropped ? "hidden" : "visible")}
+          style={headViewContract?.style ?? (isCropped ? { overflow: "hidden" } : undefined)}
         >
         <title>
           {isDetail && detailTitle
@@ -496,16 +714,38 @@ export function BodyHighlight({
         <desc>
           {isDetail && detailTitle
             ? `Referencia clínica para ${detailTitle}. Los campos asociados se listan debajo del gráfico.`
-            : sideSummaries.map((s) => `${s.label}: ${s.points} puntos`).join(". ")}
+            : isHeadView
+              ? headComposition
+                ? buildHeadFigureDescription(headComposition, headZoneKeys)
+                : "Referencia clínica de cabeza y cuello."
+              : sideSummaries.map((s) => `${s.label}: ${s.points} puntos`).join(". ")}
         </desc>
 
         <SilhouetteDefs id={defsId} />
+
+        {/* STANDALONE HEAD VIEW — Mentonera pilot. Own branch, own asset,
+            own zones; never touches the DETAIL or FULL/ISOLATED branches
+            below (isDetail stays gated on isFull, so this can never overlap
+            with the hotspot "detail" flow). */}
+        {isHeadView ? (
+          <HeadZoneLayer
+            sex={sex}
+            activeZoneId={activeZoneId}
+            filledZoneIds={filledZoneIds}
+            isInteractive={isInteractive}
+            defsId={defsId}
+            onZoneClick={onZoneClick}
+            onHoverChange={setTooltip}
+            visibleHeadZoneKeys={headZoneKeys}
+            visiblePanels={headComposition?.panels}
+          />
+        ) : null}
 
         {/* DETAIL VIEW — dedicated head or hand asset only */}
         {isDetail && detailRegion ? <DetailLayer region={detailRegion} sex={sex} /> : null}
 
         {/* FULL or ISOLATED VIEW */}
-        {!isDetail ? (
+        {!isDetail && !isHeadView ? (
           <>
             {/* Figure underneath: traced silhouette (full) or hand-drawn isolated outline */}
             {isFull ? (
