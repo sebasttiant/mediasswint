@@ -160,6 +160,21 @@ export type UpdateContextRepositoryInput = {
   metadata?: Record<string, unknown> | null;
 };
 
+/**
+ * One atomic draft save: context and values together.
+ *
+ * They used to be two repository calls with two transactions. If the second
+ * failed, or the session was completed concurrently between them, the API
+ * reported failure while the context change had already committed — leaving new
+ * context beside old values, and no audit entry describing it.
+ */
+export type SaveDraftRepositoryInput = {
+  sessionId: string;
+  /** Omitted entirely when the request carries no context change. */
+  context?: Omit<UpdateContextRepositoryInput, "sessionId">;
+  values: Array<{ fieldId: string; valueNumber: number | null }>;
+};
+
 export type MarkCompletedResult =
   | { status: "COMPLETED" }
   | { status: "NOT_FOUND" }
@@ -172,6 +187,11 @@ export type MeasurementsRepository = {
   getDetail(id: string): Promise<MeasurementSessionDetail | null>;
   listByPatient(patientId: string, limit: number): Promise<MeasurementSessionSummary[]>;
   replaceValues(input: ReplaceValuesRepositoryInput): Promise<{ ok: boolean; status: MeasurementSessionStatus | null }>;
+  /**
+   * Apply context and values in ONE transaction, re-checking DRAFT status
+   * inside it so a concurrent completion cannot be half-applied.
+   */
+  saveDraft(input: SaveDraftRepositoryInput): Promise<{ ok: boolean; status: MeasurementSessionStatus | null }>;
   updateContext(input: UpdateContextRepositoryInput): Promise<{ ok: boolean; status: MeasurementSessionStatus | null }>;
   markCompleted(id: string): Promise<MarkCompletedResult>;
   reopenToDraft(id: string): Promise<{ ok: boolean; status: MeasurementSessionStatus | null }>;
@@ -287,25 +307,26 @@ export async function updateMeasurementValues(
       beforeValues[key] = value;
     }
 
-    if (hasContextChanges(input)) {
-      const contextResult = await repository.updateContext({
-        sessionId,
-        measuredAt: input.measuredAt,
-        notes: input.notes,
-        diagnosis: input.diagnosis,
-        garmentType: input.garmentType,
-        compressionClass: input.compressionClass,
-        productFlags: input.productFlags,
-        metadata: input.metadata,
-      });
-      if (!contextResult.ok) {
-        if (contextResult.status === null) return { ok: false, error: "NOT_FOUND" };
-        if (contextResult.status !== "DRAFT") return { ok: false, error: "INVALID_STATE" };
-        return { ok: false, error: "UNKNOWN" };
-      }
-    }
-
-    const result = await repository.replaceValues({ sessionId, values: resolved });
+    // ONE transaction: either the context change and the values both land, or
+    // neither does. Splitting them let a failed value write leave committed
+    // context behind, with no audit entry describing the change.
+    const result = await repository.saveDraft({
+      sessionId,
+      ...(hasContextChanges(input)
+        ? {
+            context: {
+              measuredAt: input.measuredAt,
+              notes: input.notes,
+              diagnosis: input.diagnosis,
+              garmentType: input.garmentType,
+              compressionClass: input.compressionClass,
+              productFlags: input.productFlags,
+              metadata: input.metadata,
+            },
+          }
+        : {}),
+      values: resolved,
+    });
     if (!result.ok) {
       if (result.status === null) return { ok: false, error: "NOT_FOUND" };
       if (result.status !== "DRAFT") return { ok: false, error: "INVALID_STATE" };
@@ -757,6 +778,63 @@ const defaultRepository: MeasurementsRepository = {
         });
       }
       return { ok: true, status: "DRAFT" };
+    });
+  },
+
+  async saveDraft(input) {
+    const prisma = getPrisma();
+    return prisma.$transaction(async (tx) => {
+      // Status is re-read INSIDE the transaction: a completion committed
+      // between the caller's read and this write must abort the whole save,
+      // not half-apply it.
+      const session = await tx.measurementSession.findUnique({
+        where: { id: input.sessionId },
+        select: { status: true },
+      });
+      if (!session) return { ok: false, status: null };
+      if (session.status !== "DRAFT") return { ok: false, status: session.status };
+
+      if (input.context) {
+        const context = input.context;
+        await tx.measurementSession.update({
+          where: { id: input.sessionId },
+          data: {
+            ...(context.measuredAt !== undefined ? { measuredAt: context.measuredAt } : {}),
+            ...(context.notes !== undefined ? { notes: context.notes } : {}),
+            ...(context.diagnosis !== undefined ? { diagnosis: context.diagnosis } : {}),
+            ...(context.garmentType !== undefined ? { garmentType: context.garmentType } : {}),
+            ...(context.compressionClass !== undefined
+              ? { compressionClass: context.compressionClass }
+              : {}),
+            ...(context.productFlags !== undefined
+              ? { productFlags: context.productFlags as Prisma.InputJsonValue }
+              : {}),
+            ...(context.metadata !== undefined
+              ? { metadata: context.metadata as Prisma.InputJsonValue }
+              : {}),
+          },
+        });
+      }
+
+      for (const value of input.values) {
+        if (value.valueNumber === null) {
+          await tx.measurementValue.deleteMany({
+            where: { sessionId: input.sessionId, fieldId: value.fieldId },
+          });
+          continue;
+        }
+        await tx.measurementValue.upsert({
+          where: { sessionId_fieldId: { sessionId: input.sessionId, fieldId: value.fieldId } },
+          update: { valueNumber: new Prisma.Decimal(value.valueNumber) },
+          create: {
+            sessionId: input.sessionId,
+            fieldId: value.fieldId,
+            valueNumber: new Prisma.Decimal(value.valueNumber),
+          },
+        });
+      }
+
+      return { ok: true, status: "DRAFT" as MeasurementSessionStatus };
     });
   },
 
