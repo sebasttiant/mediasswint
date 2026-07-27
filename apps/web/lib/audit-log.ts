@@ -128,6 +128,22 @@ export function getDefaultAuditRepository(): AuditRepository {
 }
 
 /**
+ * A short, non-free-text error identifier safe to log.
+ *
+ * Prisma and pg attach machine codes such as `P2002` / `23505`. The message is
+ * deliberately never used: driver messages embed the failing statement and its
+ * bound parameters, which for a measurement audit means clinical values.
+ */
+function extractSafeErrorCode(error: unknown): string | null {
+  if (typeof error !== "object" || error === null) return null;
+  const code = (error as { code?: unknown }).code;
+  // Codes are short identifiers; anything longer is not a code and may be prose.
+  if (typeof code === "string" && code.length > 0 && code.length <= 16) return code;
+  if (typeof code === "number") return String(code);
+  return null;
+}
+
+/**
  * Persist an audit record. Audit failures NEVER throw out of this function —
  * a missed audit row is far less damaging than aborting the user's mutation
  * because of a logging-layer issue. The error is logged for ops to follow up.
@@ -140,7 +156,22 @@ export async function recordAudit(
   try {
     await repository.record({ ...entry, userId });
   } catch (error) {
-    console.error("[audit:record] failed", { entry, userId, error });
+    // NEVER log `entry` here. A measurement entry's `diff` carries measurement
+    // values, diagnosis, notes, productFlags and arbitrary metadata, and an
+    // audit write failing is precisely when logs get read, shipped and
+    // retained. Only operational identifiers leave this function.
+    //
+    // The raw error is excluded too: driver messages routinely embed the failing
+    // statement and its parameters, which would put the same clinical payload
+    // back in the log through the side door.
+    console.error("[audit:record] failed", {
+      action: entry.action,
+      entityType: entry.entityType,
+      entityId: entry.entityId,
+      userId,
+      errorName: error instanceof Error ? error.name : typeof error,
+      errorCode: extractSafeErrorCode(error),
+    });
   }
 }
 
