@@ -42,6 +42,34 @@ function notFound(entity: string) {
   return NextResponse.json({ error: `${entity} not found` }, { status: 404 });
 }
 
+/**
+ * 422, not 500: the request is well formed, the STORED snapshot is not. The
+ * machine-readable code lets the client state something true and offer real
+ * remediation instead of blaming the clinician's input.
+ *
+ * Every caller shares this one response so the two snapshot states can never
+ * drift apart across the PATCH and duplicate paths. It deliberately carries NO
+ * `committed` or `status` field: a request answered with it wrote nothing.
+ */
+function malformedTemplateSnapshotResponse() {
+  return NextResponse.json(
+    {
+      error: "Measurement template snapshot is unreadable",
+      code: "MALFORMED_TEMPLATE_SNAPSHOT",
+    },
+    { status: 422 },
+  );
+}
+
+/**
+ * Distinct from the malformed response on purpose: a session that never had a
+ * snapshot is an infrastructure fault the client cannot act on, so it stays a
+ * 500 with no remediation code.
+ */
+function missingTemplateSnapshotResponse() {
+  return NextResponse.json({ error: "Measurement template snapshot missing" }, { status: 500 });
+}
+
 export async function handleGetMeasurementRequest(
   request: Request,
   { params }: Params,
@@ -100,6 +128,22 @@ export async function handlePatchMeasurementRequest(
   }
   if (detail.value.patientId !== id) {
     return notFound("Measurement");
+  }
+
+  // The snapshot's STATE is resolved before the body is validated, because the
+  // set of allowed keys is DERIVED from that snapshot. An unusable snapshot
+  // yields an empty key set, so validating against it reported a stored-data
+  // fault as "unknown measurement keys" — blaming the clinician's input — and,
+  // for `complete: true`, let the request reach the atomic save+complete branch
+  // where MALFORMED_TEMPLATE_SNAPSHOT collapsed into a generic 500.
+  //
+  // Deciding it here keeps the answer identical for both `complete` values and
+  // guarantees a refused request writes nothing at all.
+  if (detail.value.templateSnapshotState === "malformed") {
+    return malformedTemplateSnapshotResponse();
+  }
+  if (detail.value.templateSnapshotState === "absent") {
+    return missingTemplateSnapshotResponse();
   }
 
   const parsed = parseUpdateMeasurementValuesInput(
@@ -255,6 +299,14 @@ export async function handlePatchMeasurementRequest(
     if (!completed.ok) {
       if (completed.error === "NOT_FOUND") return notFound("Measurement");
       if (completed.error === "INVALID_STATE") return NextResponse.json({ error: "Measurement is not editable" }, { status: 409 });
+      // Snapshot state stays machine-readable inside the atomic branch too, so
+      // `complete: true` can never downgrade it to an opaque 500.
+      if (completed.error === "MALFORMED_TEMPLATE_SNAPSHOT") {
+        return malformedTemplateSnapshotResponse();
+      }
+      if (completed.error === "TEMPLATE_NOT_FOUND") {
+        return missingTemplateSnapshotResponse();
+      }
       return NextResponse.json({ error: "Internal server error", committed: false }, { status: 500 });
     }
     const refreshedAfterCommit = await getMeasurement(sessionId, deps.repository);
@@ -271,22 +323,13 @@ export async function handlePatchMeasurementRequest(
       return NextResponse.json({ error: "Measurement is not editable" }, { status: 409 });
     }
     if (updated.error === "TEMPLATE_NOT_FOUND") {
-      return NextResponse.json(
-        { error: "Measurement template snapshot missing" },
-        { status: 500 },
-      );
+      return missingTemplateSnapshotResponse();
     }
-    // 422, not 500: the request is well formed, the STORED snapshot is not.
-    // A machine-readable code lets the client say something true instead of
-    // blaming the user's input.
+    // Defence in depth: the guard above already answered this state, but the
+    // service re-reads the session, so a concurrent write could still surface
+    // it here. Same response either way.
     if (updated.error === "MALFORMED_TEMPLATE_SNAPSHOT") {
-      return NextResponse.json(
-        {
-          error: "Measurement template snapshot is unreadable",
-          code: "MALFORMED_TEMPLATE_SNAPSHOT",
-        },
-        { status: 422 },
-      );
+      return malformedTemplateSnapshotResponse();
     }
     if (updated.error === "UNKNOWN_KEYS") {
       return NextResponse.json(
@@ -362,16 +405,10 @@ export async function handleDuplicateMeasurementRequest(
       return NextResponse.json({ error: "Only completed measurements can be duplicated" }, { status: 409 });
     }
     if (duplicated.error === "TEMPLATE_NOT_FOUND") {
-      return NextResponse.json({ error: "Measurement template snapshot missing" }, { status: 500 });
+      return missingTemplateSnapshotResponse();
     }
     if (duplicated.error === "MALFORMED_TEMPLATE_SNAPSHOT") {
-      return NextResponse.json(
-        {
-          error: "Measurement template snapshot is unreadable",
-          code: "MALFORMED_TEMPLATE_SNAPSHOT",
-        },
-        { status: 422 },
-      );
+      return malformedTemplateSnapshotResponse();
     }
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
