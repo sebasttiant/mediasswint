@@ -205,3 +205,113 @@ export function buildHeadFigureAriaLabel(composition: HeadViewComposition): stri
 //
 // The invariant it protects: a session whose template snapshot claims to be a
 // head garment but does not carry that garment's full measurement set must
+// never be finalized. Enforcing that only in the UI would leave the domain
+// open to any direct API call.
+// ---------------------------------------------------------------------------
+
+/** Minimal persisted-snapshot shape this contract needs. */
+export type HeadSnapshotFieldLike = {
+  key: string;
+  sortOrder: number;
+  metadata: Record<string, unknown>;
+};
+
+export type HeadSnapshotLike = {
+  code: string;
+  sections: ReadonlyArray<{ fields: ReadonlyArray<HeadSnapshotFieldLike> }>;
+};
+
+/** A head field as the domain sees it: identity and anatomy only. */
+export type HeadFieldDescriptor = {
+  key: string;
+  anatomyZone: string;
+  sortOrder: number;
+};
+
+export type HeadSnapshotClassification =
+  | { kind: "none" }
+  | {
+      kind: "complete" | "degraded" | "empty";
+      composition: HeadViewComposition;
+      headFields: ReadonlyArray<HeadFieldDescriptor>;
+      /** Canonical reason the session cannot be completed. Null when complete. */
+      blockReason: string | null;
+    };
+
+/** `head.`-prefixed anatomy zone marks a field as belonging to a head garment. */
+export const HEAD_ANATOMY_ZONE_PREFIX = "head.";
+
+export function extractHeadFieldDescriptors(
+  snapshot: HeadSnapshotLike | null | undefined,
+): ReadonlyArray<HeadFieldDescriptor> {
+  if (!snapshot) return [];
+
+  const descriptors: HeadFieldDescriptor[] = [];
+  for (const section of snapshot.sections) {
+    for (const field of section.fields) {
+      const anatomyZone = field.metadata?.["anatomyZone"];
+      if (typeof anatomyZone !== "string") continue;
+      if (!anatomyZone.startsWith(HEAD_ANATOMY_ZONE_PREFIX)) continue;
+      descriptors.push({ key: field.key, anatomyZone, sortOrder: field.sortOrder });
+    }
+  }
+
+  return descriptors.sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
+function matchesExpectedHeadFields(
+  descriptors: ReadonlyArray<HeadFieldDescriptor>,
+  expected: ReadonlyArray<readonly [string, string]>,
+): boolean {
+  if (descriptors.length !== expected.length) return false;
+  return expected.every(([key, anatomyZone], index) => {
+    const descriptor = descriptors[index];
+    return descriptor?.key === key && descriptor.anatomyZone === anatomyZone;
+  });
+}
+
+export function classifyHeadSnapshot(
+  snapshot: HeadSnapshotLike | null | undefined,
+): HeadSnapshotClassification {
+  if (!snapshot) return { kind: "none" };
+
+  const composition = getHeadViewComposition(snapshot.code);
+  if (!composition) return { kind: "none" };
+
+  const headFields = extractHeadFieldDescriptors(snapshot);
+
+  if (headFields.length === 0) {
+    return {
+      kind: "empty",
+      composition,
+      headFields,
+      blockReason: `La plantilla de ${composition.garmentLabel} de esta sesión no tiene medidas utilizables. No se puede finalizar hasta regenerarla.`,
+    };
+  }
+
+  if (matchesExpectedHeadFields(headFields, composition.expectedFields)) {
+    return { kind: "complete", composition, headFields, blockReason: null };
+  }
+
+  return {
+    kind: "degraded",
+    composition,
+    headFields,
+    blockReason: `La plantilla de ${composition.garmentLabel} de esta sesión no coincide con la definición vigente (${headFields.length} de ${composition.expectedFields.length} medidas esperadas). Se muestran las medidas disponibles; no se puede finalizar.`,
+  };
+}
+
+/**
+ * The domain invariant, in one call: returns why this snapshot may NOT be
+ * completed, or null when completion is allowed.
+ *
+ * Non-head snapshots (compression and anything else) always return null — this
+ * guard narrows head garments only and must never gate unrelated templates.
+ */
+export function getHeadSnapshotCompletionBlock(
+  snapshot: HeadSnapshotLike | null | undefined,
+): string | null {
+  const classification = classifyHeadSnapshot(snapshot);
+  if (classification.kind === "none") return null;
+  return classification.blockReason;
+}
