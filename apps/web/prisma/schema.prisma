@@ -111,6 +111,11 @@ model TemplateSection {
   templateId String
   title      String
   sortOrder  Int                 @default(0)
+  // Retired sections are deactivated, never deleted. MeasurementValue.field is
+  // onDelete: Restrict and TemplateField cascades from here, so deleting a
+  // section that ever held a recorded value is rejected by Postgres. Keeping
+  // the row also keeps every draft snapshot's fieldId resolvable.
+  isActive   Boolean             @default(true)
   template   MeasurementTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
   fields     TemplateField[]
   createdAt  DateTime            @default(now())
@@ -118,6 +123,7 @@ model TemplateSection {
 
   @@unique([templateId, title])
   @@index([templateId, sortOrder])
+  @@index([templateId, isActive])
 }
 
 model TemplateField {
@@ -132,6 +138,11 @@ model TemplateField {
   minValue   Decimal?           @db.Decimal(10, 2)
   maxValue   Decimal?           @db.Decimal(10, 2)
   metadata   Json?
+  // A field dropped from the current template definition is deactivated, not
+  // deleted, so historical MeasurementValue rows keep their FK and draft
+  // snapshots that reference this id stay saveable. Only active rows are
+  // projected into new session snapshots.
+  isActive   Boolean            @default(true)
   section    TemplateSection    @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   values     MeasurementValue[]
   createdAt  DateTime           @default(now())
@@ -139,6 +150,7 @@ model TemplateField {
 
   @@unique([sectionId, key])
   @@index([sectionId, sortOrder])
+  @@index([sectionId, isActive])
 }
 
 model MeasurementSession {
