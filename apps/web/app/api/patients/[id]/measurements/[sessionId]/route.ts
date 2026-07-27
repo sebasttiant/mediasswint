@@ -122,6 +122,18 @@ export async function handlePatchMeasurementRequest(
         { status: 500 },
       );
     }
+    // 422, not 500: the request is well formed, the STORED snapshot is not.
+    // A machine-readable code lets the client say something true instead of
+    // blaming the user's input.
+    if (updated.error === "MALFORMED_TEMPLATE_SNAPSHOT") {
+      return NextResponse.json(
+        {
+          error: "Measurement template snapshot is unreadable",
+          code: "MALFORMED_TEMPLATE_SNAPSHOT",
+        },
+        { status: 422 },
+      );
+    }
     if (updated.error === "UNKNOWN_KEYS") {
       return NextResponse.json(
         { errors: [{ field: "valuesByKey", message: "unknown measurement keys" }] },
@@ -184,6 +196,15 @@ export async function handleDuplicateMeasurementRequest(
     }
     if (duplicated.error === "TEMPLATE_NOT_FOUND") {
       return NextResponse.json({ error: "Measurement template snapshot missing" }, { status: 500 });
+    }
+    if (duplicated.error === "MALFORMED_TEMPLATE_SNAPSHOT") {
+      return NextResponse.json(
+        {
+          error: "Measurement template snapshot is unreadable",
+          code: "MALFORMED_TEMPLATE_SNAPSHOT",
+        },
+        { status: 422 },
+      );
     }
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }

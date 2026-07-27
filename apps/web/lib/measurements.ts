@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 
 import { getPrisma } from "./prisma";
+import { parseTemplateSnapshot } from "./template-snapshot";
 import { recordAudit, toAuditPayload } from "@/lib/audit-log";
 
 export type MeasurementSessionStatus = "DRAFT" | "COMPLETED" | "VOID";
@@ -94,6 +95,11 @@ type ServiceErrorCode =
   | "NOT_FOUND"
   | "INVALID_STATE"
   | "TEMPLATE_NOT_FOUND"
+  // The session HAS a persisted template snapshot, but the stored JSON does
+  // not match the snapshot contract (e.g. rows written without a `sections`
+  // key). Distinct from TEMPLATE_NOT_FOUND so the caller can tell "never had
+  // one" apart from "has one we cannot trust".
+  | "MALFORMED_TEMPLATE_SNAPSHOT"
   | "PATIENT_NOT_FOUND"
   | "UNKNOWN_KEYS"
   | "UNKNOWN";
@@ -229,7 +235,19 @@ export async function updateMeasurementValues(
     if (detail.status !== "DRAFT") return { ok: false, error: "INVALID_STATE" };
     if (!detail.templateSnapshot) return { ok: false, error: "TEMPLATE_NOT_FOUND" };
 
-    const fieldsByKey = indexFieldsByKey(detail.templateSnapshot);
+    // Never index a snapshot that has not been validated: the column is Json?
+    // and really does hold rows without a `sections` key, which used to throw
+    // a TypeError here and surface as a 500.
+    const snapshot = parseTemplateSnapshot(detail.templateSnapshot);
+    if (!snapshot) {
+      console.error("[measurements:updateValues] malformed template snapshot", {
+        sessionId,
+        templateId: detail.templateId,
+      });
+      return { ok: false, error: "MALFORMED_TEMPLATE_SNAPSHOT" };
+    }
+
+    const fieldsByKey = indexFieldsByKey(snapshot);
     const resolved: Array<{ fieldId: string; valueNumber: number | null }> = [];
 
     for (const [key, value] of Object.entries(input.valuesByKey)) {
@@ -326,6 +344,26 @@ export async function duplicateCompletedMeasurement(
     if (detail.status !== "COMPLETED") return { ok: false, error: "INVALID_STATE" };
     if (!detail.templateId || !detail.templateSnapshot) return { ok: false, error: "TEMPLATE_NOT_FOUND" };
 
+    // ORDER MATTERS: validate and index the snapshot BEFORE creating anything.
+    // The draft used to be created first, so a malformed snapshot threw while
+    // indexing and left a stranded DRAFT session behind with no values. Doing
+    // all fallible reads up front makes the write side all-or-nothing.
+    const snapshot = parseTemplateSnapshot(detail.templateSnapshot);
+    if (!snapshot) {
+      console.error("[measurements:duplicate] malformed template snapshot", {
+        sessionId,
+        templateId: detail.templateId,
+      });
+      return { ok: false, error: "MALFORMED_TEMPLATE_SNAPSHOT" };
+    }
+
+    const fieldsByKey = indexFieldsByKey(snapshot);
+    const values: Array<{ fieldId: string; valueNumber: number | null }> = [];
+    for (const [key, valueNumber] of Object.entries(detail.values)) {
+      const field = fieldsByKey.get(key);
+      if (field) values.push({ fieldId: field.id, valueNumber });
+    }
+
     const created = await repository.createDraft({
       patientId: detail.patientId,
       templateId: detail.templateId,
@@ -336,15 +374,11 @@ export async function duplicateCompletedMeasurement(
       compressionClass: detail.compressionClass,
       productFlags: detail.productFlags,
       metadata: detail.metadata,
+      // The ORIGINAL snapshot is copied, not the parsed projection: parsing
+      // normalizes and drops unknown extra keys, and a duplicated clinical
+      // record should carry the source snapshot verbatim.
       templateSnapshot: detail.templateSnapshot,
     });
-
-    const fieldsByKey = indexFieldsByKey(detail.templateSnapshot);
-    const values: Array<{ fieldId: string; valueNumber: number | null }> = [];
-    for (const [key, valueNumber] of Object.entries(detail.values)) {
-      const field = fieldsByKey.get(key);
-      if (field) values.push({ fieldId: field.id, valueNumber });
-    }
 
     const copied = await repository.replaceValues({ sessionId: created.id, values });
     if (!copied.ok) return { ok: false, error: "UNKNOWN" };
@@ -603,7 +637,9 @@ const defaultRepository: MeasurementsRepository = {
       compressionClass: session.compressionClass,
       productFlags: jsonToRecord<Record<string, boolean>>(session.productFlags),
       metadata: jsonToRecord<Record<string, unknown>>(session.metadata),
-      templateSnapshot: (session.templateSnapshot as unknown as TemplateSnapshot | null) ?? null,
+      // Validated, never cast: a cast here is a lie the compiler cannot catch,
+      // and the column genuinely holds rows that do not match the contract.
+      templateSnapshot: parseTemplateSnapshot(session.templateSnapshot),
       values: valuesByKey,
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
