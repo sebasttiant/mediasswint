@@ -22,6 +22,12 @@
   max-width: none;
 }
 
+/* The Mentonera head reference is a landscape clinical figure, not a body-map
+   thumbnail. Let its dedicated desktop layout use the available figure panel. */
+.wrapperHead {
+  max-width: 560px;
+}
+
 .handSplit {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));

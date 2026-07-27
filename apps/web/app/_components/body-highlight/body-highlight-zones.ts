@@ -3,6 +3,11 @@ import {
   type AnatomyZoneId,
   type CompressionMeasurementDefinition,
 } from "@/lib/compression-measurements";
+import {
+  HEAD_FIGURE_FULL_CROP,
+  HEAD_ZONE_LABELS,
+  type HeadViewCrop,
+} from "@/lib/head-measurement-layout";
 
 import {
   FEMALE_ARM_CONTOUR,
@@ -17,8 +22,15 @@ import {
 import { getFemaleZonePath } from "./zones-female";
 import { getMaleZonePath } from "./zones-male";
 
-export type BodyView = "full" | "legs" | "arms";
-export type IsolatedBodyView = Exclude<BodyView, "full">;
+// "head" is a standalone measurement view (Mentonera pilot) — like legs/arms
+// it is NOT part of the full-body + hotspot "detail region" flow (that flow
+// stays untouched; see DetailRegion in body-highlight.tsx). It is deliberately
+// excluded from IsolatedBodyView below because it has no laterality (no
+// right/left column) and no COMPRESSION_MEASUREMENTS-backed geometry, so the
+// existing per-side isolated machinery (BODY_CLIP_PATHS, BODY_HIGHLIGHT_OUTLINES,
+// getZonesForSide, etc.) must stay exactly as-is for legs/arms.
+export type BodyView = "full" | "legs" | "arms" | "head";
+export type IsolatedBodyView = Exclude<BodyView, "full" | "head">;
 export type BodySide = "right" | "left";
 
 export type BodyZoneShape = {
@@ -269,6 +281,13 @@ export const SIDE_LABEL_POSITIONS: Record<BodyView, Record<BodySide, { x: number
     right: { x: 35, y: 16, label: "D" },
     left: { x: 205, y: 16, label: "I" },
   },
+  // "head" has no laterality (single centered figure, no D/I columns) — this
+  // entry only exists to satisfy Record<BodyView, ...>. body-highlight.tsx
+  // never reads it: the head view renders through its own dedicated branch.
+  head: {
+    right: { x: 0, y: 0, label: "" },
+    left: { x: 0, y: 0, label: "" },
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -298,7 +317,28 @@ export function findViewForZone(zoneId: string): IsolatedBodyView | null {
 }
 
 export function getZoneLabel(zoneId: AnatomyZoneId): string {
-  return COMPRESSION_MEASUREMENTS.find((m) => m.anatomyZone === zoneId)?.label ?? "";
+  const compressionLabel = COMPRESSION_MEASUREMENTS.find((m) => m.anatomyZone === zoneId)?.label;
+  if (compressionLabel) return compressionLabel;
+  // Fallback lookup only — compression zones are always found above, so this
+  // is a pure addition with zero behavior change for legs/arms.
+  return findHeadZoneShape(zoneId)?.label ?? "";
+}
+
+// ---------------------------------------------------------------------------
+// hasFilledZone — the SAME highlight-state primitive body-highlight.tsx uses
+// for every ZoneMarker (compression legs/arms AND the Mentonera head view).
+// Lives here (not in body-highlight.tsx) so it is unit-testable: the .tsx
+// component module imports body-highlight.module.css, which the Node test
+// runner cannot load, so nothing defined there can be exercised directly.
+// ---------------------------------------------------------------------------
+
+export function hasFilledZone(
+  filledZoneIds: ReadonlySet<AnatomyZoneId> | ReadonlyArray<AnatomyZoneId> | undefined,
+  zoneId: AnatomyZoneId,
+): boolean {
+  if (!filledZoneIds) return false;
+  if (Array.isArray(filledZoneIds)) return filledZoneIds.includes(zoneId);
+  return (filledZoneIds as ReadonlySet<AnatomyZoneId>).has(zoneId);
 }
 
 export function getZoneSide(zoneId: AnatomyZoneId): BodySide | null {
@@ -327,6 +367,15 @@ export function getSideSummaryForView(
     return [
       { side: "right", label: "Lado derecho", points: MAX_POINT_BY_GROUP.legs + MAX_POINT_BY_GROUP.arms },
       { side: "left", label: "Lado izquierdo", points: MAX_POINT_BY_GROUP.legs + MAX_POINT_BY_GROUP.arms },
+    ];
+  }
+  if (view === "head") {
+    // "head" has no laterality/point-count summary — body-highlight.tsx
+    // never renders this result for the head view (it uses its own <desc>),
+    // this branch only exists so the function stays total over BodyView.
+    return [
+      { side: "right", label: "Cabeza", points: 0 },
+      { side: "left", label: "Cabeza", points: 0 },
     ];
   }
 
@@ -452,4 +501,307 @@ export function getFullZonePathForSex(sex: FullBodySex, zone: BodyZoneShape): st
   }
   const tracedPath = getMaleZonePath(zone.zoneId);
   return tracedPath ?? getFullMarkerForSex(MALE_FULL_BODY, zone).path;
+}
+
+// ---------------------------------------------------------------------------
+// Máscara and Mentonera head zones.
+//
+// Authoritative reference: the client's "Máscara y mentonera" measurement
+// form. The MENTONERA panel draws all three mentonera measurements
+// on a single LEFT-FACING SIDE PROFILE:
+//   - crown→chin  : a tape arcing from the crown down over the cheek to the
+//                   chin tip;
+//   - face length : a vertical bracket set off to the left of the face, tied
+//                   to the forehead and chin tip by leader lines;
+//   - neck        : a horizontal tape across the neck.
+// The form's MÁSCARA panel additionally shows the neck circumference on a
+// FRONT view. Neck is therefore drawn on BOTH panels here (same zoneId, so
+// both representations always share one field's active/filled state); the two
+// profile-only measurements stay on the profile, exactly as the form has it.
+//
+// Geometry is expressed as measured LANDMARKS rather than hand-tuned path
+// strings so every number can be checked against the figure. The figure is a
+// vector TRACE of the client PDF, rendered by HeadFigure at
+// HEAD_FIGURE_VIEWBOX = 331 × 247. Every landmark below was read directly from
+// the PDF's own red measurement tapes (crown→chin and neck) and its black
+// face-length bracket, then normalized to the figure's coordinate space, so
+// the drawn lines land exactly where the form draws them. The client form uses
+// a single sex-neutral head, so the landmarks are shared across both sexes and
+// HEAD_VIEW_CROP is simply the figure's viewBox (front + profile, no back
+// view — the trace never included one).
+//
+// Unlike the compression limbs (fill-bands rendered by ZoneMarker), head
+// zones are rendered as MEASUREMENT LINES — line paths with end bars that
+// mimic the clinical tape-measure style of the form. Each zone defines:
+//   - `panel`: which head the line belongs to (front vs profile)
+//   - `line`: the main SVG path (where the tape runs)
+//   - `endBars`: perpendicular terminal ticks / leader lines
+// The standalone head view renders these through MeasurementLineMarker, not
+// ZoneMarker, keeping the limb fill-band render path untouched.
+// ---------------------------------------------------------------------------
+
+/** Which of the reference PNG's heads a measurement line is drawn on. */
+export type HeadPanel = "front" | "profile";
+
+export type HeadZoneShape = {
+  zoneId: AnatomyZoneId;
+  label: string;
+  panel: HeadPanel;
+  /** SVG path of the measurement line (the tape path) */
+  line: string;
+  /** Perpendicular end-bar / leader paths (tape-measure terminals) */
+  endBars?: ReadonlyArray<string>;
+};
+
+// Default crop: the whole traced figure (front + profile). Per-garment crops
+// live in lib/head-measurement-layout.ts — Máscara renders front-only.
+export const HEAD_VIEW_CROP: HeadViewCrop = HEAD_FIGURE_FULL_CROP;
+
+export type HeadMarkerRenderContract = {
+  zoneId: AnatomyZoneId;
+  headPanel: HeadPanel;
+  active: "true" | "false";
+  filled: "true" | "false";
+  ariaLabel: string;
+  role: "button" | undefined;
+  tabIndex: 0 | undefined;
+  clickZoneId: AnatomyZoneId;
+};
+
+export type HeadViewRenderContract = {
+  viewBox: HeadViewCrop;
+  viewBoxAttribute: string;
+  overflow: "hidden";
+  style: { overflow: "hidden" };
+};
+
+type Point = { readonly x: number; readonly y: number };
+
+// Landmarks sampled from the reference PNGs' ink (image space, 1122×1402).
+type HeadFigureLandmarks = {
+  readonly profile: {
+    /** Topmost point of the skull. */
+    readonly crown: Point;
+    /** Tip of the chin, where the jaw line meets the throat. */
+    readonly chin: Point;
+    /** Front edge of the forehead at the hairline ("donde comienza la frente"). */
+    readonly forehead: Point;
+    /** X of the face-length bracket, in the gutter left of the profile face. */
+    readonly bracketX: number;
+    /** Neck tape: throat (front) and nape (back) edges at height `y`. */
+    readonly neck: { readonly y: number; readonly throatX: number; readonly napeX: number };
+  };
+  readonly front: {
+    readonly forehead: { readonly y: number; readonly leftX: number; readonly rightX: number };
+    readonly neck: { readonly y: number; readonly leftX: number; readonly rightX: number };
+  };
+};
+
+// Single sex-neutral landmark set, read from the client PDF's own tapes and
+// bracket (see comment above) and normalized into HEAD_FIGURE_VIEWBOX. The
+// client form draws one head, so both sexes reference the same set.
+const HEAD_FIGURE_LANDMARKS: HeadFigureLandmarks = {
+  profile: {
+    crown: { x: 272.9, y: 55 },
+    chin: { x: 195.8, y: 200.4 },
+    forehead: { x: 195.1, y: 99.7 },
+    bracketX: 172,
+    neck: { y: 217.5, throatX: 232.4, napeX: 298.3 },
+  },
+  front: {
+    forehead: { y: 73.5, leftX: 27.2, rightX: 122.9 },
+    neck: { y: 181.3, leftX: 40.9, rightX: 108.6 },
+  },
+};
+
+const HEAD_LANDMARKS: Readonly<Record<FullBodySex, HeadFigureLandmarks>> = {
+  female: HEAD_FIGURE_LANDMARKS,
+  male: HEAD_FIGURE_LANDMARKS,
+};
+
+// How far the crown→chin tape bows away from the straight crown-to-chin
+// chord, as a fraction of that chord. Bowing toward the back of the skull
+// makes the tape cross the cheek — the path the form draws — instead of
+// cutting through the jaw.
+const CROWN_CHIN_BULGE_RATIO = 0.08;
+
+// End-bar half-lengths, sized for HEAD_FIGURE_VIEWBOX (331 wide).
+const CROWN_BAR_HALF = 6;
+const CHIN_BAR_HALF = 5;
+const NECK_BAR_HALF = 4.5;
+
+function f(n: number): string {
+  return Number(n.toFixed(1)).toString();
+}
+
+// A tick centred on `at`, square to `tangent` — the tape's end stop.
+function perpendicularBar(at: Point, tangent: Point, half: number): string {
+  const length = Math.hypot(tangent.x, tangent.y) || 1;
+  const dx = (tangent.y / length) * half;
+  const dy = (-tangent.x / length) * half;
+  return `M ${f(at.x - dx)} ${f(at.y - dy)} L ${f(at.x + dx)} ${f(at.y + dy)}`;
+}
+
+function buildCrownChinZone(landmarks: HeadFigureLandmarks): HeadZoneShape {
+  const { crown, chin } = landmarks.profile;
+  const chord = { x: chin.x - crown.x, y: chin.y - crown.y };
+  const chordLength = Math.hypot(chord.x, chord.y);
+  const bulge = chordLength * CROWN_CHIN_BULGE_RATIO;
+  const control = {
+    x: (crown.x + chin.x) / 2 + (chord.y / chordLength) * bulge,
+    y: (crown.y + chin.y) / 2 + (-chord.x / chordLength) * bulge,
+  };
+
+  return {
+    zoneId: "head.crownChin" as AnatomyZoneId,
+    label: HEAD_ZONE_LABELS["head.crownChin"],
+    panel: "profile",
+    line: `M ${f(crown.x)} ${f(crown.y)} Q ${f(control.x)} ${f(control.y)}, ${f(chin.x)} ${f(chin.y)}`,
+    endBars: [
+      perpendicularBar(crown, { x: control.x - crown.x, y: control.y - crown.y }, CROWN_BAR_HALF),
+      perpendicularBar(chin, { x: chin.x - control.x, y: chin.y - control.y }, CHIN_BAR_HALF),
+    ],
+  };
+}
+
+// The bracket sits off the face (drawing it down the profile would run it
+// through the nose and lips), with leader lines tying it back to the
+// forehead and chin tip — the convention the form uses.
+function buildFaceLengthZone(landmarks: HeadFigureLandmarks): HeadZoneShape {
+  const { forehead, chin, bracketX } = landmarks.profile;
+
+  return {
+    zoneId: "head.faceLength" as AnatomyZoneId,
+    label: HEAD_ZONE_LABELS["head.faceLength"],
+    panel: "profile",
+    line: `M ${f(bracketX)} ${f(forehead.y)} L ${f(bracketX)} ${f(chin.y)}`,
+    endBars: [
+      `M ${f(bracketX)} ${f(forehead.y)} L ${f(forehead.x)} ${f(forehead.y)}`,
+      `M ${f(bracketX)} ${f(chin.y)} L ${f(chin.x)} ${f(chin.y)}`,
+    ],
+  };
+}
+
+function buildNeckZone(panel: HeadPanel, y: number, startX: number, endX: number): HeadZoneShape {
+  const start = { x: startX, y };
+  const end = { x: endX, y };
+  const tangent = { x: 1, y: 0 };
+
+  return {
+    zoneId: "head.neck" as AnatomyZoneId,
+    label: HEAD_ZONE_LABELS["head.neck"],
+    panel,
+    line: `M ${f(startX)} ${f(y)} L ${f(endX)} ${f(y)}`,
+    endBars: [
+      perpendicularBar(start, tangent, NECK_BAR_HALF),
+      perpendicularBar(end, tangent, NECK_BAR_HALF),
+    ],
+  };
+}
+
+function buildForeheadZone(landmarks: HeadFigureLandmarks): HeadZoneShape {
+  const { forehead } = landmarks.front;
+  return {
+    zoneId: "head.forehead" as AnatomyZoneId,
+    label: HEAD_ZONE_LABELS["head.forehead"],
+    panel: "front",
+    line: `M ${f(forehead.leftX)} ${f(forehead.y)} L ${f(forehead.rightX)} ${f(forehead.y)}`,
+    endBars: [
+      perpendicularBar({ x: forehead.leftX, y: forehead.y }, { x: 1, y: 0 }, NECK_BAR_HALF),
+      perpendicularBar({ x: forehead.rightX, y: forehead.y }, { x: 1, y: 0 }, NECK_BAR_HALF),
+    ],
+  };
+}
+
+function buildHeadZones(sex: FullBodySex): ReadonlyArray<HeadZoneShape> {
+  const landmarks = HEAD_LANDMARKS[sex];
+  const { neck } = landmarks.profile;
+  const frontNeck = landmarks.front.neck;
+
+  return [
+    buildForeheadZone(landmarks),
+    buildCrownChinZone(landmarks),
+    buildFaceLengthZone(landmarks),
+    buildNeckZone("profile", neck.y, neck.throatX, neck.napeX),
+    buildNeckZone("front", frontNeck.y, frontNeck.leftX, frontNeck.rightX),
+  ];
+}
+
+const HEAD_ZONES_BY_SEX: Readonly<Record<FullBodySex, ReadonlyArray<HeadZoneShape>>> = {
+  female: buildHeadZones("female"),
+  male: buildHeadZones("male"),
+};
+
+export function getHeadZonesForSex(sex: FullBodySex): ReadonlyArray<HeadZoneShape> {
+  return HEAD_ZONES_BY_SEX[sex];
+}
+
+export function isBodyHighlightCropped(view: BodyView, isDetail: boolean): boolean {
+  return view === "head" || isDetail;
+}
+
+// The crop is supplied by the garment's head-view composition so Máscara can
+// render the frontal head alone. Overflow stays hidden: the traced figure
+// always contains both heads, and only the viewBox hides the unused one.
+export function getHeadViewRenderContract(
+  crop: HeadViewCrop = HEAD_VIEW_CROP,
+): HeadViewRenderContract {
+  return {
+    viewBox: crop,
+    viewBoxAttribute: `${crop.x} ${crop.y} ${crop.width} ${crop.height}`,
+    overflow: "hidden",
+    style: { overflow: "hidden" },
+  };
+}
+
+function getHeadPanelLabel(panel: HeadPanel): string {
+  return panel === "front" ? "frente" : "perfil";
+}
+
+export function getHeadMarkerA11yLabel(
+  zone: HeadZoneShape,
+  state: { active: boolean; filled: boolean },
+): string {
+  const states: string[] = [];
+  if (state.active) states.push("zona activa");
+  if (state.filled) states.push("medida cargada");
+  if (!state.active && !state.filled) states.push("pendiente");
+  return `${zone.label} (${getHeadPanelLabel(zone.panel)}), ${states.join(", ")}`;
+}
+
+export function buildHeadMarkerRenderContract(
+  zone: HeadZoneShape,
+  state: {
+    activeZoneId: AnatomyZoneId | null;
+    filledZoneIds: ReadonlySet<AnatomyZoneId> | ReadonlyArray<AnatomyZoneId> | undefined;
+    isInteractive: boolean;
+  },
+): HeadMarkerRenderContract {
+  const isActive = zone.zoneId === state.activeZoneId;
+  const isFilled = hasFilledZone(state.filledZoneIds, zone.zoneId);
+  return {
+    zoneId: zone.zoneId,
+    headPanel: zone.panel,
+    active: isActive ? "true" : "false",
+    filled: isFilled ? "true" : "false",
+    ariaLabel: getHeadMarkerA11yLabel(zone, { active: isActive, filled: isFilled }),
+    role: state.isInteractive ? "button" : undefined,
+    tabIndex: state.isInteractive ? 0 : undefined,
+    clickZoneId: zone.zoneId,
+  };
+}
+
+/** The distinct measurement ids the head view draws, in field order. */
+export const HEAD_ZONE_IDS: ReadonlyArray<AnatomyZoneId> = [
+  "head.forehead",
+  "head.crownChin",
+  "head.faceLength",
+  "head.neck",
+] as ReadonlyArray<AnatomyZoneId>;
+
+export function findHeadZoneShape(
+  zoneId: AnatomyZoneId,
+  sex: FullBodySex = "female",
+): HeadZoneShape | null {
+  return getHeadZonesForSex(sex).find((zone) => zone.zoneId === zoneId) ?? null;
 }
