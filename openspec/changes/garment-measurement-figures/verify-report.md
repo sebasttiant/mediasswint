@@ -3,7 +3,7 @@
 ## Candidate Under Review
 
 - Base: `847e90ecfad75bcb2e4df7156961ba7a9ffc661b^`
-- Head: `8ed0cd1441ef1f5417403df0cb685a3f7f0316e6`
+- Head: `7b0930aaeae86b6fa2aca9aee3a83cb744a786b1`
 - Lineage: protected `5c942e1` plus the activation-order correction.
 
 ## Verified Facts
@@ -25,5 +25,5 @@
 
 ## Delivery Gate
 
-Do not open a PR from this candidate while `cca1828`, `88cf0f1`, and `86a3283`
-remain over 400 changed lines. The required behavior-preserving split is pending.
+The 47-commit range has no commit above 400 changed lines. PR sizing and
+exact-checkout evidence remain required before opening any PR.

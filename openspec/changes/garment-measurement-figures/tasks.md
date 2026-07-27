@@ -3,8 +3,8 @@
 ## Candidate and Delivery Contract
 
 - Candidate lineage: `5c942e1` → activation-order reconstruction → `0fa66ad`.
-- Current candidate: `8ed0cd1441ef1f5417403df0cb685a3f7f0316e6`.
-- Base: `847e90ecfad75bcb2e4df7156961ba7a9ffc661b^`.
+- Current candidate: `7b0930aaeae86b6fa2aca9aee3a83cb744a786b1`.
+- Base: `847e90ecfad75bcb2e4df7156961ba7a9ffc661b^`; 47 commits in the inclusive range.
 - Strategy: feature-branch chain; every review diff MUST be at most 400 changed lines.
 - Status: implementation corrections are complete; independent audit and visual QA are **NOT VERIFIED**.
 
@@ -15,14 +15,14 @@
 - [x] C3 Restrict integration databases to an explicit disposable-host allow-list.
 - [x] C4 Build PostgreSQL 18 CI URLs at runtime without committed credentials.
 - [x] C5 Reconstruct the chain so repaired work units typecheck with their relevant tests.
-- [x] C6 Move MA/MMA activation after shell, finalization, snapshot, save, completion, and identity prerequisites; record the delivery-plan blocker for three oversized commits.
+- [x] C6 Move MA/MMA activation after shell, finalization, snapshot, save, completion, and identity prerequisites; split all formerly oversized units below 400 changed lines.
 - [x] C7 Replace stale OpenSpec execution records with this final-candidate-only record.
 - [x] C8 Name and validate the minimum compatible rollback point in `rollback-fix-forward.md`.
 - [x] C9 Record observability, deploy health, and audit reconciliation as residual follow-up only.
 
 ## Remaining Verification
 
-- [ ] Behaviorally split the three inherited oversized commits (`cca1828`, `88cf0f1`, `86a3283`) with their tests before creating any PR branches.
+- [x] Behaviorally split the three inherited oversized commits into the 9-commit geometry/render/layout sequence `d546bc8..8e86b9d`; every resulting commit is at most 400 changed lines.
 - [ ] Run exact-checkout typecheck plus focused work-unit tests for every final commit in a new sibling worktree.
 - [ ] Run final-HEAD unit, render, PostgreSQL 18 `_probe` integration, Prisma validate/fresh migrate, typecheck, lint, build, scanner, and diff-check gates.
 - [ ] Obtain an independent audit and visual QA. Do not represent either as verified until evidence is attached.

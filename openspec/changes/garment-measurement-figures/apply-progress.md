@@ -2,7 +2,7 @@
 
 ## Candidate
 
-`8ed0cd1441ef1f5417403df0cb685a3f7f0316e6`, reconstructed from the protected
+`7b0930aaeae86b6fa2aca9aee3a83cb744a786b1`, reconstructed from the protected
 `5c942e1` candidate. MA/MMA activation is now `c5268ea`, immediately after the
 head shell and finalization commits (`f4a44e4`, `37990c8`, `e229af2`) and before
 later atomic-save corrections.
@@ -21,9 +21,9 @@ later atomic-save corrections.
 
 ## Blocking Delivery Finding
 
-Three inherited commits exceed the hard 400 changed-line budget: `cca1828` (565),
-`88cf0f1` (493), and `86a3283` (465). They must be behaviorally reconstructed
-with their tests before an exact compliant chained-PR plan can be approved.
+The inherited oversized units were reconstructed as `d546bc8..8e86b9d`. Every
+commit in `847e90e^..7b0930a` is now at most 400 changed lines; the application
+tree is byte-for-byte equivalent to the protected pre-split candidate.
 
 ## TDD Cycle Evidence
 
