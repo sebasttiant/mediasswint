@@ -3,7 +3,7 @@
 ## Candidate and Delivery Contract
 
 - Candidate lineage: `5c942e1` → activation-order reconstruction → `0fa66ad`.
-- Current candidate: `0fa66ad723dbb1c101e50e70d6fc500839ebecb3`.
+- Current candidate: `8ed0cd1441ef1f5417403df0cb685a3f7f0316e6`.
 - Base: `847e90ecfad75bcb2e4df7156961ba7a9ffc661b^`.
 - Strategy: feature-branch chain; every review diff MUST be at most 400 changed lines.
 - Status: implementation corrections are complete; independent audit and visual QA are **NOT VERIFIED**.

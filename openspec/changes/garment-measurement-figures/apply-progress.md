@@ -2,7 +2,7 @@
 
 ## Candidate
 
-`0fa66ad723dbb1c101e50e70d6fc500839ebecb3`, reconstructed from the protected
+`8ed0cd1441ef1f5417403df0cb685a3f7f0316e6`, reconstructed from the protected
 `5c942e1` candidate. MA/MMA activation is now `c5268ea`, immediately after the
 head shell and finalization commits (`f4a44e4`, `37990c8`, `e229af2`) and before
 later atomic-save corrections.
@@ -16,6 +16,8 @@ later atomic-save corrections.
 - C8 validated `dc3fae5` as the minimum schema-plus-active-projection rollback
   commit.
 - C9 records residual, non-vendor operational follow-up.
+- The final ordering exposed a fixture omitted from the later snapshot-state
+  contract; `8ed0cd1` records the required `templateSnapshotState: "valid"`.
 
 ## Blocking Delivery Finding
 

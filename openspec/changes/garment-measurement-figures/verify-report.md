@@ -3,7 +3,7 @@
 ## Candidate Under Review
 
 - Base: `847e90ecfad75bcb2e4df7156961ba7a9ffc661b^`
-- Head: `0fa66ad723dbb1c101e50e70d6fc500839ebecb3`
+- Head: `8ed0cd1441ef1f5417403df0cb685a3f7f0316e6`
 - Lineage: protected `5c942e1` plus the activation-order correction.
 
 ## Verified Facts
@@ -13,6 +13,8 @@
 - MA/MMA activation (`c5268ea`) follows the head field strip, guarded shell, and
   finalization controls, so the reordered history does not expose a route-enabled
   mask before its usable UI flow.
+- The final fixture correction `8ed0cd1` restores exact type compatibility after
+  the snapshot-state contract became required.
 
 ## NOT VERIFIED
 
