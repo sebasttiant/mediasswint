@@ -99,6 +99,7 @@ function buildRepository(snapshot: TemplateSnapshot) {
         productFlags: input.productFlags,
         metadata: input.metadata,
         templateSnapshot: input.templateSnapshot,
+        templateSnapshotState: "valid",
         values: {},
         createdAt: now,
         updatedAt: now,
