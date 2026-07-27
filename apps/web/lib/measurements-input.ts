@@ -1,6 +1,5 @@
 import {
   COMPRESSION_MEASUREMENTS,
-  type CompressionMeasurementKey,
 } from "./compression-measurements";
 import { normalizePatientSex, type PatientSex } from "./body-figure-sex";
 import {
@@ -26,10 +25,16 @@ export type CreateMeasurementInput = {
   productFlags: ProductFlags | null;
   patientSex: PatientSex | null;
   garmentSnapshot: GarmentSnapshot | null;
+  /** Raw reference retained even when the client display fields are malformed. */
+  garmentSnapshotReference: string | null;
 };
 
 export type UpdateMeasurementValuesInput = {
-  valuesByKey: Partial<Record<CompressionMeasurementKey, number | null>>;
+  // Keyed by template field key. NOT narrowed to CompressionMeasurementKey:
+  // head templates (mentonera-v1, mascara-v1) contribute their own keys, and
+  // the allowed set is decided per-session from the persisted template
+  // snapshot — see `MeasurementKeyRanges` / `buildMeasurementKeyRanges`.
+  valuesByKey: Record<string, number | null>;
   complete: boolean;
   measuredAt?: Date;
   notes?: string | null;
@@ -38,6 +43,8 @@ export type UpdateMeasurementValuesInput = {
   diagnosis?: string | null;
   productFlags?: ProductFlags | null;
   garmentSnapshot?: GarmentSnapshot | null;
+  /** Raw reference retained even when the client display fields are malformed. */
+  garmentSnapshotReference?: string | null;
 };
 
 export type ListMeasurementsQuery = {
@@ -54,10 +61,60 @@ const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 const ISO_INSTANT_REGEX = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
 
-const KNOWN_KEYS = new Set<string>(COMPRESSION_MEASUREMENTS.map((m) => m.key));
-const KEY_RANGES = new Map(
+/**
+ * Allowed measurement keys for one request, with each key's accepted range.
+ *
+ * Validation is per-session, not global: the keys a PATCH may carry are the
+ * keys of THAT session's persisted template snapshot. Deriving them from
+ * COMPRESSION_MEASUREMENTS alone made every Mentonera/Máscara value fail as
+ * "unknown measurement key", so a populated MA/MMA/ME session could never be
+ * saved or completed (HTTP 400).
+ */
+export type MeasurementKeyRanges = ReadonlyMap<string, { min: number; max: number }>;
+
+/** Fallback allow-list: the compression catalog. Used when no snapshot is supplied. */
+export const COMPRESSION_KEY_RANGES: MeasurementKeyRanges = new Map(
   COMPRESSION_MEASUREMENTS.map((m) => [m.key, { min: m.min, max: m.max }] as const),
 );
+
+/**
+ * Structural shape of a persisted template snapshot, kept local so this module
+ * stays free of a runtime dependency on lib/measurements.
+ */
+type TemplateSnapshotLike = {
+  sections: ReadonlyArray<{
+    fields: ReadonlyArray<{ key: string; minValue: number; maxValue: number }>;
+  }>;
+};
+
+/**
+ * Build the allow-list from a session's own template snapshot. Ranges come
+ * from each field's persisted minValue/maxValue, so range enforcement is NOT
+ * weakened — it becomes per-template instead of per-garment-family.
+ */
+export function buildMeasurementKeyRanges(snapshot: TemplateSnapshotLike | null | undefined): MeasurementKeyRanges {
+  if (!snapshot) return COMPRESSION_KEY_RANGES;
+  // Defence in depth. The route only ever passes a snapshot that already came
+  // through parseTemplateSnapshot, but this function is exported and a
+  // sections-less snapshot really does exist in the database — iterating it
+  // blindly turned a data problem into a 500.
+  if (!Array.isArray(snapshot.sections)) return COMPRESSION_KEY_RANGES;
+
+  const ranges = new Map<string, { min: number; max: number }>();
+  for (const section of snapshot.sections) {
+    if (!section || !Array.isArray(section.fields)) continue;
+    for (const field of section.fields) {
+      const min = Number(field.minValue);
+      const max = Number(field.maxValue);
+      if (!Number.isFinite(min) || !Number.isFinite(max)) continue;
+      ranges.set(field.key, { min, max });
+    }
+  }
+
+  // A snapshot that yielded no usable field ranges must not silently accept
+  // everything — fall back to the compression allow-list.
+  return ranges.size > 0 ? ranges : COMPRESSION_KEY_RANGES;
+}
 
 function parseStrictIsoInstant(value: unknown, errors: ValidationError[]): Date | null {
   if (typeof value !== "string" || value.trim() === "") {
@@ -175,6 +232,12 @@ function parseGarmentSnapshotFromMetadata(metadata: unknown): GarmentSnapshot | 
   };
 }
 
+function parseGarmentSnapshotReference(metadata: unknown): string | null {
+  if (!isRecord(metadata) || !isRecord(metadata.garmentSnapshot)) return null;
+  const reference = metadata.garmentSnapshot.reference;
+  return typeof reference === "string" && reference.trim() !== "" ? reference.trim() : null;
+}
+
 export function parseCreateMeasurementInput(body: unknown): ValidationResult<CreateMeasurementInput> {
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
     return { ok: false, errors: [{ field: "body", message: "must be a JSON object" }] };
@@ -191,6 +254,7 @@ export function parseCreateMeasurementInput(body: unknown): ValidationResult<Cre
   const productFlags = parseProductFlags(source.productFlags, errors);
   const patientSex = normalizePatientSex(typeof source.patientSex === "string" ? source.patientSex : null);
   const garmentSnapshot = parseGarmentSnapshotFromMetadata(source.metadata);
+  const garmentSnapshotReference = parseGarmentSnapshotReference(source.metadata);
 
   if (errors.length > 0 || !measuredAt) {
     return { ok: false, errors };
@@ -207,12 +271,17 @@ export function parseCreateMeasurementInput(body: unknown): ValidationResult<Cre
       productFlags,
       patientSex,
       garmentSnapshot,
+      garmentSnapshotReference,
     },
   };
 }
 
 export function parseUpdateMeasurementValuesInput(
   body: unknown,
+  // Defaults to the compression catalog so existing callers keep their exact
+  // behaviour. The measurement PATCH route passes the session's own snapshot
+  // ranges instead.
+  allowedKeys: MeasurementKeyRanges = COMPRESSION_KEY_RANGES,
 ): ValidationResult<UpdateMeasurementValuesInput> {
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
     return { ok: false, errors: [{ field: "body", message: "must be a JSON object" }] };
@@ -227,6 +296,9 @@ export function parseUpdateMeasurementValuesInput(
   const diagnosis = source.diagnosis === undefined ? undefined : parseNullableText(source.diagnosis, "diagnosis", MAX_DIAGNOSIS_LENGTH, errors);
   const productFlags = source.productFlags === undefined ? undefined : parseProductFlags(source.productFlags, errors);
   const garmentSnapshot = source.metadata === undefined ? undefined : parseGarmentSnapshotFromMetadata(source.metadata);
+  const garmentSnapshotReference = source.metadata === undefined
+    ? undefined
+    : parseGarmentSnapshotReference(source.metadata);
 
   const rawValues = source.valuesByKey;
   if (rawValues === undefined || rawValues === null) {
@@ -240,31 +312,31 @@ export function parseUpdateMeasurementValuesInput(
     errors.push({ field: "complete", message: "must be a boolean" });
   }
 
-  const result: Partial<Record<CompressionMeasurementKey, number | null>> = {};
+  const result: Record<string, number | null> = {};
 
   if (rawValues && typeof rawValues === "object" && !Array.isArray(rawValues)) {
     for (const [key, raw] of Object.entries(rawValues as Record<string, unknown>)) {
-      if (!KNOWN_KEYS.has(key)) {
+      const range = allowedKeys.get(key);
+      if (!range) {
         errors.push({ field: `valuesByKey.${key}`, message: "unknown measurement key" });
         continue;
       }
       if (raw === null) {
-        result[key as CompressionMeasurementKey] = null;
+        result[key] = null;
         continue;
       }
       if (typeof raw !== "number" || !Number.isFinite(raw)) {
         errors.push({ field: `valuesByKey.${key}`, message: "must be a finite number or null" });
         continue;
       }
-      const range = KEY_RANGES.get(key as CompressionMeasurementKey);
-      if (range && (raw < range.min || raw > range.max)) {
+      if (raw < range.min || raw > range.max) {
         errors.push({
           field: `valuesByKey.${key}`,
           message: `must be between ${range.min} and ${range.max}`,
         });
         continue;
       }
-      result[key as CompressionMeasurementKey] = raw;
+      result[key] = raw;
     }
   }
 
@@ -282,6 +354,7 @@ export function parseUpdateMeasurementValuesInput(
       ...(diagnosis !== undefined ? { diagnosis } : {}),
       ...(productFlags !== undefined ? { productFlags } : {}),
       ...(garmentSnapshot !== undefined ? { garmentSnapshot } : {}),
+      ...(garmentSnapshotReference !== undefined ? { garmentSnapshotReference } : {}),
     },
   };
 }

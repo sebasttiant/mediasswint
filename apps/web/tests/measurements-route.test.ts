@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import { getSessionCookieName, type AuthUser } from "../lib/auth";
 import { GARMENT_FIGURE_KEY } from "../lib/garment-catalog";
+import { resolveTemplateCode } from "../lib/garment-template-resolver";
 import {
   handleListMeasurementsRequest,
   handlePostMeasurementRequest,
@@ -21,7 +22,10 @@ import {
   type MeasurementsRepository,
   type TemplateSnapshot,
 } from "../lib/measurements";
+import { classifyPersistedSnapshot } from "../lib/template-snapshot";
 import { buildCompressionTemplate } from "../lib/compression-template";
+import { buildMentoneraTemplate } from "../lib/mentonera-template";
+import { buildMascaraTemplate } from "../lib/mascara-template";
 
 const staffUser: AuthUser = {
   id: "staff-1",
@@ -48,6 +52,73 @@ function buildSnapshot(): TemplateSnapshot {
         counter += 1;
         return {
           id: `fld-${counter}`,
+          key: field.key,
+          label: field.label,
+          fieldType: field.fieldType,
+          unit: field.unit,
+          isRequired: field.isRequired,
+          sortOrder: field.sortOrder,
+          minValue: field.minValue,
+          maxValue: field.maxValue,
+          metadata: field.metadata as unknown as Record<string, unknown>,
+        };
+      }),
+    })),
+  };
+}
+
+function buildMentoneraSnapshot(): TemplateSnapshot {
+  const tpl = buildMentoneraTemplate();
+  let counter = 0;
+  return {
+    templateId: "tpl-mentonera-1",
+    code: tpl.code,
+    name: tpl.name,
+    version: tpl.version,
+    description: tpl.description,
+    sections: tpl.sections.map((section) => ({
+      title: section.title,
+      sortOrder: section.sortOrder,
+      fields: section.fields.map((field) => {
+        counter += 1;
+        return {
+          id: `fld-mentonera-${counter}`,
+          key: field.key,
+          label: field.label,
+          fieldType: field.fieldType,
+          unit: field.unit,
+          isRequired: field.isRequired,
+          sortOrder: field.sortOrder,
+          minValue: field.minValue,
+          maxValue: field.maxValue,
+          metadata: field.metadata as unknown as Record<string, unknown>,
+        };
+      }),
+    })),
+  };
+}
+
+
+// Builds a mascara-v1 snapshot directly from the dormant template definition.
+// It does NOT go through garment-reference resolution, so the completion
+// invariant can be proven for Máscara-shaped snapshots without MA/MMA being
+// activated — that activation is deliberately the last commit in this chain.
+function buildMascaraSnapshot(): TemplateSnapshot {
+  const tpl = buildMascaraTemplate();
+  let counter = 0;
+  return {
+    templateId: "tpl-mascara-1",
+    code: tpl.code,
+    name: tpl.name,
+    version: tpl.version,
+    description: tpl.description,
+    sections: tpl.sections.map((section) => ({
+      title: section.title,
+      sortOrder: section.sortOrder,
+      fields: section.fields.map((field) => {
+        counter += 1;
+        return {
+          id: `fld-mascara-${counter}`,
           key: field.key,
           label: field.label,
           fieldType: field.fieldType,
@@ -97,12 +168,24 @@ function buildInMemoryRepository(options: {
         productFlags: input.productFlags,
         metadata: input.metadata,
         templateSnapshot: input.templateSnapshot,
+        templateSnapshotState: classifyPersistedSnapshot(input.templateSnapshot).templateSnapshotState,
         values: {},
         createdAt: now,
         updatedAt: now,
       });
       return { id };
     },
+    // Atomic in the fake too: if any value fails, no draft is recorded.
+    async createDraftWithValues(input) {
+      const created = await repository.createDraft(input.draft);
+      const copied = await repository.replaceValues({
+        sessionId: created.id,
+        values: input.values,
+      });
+      if (!copied.ok) throw new Error("createDraftWithValues rolled back");
+      return { ok: true as const, id: created.id };
+    },
+
     async getDetail(id) {
       return sessions.get(id) ?? null;
     },
@@ -141,6 +224,22 @@ function buildInMemoryRepository(options: {
       sessions.set(input.sessionId, { ...session, values: next });
       return { ok: true, status: "DRAFT" };
     },
+    // Mirrors the transactional contract: status is checked first, then both
+    // halves are applied; a failure in either leaves the session untouched.
+    async saveDraft(input) {
+      const session = sessions.get(input.sessionId);
+      if (!session) return { ok: false, status: null };
+      if (session.status !== "DRAFT") return { ok: false, status: session.status };
+      if (input.context) {
+        const context = await repository.updateContext({
+          sessionId: input.sessionId,
+          ...input.context,
+        });
+        if (!context.ok) return context;
+      }
+      return repository.replaceValues({ sessionId: input.sessionId, values: input.values });
+    },
+
     async updateContext(input) {
       const session = sessions.get(input.sessionId);
       if (!session) return { ok: false, status: null };
@@ -209,7 +308,10 @@ function collectionDeps(
 ): MeasurementsCollectionDeps {
   return {
     repository: buildInMemoryRepository().repository,
-    templateCode: "compression-v1",
+    // Real resolver by default — this is what forces every existing POST
+    // test through route.ts's actual garment -> templateCode resolution
+    // instead of a hardcoded "compression-v1" dep.
+    resolveTemplateCode,
     ...overrides,
   };
 }
@@ -271,7 +373,7 @@ describe("POST /api/patients/[id]/measurements", () => {
     const response = await handlePostMeasurementRequest(
       postRequest({
         measuredAt: "2026-04-28T10:00:00Z",
-        garmentType: "Media corta",
+        garmentType: "MR",
         compressionClass: "II",
         productFlags: { mediaCorta: true },
         diagnosis: "Insuficiencia venosa",
@@ -288,7 +390,65 @@ describe("POST /api/patients/[id]/measurements", () => {
     const stored = repo.sessions.get(json.id);
     assert.equal(stored?.status, "DRAFT");
     assert.equal(stored?.diagnosis, "Insuficiencia venosa");
-    assert.deepEqual(stored?.metadata, { patientSex: "MALE" });
+    assert.deepEqual(stored?.metadata, {
+      patientSex: "MALE",
+      garmentSnapshot: {
+        reference: "MR",
+        label: "Media a la Rodilla Par Adulto",
+        family: "Lower limb",
+        figureKey: GARMENT_FIGURE_KEY.LOWER_LIMB,
+      },
+    });
+  });
+
+  it("resolves templateCode from the garment reference — ME creates a mentonera-v1 draft", async () => {
+    // Repo only knows the mentonera-v1 snapshot here — proves the route
+    // resolves the code from garmentType (not a hardcoded compression-v1)
+    // and passes it straight through to getActiveTemplateSnapshot.
+    const repo = buildInMemoryRepository({ snapshot: buildMentoneraSnapshot() });
+    const deps = collectionDeps({ repository: repo.repository });
+    const response = await handlePostMeasurementRequest(
+      postRequest({ measuredAt: "2026-04-28T10:00:00Z", garmentType: "ME" }),
+      { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
+      deps,
+    );
+    assert.equal(response.status, 201);
+    const json = (await response.json()) as { id: string; templateSnapshot: TemplateSnapshot };
+    assert.equal(json.templateSnapshot.code, "mentonera-v1");
+    assert.equal(json.templateSnapshot.sections[0]?.fields.length, 3);
+  });
+
+  it("returns 503 when ME resolves to mentonera-v1 but no active template is seeded for it", async () => {
+    // Reliability guard: resolveTemplateCode("ME") === "mentonera-v1" is
+    // correct, but the repo here only has compression-v1 registered (the
+    // seed hasn't run yet in this environment) — must fail loudly with the
+    // existing TEMPLATE_NOT_FOUND -> 503 branch, never crash or fall back
+    // silently to a mismatched snapshot.
+    const repo = buildInMemoryRepository();
+    assert.equal(resolveTemplateCode("ME"), "mentonera-v1");
+    const deps = collectionDeps({ repository: repo.repository });
+    const response = await handlePostMeasurementRequest(
+      postRequest({ measuredAt: "2026-04-28T10:00:00Z", garmentType: "ME" }),
+      { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
+      deps,
+    );
+    assert.equal(response.status, 503);
+  });
+
+  it("still resolves non-ME garments to compression-v1 (non-regression)", async () => {
+    const repo = buildInMemoryRepository();
+    const deps = collectionDeps({ repository: repo.repository });
+    const response = await handlePostMeasurementRequest(
+      postRequest({ measuredAt: "2026-04-28T10:00:00Z", garmentType: "MR" }),
+      { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
+      deps,
+    );
+    assert.equal(response.status, 201);
+    const json = (await response.json()) as { id: string; templateSnapshot: TemplateSnapshot };
+    assert.equal(json.templateSnapshot.code, "compression-v1");
   });
 });
 
@@ -432,7 +592,7 @@ describe("PATCH /api/patients/[id]/measurements/[sessionId]", () => {
     assert.equal(json.values.legRight1, 24.5);
   });
 
-  it("updates DRAFT context fields when provided", async () => {
+  it("updates DRAFT non-garment context fields when provided", async () => {
     const repo = buildInMemoryRepository();
     const created = await repo.repository.createDraft({
       patientId: "pat-1",
@@ -451,7 +611,6 @@ describe("PATCH /api/patients/[id]/measurements/[sessionId]", () => {
       patchRequest(`/api/patients/pat-1/measurements/${created.id}`, {
         valuesByKey: { legRight1: 24.5 },
         measuredAt: "2026-05-01T10:00:00Z",
-        garmentType: "Media larga",
         notes: null,
       }),
       { params: Promise.resolve({ id: "pat-1", sessionId: created.id }) },
@@ -462,7 +621,7 @@ describe("PATCH /api/patients/[id]/measurements/[sessionId]", () => {
     assert.equal(response.status, 200);
     const stored = repo.sessions.get(created.id);
     assert.equal(stored?.measuredAt.toISOString(), "2026-05-01T10:00:00.000Z");
-    assert.equal(stored?.garmentType, "Media larga");
+    assert.equal(stored?.garmentType, null);
     assert.equal(stored?.notes, null);
   });
 
@@ -547,6 +706,408 @@ describe("PATCH /api/patients/[id]/measurements/[sessionId]", () => {
       deps,
     );
     assert.equal(response.status, 400);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Specialized head garments end-to-end through the real route handlers.
+//
+// Regression target: parseUpdateMeasurementValuesInput derived its allowed key
+// set from COMPRESSION_MEASUREMENTS alone, so every Mentonera/Máscara key was
+// rejected as "unknown measurement key" and a populated MA/MMA/ME session
+// could never be draft-saved or completed — PATCH answered 400. Validation is
+// now built from the session's own persisted template snapshot.
+// ---------------------------------------------------------------------------
+describe("PATCH specialized head sessions — MA / MMA / ME can be saved and completed", () => {
+  async function createHeadSession(
+    garmentReference: string,
+    snapshot: TemplateSnapshot,
+  ): Promise<{ repo: ReturnType<typeof buildInMemoryRepository>; sessionId: string }> {
+    const repo = buildInMemoryRepository({ snapshot });
+    const response = await handlePostMeasurementRequest(
+      postRequest({ measuredAt: "2026-04-28T10:00:00Z", garmentType: garmentReference }),
+      { params: Promise.resolve({ id: "pat-1" }) },
+      staffUser,
+      collectionDeps({ repository: repo.repository }),
+    );
+    assert.equal(response.status, 201);
+    const json = (await response.json()) as { id: string; templateSnapshot: TemplateSnapshot };
+    assert.equal(json.templateSnapshot.code, snapshot.code);
+    return { repo, sessionId: json.id };
+  }
+
+  // Only ME is exercised here. MA and MMA do not resolve to a template yet —
+  // that mapping is deliberately the LAST commit in this chain, so Máscara is
+  // never exposed before the persistence support that makes it saveable. Its
+  // route coverage ships with that activation commit, not before it.
+  const CASES = [
+    {
+      reference: "ME",
+      code: "mentonera-v1",
+      buildSnapshotForCase: buildMentoneraSnapshot,
+      values: { mentoneraCrownChin: 62, mentoneraFaceLength: 21.5, mentoneraNeck: 36 },
+    },
+  ] as const;
+
+  for (const testCase of CASES) {
+    it(`draft-saves ${testCase.reference} values (${testCase.code}) with 200 and persists them`, async () => {
+      const { repo, sessionId } = await createHeadSession(
+        testCase.reference,
+        testCase.buildSnapshotForCase(),
+      );
+
+      const response = await handlePatchMeasurementRequest(
+        patchRequest(`/api/patients/pat-1/measurements/${sessionId}`, {
+          valuesByKey: testCase.values,
+        }),
+        { params: Promise.resolve({ id: "pat-1", sessionId }) },
+        staffUser,
+        sessionDeps({ repository: repo.repository }),
+      );
+
+      assert.equal(response.status, 200);
+      assert.deepEqual(repo.sessions.get(sessionId)?.values, testCase.values);
+      assert.equal(repo.sessions.get(sessionId)?.status, "DRAFT");
+    });
+
+    it(`completes a ${testCase.reference} session with complete=true`, async () => {
+      const { repo, sessionId } = await createHeadSession(
+        testCase.reference,
+        testCase.buildSnapshotForCase(),
+      );
+
+      const response = await handlePatchMeasurementRequest(
+        patchRequest(`/api/patients/pat-1/measurements/${sessionId}`, {
+          valuesByKey: testCase.values,
+          complete: true,
+        }),
+        { params: Promise.resolve({ id: "pat-1", sessionId }) },
+        staffUser,
+        sessionDeps({ repository: repo.repository }),
+      );
+
+      assert.equal(response.status, 200);
+      assert.equal(repo.sessions.get(sessionId)?.status, "COMPLETED");
+      assert.deepEqual(repo.sessions.get(sessionId)?.values, testCase.values);
+    });
+
+    it(`still rejects an unknown key on a ${testCase.reference} session with 400`, async () => {
+      const { repo, sessionId } = await createHeadSession(
+        testCase.reference,
+        testCase.buildSnapshotForCase(),
+      );
+
+      const response = await handlePatchMeasurementRequest(
+        patchRequest(`/api/patients/pat-1/measurements/${sessionId}`, {
+          valuesByKey: { ...testCase.values, totallyMadeUpKey: 12 },
+        }),
+        { params: Promise.resolve({ id: "pat-1", sessionId }) },
+        staffUser,
+        sessionDeps({ repository: repo.repository }),
+      );
+
+      assert.equal(response.status, 400);
+      const json = (await response.json()) as { errors: Array<{ field: string; message: string }> };
+      assert.ok(
+        json.errors.some(
+          (error) =>
+            error.field === "valuesByKey.totallyMadeUpKey" &&
+            error.message === "unknown measurement key",
+        ),
+      );
+      // Nothing was written.
+      assert.deepEqual(repo.sessions.get(sessionId)?.values, {});
+    });
+  }
+
+  it("rejects a COMPRESSION key on a head session (validation is per-snapshot, not widened)", async () => {
+    const { repo, sessionId } = await createHeadSession("ME", buildMentoneraSnapshot());
+
+    const response = await handlePatchMeasurementRequest(
+      patchRequest(`/api/patients/pat-1/measurements/${sessionId}`, {
+        valuesByKey: { legRight1: 24.5 },
+      }),
+      { params: Promise.resolve({ id: "pat-1", sessionId }) },
+      staffUser,
+      sessionDeps({ repository: repo.repository }),
+    );
+
+    assert.equal(response.status, 400);
+  });
+
+  it("rejects a MENTONERA key on a compression session (no global weakening)", async () => {
+    const repo = buildInMemoryRepository();
+    const created = await repo.repository.createDraft({
+      patientId: "pat-1",
+      templateId: "tpl-1",
+      measuredAt: new Date("2026-04-29T10:00:00Z"),
+      notes: null,
+      diagnosis: null,
+      garmentType: "MR",
+      compressionClass: null,
+      productFlags: null,
+      metadata: null,
+      templateSnapshot: buildSnapshot(),
+    });
+
+    const response = await handlePatchMeasurementRequest(
+      patchRequest(`/api/patients/pat-1/measurements/${created.id}`, {
+        valuesByKey: { mentoneraNeck: 36 },
+      }),
+      { params: Promise.resolve({ id: "pat-1", sessionId: created.id }) },
+      staffUser,
+      sessionDeps({ repository: repo.repository }),
+    );
+
+    assert.equal(response.status, 400);
+  });
+
+  it("enforces the head template's own numeric range", async () => {
+    const { repo, sessionId } = await createHeadSession("ME", buildMentoneraSnapshot());
+
+    const response = await handlePatchMeasurementRequest(
+      patchRequest(`/api/patients/pat-1/measurements/${sessionId}`, {
+        // The head template's own persisted minValue/maxValue must bound this,
+        // not the compression catalog.
+        valuesByKey: { mentoneraCrownChin: 5000 },
+      }),
+      { params: Promise.resolve({ id: "pat-1", sessionId }) },
+      staffUser,
+      sessionDeps({ repository: repo.repository }),
+    );
+
+    assert.equal(response.status, 400);
+  });
+
+  it("accepts null to clear a specialized value", async () => {
+    const { repo, sessionId } = await createHeadSession("ME", buildMentoneraSnapshot());
+    const deps = sessionDeps({ repository: repo.repository });
+
+    await handlePatchMeasurementRequest(
+      patchRequest(`/api/patients/pat-1/measurements/${sessionId}`, {
+        valuesByKey: { mentoneraNeck: 36 },
+      }),
+      { params: Promise.resolve({ id: "pat-1", sessionId }) },
+      staffUser,
+      deps,
+    );
+    assert.deepEqual(repo.sessions.get(sessionId)?.values, { mentoneraNeck: 36 });
+
+    const cleared = await handlePatchMeasurementRequest(
+      patchRequest(`/api/patients/pat-1/measurements/${sessionId}`, {
+        valuesByKey: { mentoneraNeck: null },
+      }),
+      { params: Promise.resolve({ id: "pat-1", sessionId }) },
+      staffUser,
+      deps,
+    );
+
+    assert.equal(cleared.status, 200);
+    assert.deepEqual(repo.sessions.get(sessionId)?.values, {});
+  });
+
+});
+
+// ---------------------------------------------------------------------------
+// SERVER-SIDE COMPLETION INVARIANT.
+//
+// A degraded/empty head session must not be finalizable. Disabling the UI
+// button is a convenience; the domain guard lives in completeMeasurement, so
+// it holds for any caller including a direct API call. These tests bypass the
+// UI entirely and drive the route handler.
+// ---------------------------------------------------------------------------
+describe("PATCH complete=true — server-side head snapshot invariant", () => {
+  function degrade(snapshot: TemplateSnapshot, fieldCount: number): TemplateSnapshot {
+    const section = snapshot.sections[0]!;
+    return {
+      ...snapshot,
+      sections: [{ ...section, fields: section.fields.slice(0, fieldCount) }],
+    };
+  }
+
+  function emptied(snapshot: TemplateSnapshot): TemplateSnapshot {
+    return { ...snapshot, sections: [] };
+  }
+
+  async function seedSession(snapshot: TemplateSnapshot, garmentType: string) {
+    const repo = buildInMemoryRepository({ snapshot });
+    const created = await repo.repository.createDraft({
+      patientId: "pat-1",
+      templateId: snapshot.templateId,
+      measuredAt: new Date("2026-04-29T10:00:00Z"),
+      notes: null,
+      diagnosis: null,
+      garmentType,
+      compressionClass: null,
+      productFlags: null,
+      metadata: null,
+      templateSnapshot: snapshot,
+    });
+    return { repo, sessionId: created.id, deps: sessionDeps({ repository: repo.repository }) };
+  }
+
+  const VALID_CASES = [
+    { label: "MA", garment: "MA", snapshot: buildMascaraSnapshot, values: { mascaraForehead: 56.5, mascaraNeck: 38 } },
+    { label: "MMA", garment: "MMA", snapshot: buildMascaraSnapshot, values: { mascaraForehead: 55, mascaraNeck: 37.5 } },
+    {
+      label: "ME",
+      garment: "ME",
+      snapshot: buildMentoneraSnapshot,
+      values: { mentoneraCrownChin: 62, mentoneraFaceLength: 21.5, mentoneraNeck: 36 },
+    },
+  ] as const;
+
+  for (const testCase of VALID_CASES) {
+    it(`completes a COMPLETE ${testCase.label} snapshot normally`, async () => {
+      const { repo, sessionId, deps } = await seedSession(testCase.snapshot(), testCase.garment);
+
+      const response = await handlePatchMeasurementRequest(
+        patchRequest(`/api/patients/pat-1/measurements/${sessionId}`, {
+          valuesByKey: testCase.values,
+          complete: true,
+        }),
+        { params: Promise.resolve({ id: "pat-1", sessionId }) },
+        staffUser,
+        deps,
+      );
+
+      assert.equal(response.status, 200);
+      assert.equal(repo.sessions.get(sessionId)?.status, "COMPLETED");
+    });
+  }
+
+  const BLOCKED_CASES = [
+    {
+      label: "PARTIAL Máscara (1 of 2 fields)",
+      snapshot: () => degrade(buildMascaraSnapshot(), 1),
+      garment: "MA",
+      values: { mascaraForehead: 56.5 },
+    },
+    {
+      label: "PARTIAL Mentonera (2 of 3 fields)",
+      snapshot: () => degrade(buildMentoneraSnapshot(), 2),
+      garment: "ME",
+      values: { mentoneraCrownChin: 62 },
+    },
+    {
+      label: "EMPTY recognized head snapshot",
+      snapshot: () => emptied(buildMentoneraSnapshot()),
+      garment: "ME",
+      values: {},
+    },
+  ] as const;
+
+  for (const testCase of BLOCKED_CASES) {
+    it(`REJECTS completion for a ${testCase.label} with 422`, async () => {
+      const { repo, sessionId, deps } = await seedSession(testCase.snapshot(), testCase.garment);
+
+      const response = await handlePatchMeasurementRequest(
+        patchRequest(`/api/patients/pat-1/measurements/${sessionId}`, {
+          valuesByKey: testCase.values,
+          complete: true,
+        }),
+        { params: Promise.resolve({ id: "pat-1", sessionId }) },
+        staffUser,
+        deps,
+      );
+
+      assert.equal(response.status, 422);
+      const json = (await response.json()) as { code: string; reason: string | null };
+      assert.equal(json.code, "INCOMPLETE_TEMPLATE_SNAPSHOT");
+      assert.ok(json.reason, "the refusal must explain itself");
+      // The invariant: the session is NOT completed.
+      assert.equal(repo.sessions.get(sessionId)?.status, "DRAFT");
+    });
+
+    it(`still allows DRAFT saving for a ${testCase.label}`, async () => {
+      const { repo, sessionId, deps } = await seedSession(testCase.snapshot(), testCase.garment);
+
+      const response = await handlePatchMeasurementRequest(
+        patchRequest(`/api/patients/pat-1/measurements/${sessionId}`, {
+          valuesByKey: testCase.values,
+        }),
+        { params: Promise.resolve({ id: "pat-1", sessionId }) },
+        staffUser,
+        deps,
+      );
+
+      assert.equal(response.status, 200);
+      assert.equal(repo.sessions.get(sessionId)?.status, "DRAFT");
+      assert.deepEqual(repo.sessions.get(sessionId)?.values, testCase.values);
+    });
+  }
+
+  it("keeps values written by the same request that was refused completion", async () => {
+    const { repo, sessionId, deps } = await seedSession(degrade(buildMascaraSnapshot(), 1), "MA");
+
+    const response = await handlePatchMeasurementRequest(
+      patchRequest(`/api/patients/pat-1/measurements/${sessionId}`, {
+        valuesByKey: { mascaraForehead: 56.5 },
+        complete: true,
+      }),
+      { params: Promise.resolve({ id: "pat-1", sessionId }) },
+      staffUser,
+      deps,
+    );
+
+    assert.equal(response.status, 422);
+    // Draft data must not be lost just because finalizing was refused.
+    assert.deepEqual(repo.sessions.get(sessionId)?.values, { mascaraForehead: 56.5 });
+    assert.equal(repo.sessions.get(sessionId)?.status, "DRAFT");
+  });
+
+  it("does NOT gate compression sessions (guard is head-only)", async () => {
+    const { repo, sessionId, deps } = await seedSession(buildSnapshot(), "MR");
+
+    const response = await handlePatchMeasurementRequest(
+      patchRequest(`/api/patients/pat-1/measurements/${sessionId}`, {
+        valuesByKey: { legRight1: 24.5 },
+        complete: true,
+      }),
+      { params: Promise.resolve({ id: "pat-1", sessionId }) },
+      staffUser,
+      deps,
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal(repo.sessions.get(sessionId)?.status, "COMPLETED");
+  });
+
+  it("a partially-populated but STRUCTURALLY COMPLETE head snapshot still completes", async () => {
+    // Missing VALUES are a clinical decision and stay allowed; only a broken
+    // TEMPLATE blocks completion.
+    const { repo, sessionId, deps } = await seedSession(buildMascaraSnapshot(), "MA");
+
+    const response = await handlePatchMeasurementRequest(
+      patchRequest(`/api/patients/pat-1/measurements/${sessionId}`, {
+        valuesByKey: { mascaraForehead: 56.5 },
+        complete: true,
+      }),
+      { params: Promise.resolve({ id: "pat-1", sessionId }) },
+      staffUser,
+      deps,
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal(repo.sessions.get(sessionId)?.status, "COMPLETED");
+  });
+
+  it("still rejects unknown keys on a degraded head session (400 before any completion attempt)", async () => {
+    const { repo, sessionId, deps } = await seedSession(degrade(buildMascaraSnapshot(), 1), "MA");
+
+    const response = await handlePatchMeasurementRequest(
+      patchRequest(`/api/patients/pat-1/measurements/${sessionId}`, {
+        valuesByKey: { mascaraNeck: 38 },
+        complete: true,
+      }),
+      { params: Promise.resolve({ id: "pat-1", sessionId }) },
+      staffUser,
+      deps,
+    );
+
+    // mascaraNeck was sliced out of this degraded snapshot, so it is unknown.
+    assert.equal(response.status, 400);
+    assert.equal(repo.sessions.get(sessionId)?.status, "DRAFT");
   });
 });
 

@@ -9,6 +9,13 @@ type ProgressFooterProps = {
   saving: boolean;
   onSaveDraft: () => void;
   onComplete: () => void;
+  /**
+   * When set, completion is disabled and this explains why. Used when the
+   * session's template snapshot is degraded/empty so a partial head session
+   * can never be finalized silently. Draft saving stays available so measured
+   * values are not lost.
+   */
+  completeBlockedReason?: string | null;
 };
 
 export function ProgressFooter({
@@ -17,6 +24,7 @@ export function ProgressFooter({
   saving,
   onSaveDraft,
   onComplete,
+  completeBlockedReason = null,
 }: ProgressFooterProps) {
   const percentage = totalCount > 0 ? Math.round((filledCount / totalCount) * 100) : 0;
   const isComplete = filledCount === totalCount && totalCount > 0;
@@ -43,9 +51,11 @@ export function ProgressFooter({
             />
           </div>
           <p className="text-[11px] leading-tight text-slate-500 sm:text-xs">
-            {isComplete
-              ? "Todas las zonas están registradas. Ya podés cerrar la sesión."
-              : `${percentage}% completado. Podés guardar borrador o finalizar con pendientes si el caso clínico lo requiere.`}
+            {completeBlockedReason
+              ? completeBlockedReason
+              : isComplete
+                ? "Todas las zonas están registradas. Ya podés cerrar la sesión."
+                : `${percentage}% completado. Podés guardar borrador o finalizar con pendientes si el caso clínico lo requiere.`}
           </p>
         </div>
 
@@ -61,7 +71,9 @@ export function ProgressFooter({
           </button>
           <button
             type="button"
-            disabled={saving}
+            disabled={saving || completeBlockedReason !== null}
+            title={completeBlockedReason ?? undefined}
+            data-complete-blocked={completeBlockedReason !== null ? "true" : "false"}
             onClick={onComplete}
             className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 sm:px-4 lg:w-auto lg:flex-none ${
               isComplete ? "bg-emerald-600 hover:bg-emerald-700" : "bg-brand hover:bg-brand-strong"

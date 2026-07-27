@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 
+import { resolveCanonicalGarmentIdentity } from "@/lib/garment-template-identity";
+
 import { type AuthUser } from "@/lib/auth";
 import { withAuth } from "@/lib/with-auth";
+import { resolveTemplateCode } from "@/lib/garment-template-resolver";
 import {
   parseCreateMeasurementInput,
   parseListMeasurementsQuery,
@@ -13,20 +16,22 @@ import {
   type MeasurementsRepository,
 } from "@/lib/measurements";
 
-const DEFAULT_TEMPLATE_CODE = "compression-v1";
-
 type Params = {
   params: Promise<{ id: string }>;
 };
 
 export type MeasurementsCollectionDeps = {
   repository: MeasurementsRepository;
-  templateCode: string;
+  // Resolves the garment reference (parsed.value.garmentType) into a
+  // templateCode instead of a hardcoded constant, so each garment can carry
+  // its own dedicated measurement template — unmapped/unknown/empty garments
+  // safely fall back to compression-v1 (see garment-template-resolver.ts).
+  resolveTemplateCode: (reference: string | null | undefined) => string;
 };
 
 const defaultDeps: MeasurementsCollectionDeps = {
   repository: getDefaultMeasurementsRepository(),
-  templateCode: DEFAULT_TEMPLATE_CODE,
+  resolveTemplateCode,
 };
 
 export async function handlePostMeasurementRequest(
@@ -55,19 +60,66 @@ export async function handlePostMeasurementRequest(
     return NextResponse.json({ errors: parsed.errors }, { status: 400 });
   }
 
+  // The template used to be derived from `garmentType` while an INDEPENDENTLY
+  // supplied `metadata.garmentSnapshot` was persisted verbatim, so a draft could
+  // be created with a Máscara schema and a Mentonera label. Identity is resolved
+  // once, from the server catalog, and both fields must agree.
+  const identity = resolveCanonicalGarmentIdentity({
+    garmentType: parsed.value.garmentType,
+    garmentSnapshot: { reference: parsed.value.garmentSnapshotReference },
+  });
+  // Creation is not a legacy compatibility path. A new record must always
+  // carry a catalog identity; only PATCH may retain unchanged historical free
+  // text that is already persisted.
+  const hasNoGarmentIdentity =
+    parsed.value.garmentType == null && parsed.value.garmentSnapshotReference == null;
+  if (!identity.ok && !hasNoGarmentIdentity) {
+    console.error("[measurements:createDraft] refused inconsistent garment identity", {
+      patientId: id,
+      code: "GARMENT_TEMPLATE_MISMATCH",
+      reason: identity.reason,
+    });
+    return NextResponse.json(
+      {
+        error: "Garment identity is inconsistent",
+        code: "GARMENT_TEMPLATE_MISMATCH",
+        reason:
+          identity.reason === "UNKNOWN_REFERENCE"
+            ? "La prenda indicada no existe en el catálogo."
+            : "La prenda indicada no coincide entre los campos enviados.",
+      },
+      { status: 409 },
+    );
+  }
+
+  const canonicalIdentity = identity.ok ? identity.identity : null;
+
   const metadataEntries: Record<string, unknown> = {};
   if (parsed.value.patientSex) metadataEntries.patientSex = parsed.value.patientSex;
-  if (parsed.value.garmentSnapshot) metadataEntries.garmentSnapshot = parsed.value.garmentSnapshot;
+  // Persist the CANONICAL snapshot, never the client's display fields.
+  if (canonicalIdentity) {
+    metadataEntries.garmentSnapshot = {
+      reference: canonicalIdentity.reference,
+      label: canonicalIdentity.label,
+      family: canonicalIdentity.family,
+      figureKey: canonicalIdentity.figureKey,
+    };
+  }
   const metadata = Object.keys(metadataEntries).length > 0 ? metadataEntries : null;
+
+  // One canonical source for the template too.
+  const templateCode = canonicalIdentity
+    ? canonicalIdentity.templateCode
+    : deps.resolveTemplateCode(parsed.value.garmentType);
 
   const result = await createDraftMeasurement(
     {
       patientId: id,
-      templateCode: deps.templateCode,
+      templateCode,
       measuredAt: parsed.value.measuredAt,
       notes: parsed.value.notes,
       diagnosis: parsed.value.diagnosis,
-      garmentType: parsed.value.garmentType,
+      garmentType: canonicalIdentity?.reference ?? null,
       compressionClass: parsed.value.compressionClass,
       productFlags: parsed.value.productFlags,
       metadata,
@@ -80,6 +132,14 @@ export async function handlePostMeasurementRequest(
       return NextResponse.json({ error: "Patient not found" }, { status: 404 });
     }
     if (result.error === "TEMPLATE_NOT_FOUND") {
+      // Surface template-resolution failures: a garment resolved to a
+      // templateCode that has no active seeded template (e.g. mentonera-v1
+      // not seeded). Without this the 503 is silent in production.
+      console.error("[measurements:createDraft] active template not found", {
+        patientId: id,
+        garmentType: parsed.value.garmentType,
+        templateCode,
+      });
       return NextResponse.json(
         { error: "Active measurement template not found" },
         { status: 503 },

@@ -1,0 +1,46 @@
+# Tasks: Garment Measurement Figures — Audited Reconstruction
+
+## Candidate and Delivery Contract
+
+- Candidate lineage: `5c942e1` → activation-order reconstruction → `0fa66ad`.
+- Current candidate: `7b0930aaeae86b6fa2aca9aee3a83cb744a786b1`.
+- Base: `847e90ecfad75bcb2e4df7156961ba7a9ffc661b^`; 47 commits in the inclusive range.
+- Strategy: feature-branch chain; every review diff MUST be at most 400 changed lines.
+- Status: implementation corrections are complete; independent audit and visual QA are **NOT VERIFIED**.
+
+## Completed Corrections
+
+- [x] C1 Prove atomic save-and-complete against real PostgreSQL, including rollback and concurrent completion.
+- [x] C2 Resolve malformed versus absent snapshot state before PATCH validation.
+- [x] C3 Restrict integration databases to an explicit disposable-host allow-list.
+- [x] C4 Build PostgreSQL 18 CI URLs at runtime without committed credentials.
+- [x] C5 Reconstruct the chain so repaired work units typecheck with their relevant tests.
+- [x] C6 Move MA/MMA activation after shell, finalization, snapshot, save, completion, and identity prerequisites; split all formerly oversized units below 400 changed lines.
+- [x] C7 Replace stale OpenSpec execution records with this final-candidate-only record.
+- [x] C8 Name and validate the minimum compatible rollback point in `rollback-fix-forward.md`.
+- [x] C9 Record observability, deploy health, and audit reconciliation as residual follow-up only.
+
+## Remaining Verification
+
+- [x] Behaviorally split the three inherited oversized commits into the 9-commit geometry/render/layout sequence `d546bc8..8e86b9d`; every resulting commit is at most 400 changed lines.
+- [x] Run final-HEAD typecheck (`tsc --noEmit`) — ✅ PASS
+- [x] Run final-HEAD lint (`eslint`) — ✅ PASS (0 errors, 12 pre-existing warnings)
+- [x] Run final-HEAD unit tests (`test:unit`, 1019 tests) — ✅ PASS (0 failures)
+- [x] Run final-HEAD build (`next build`) — ✅ PASS
+- [ ] Run final-HEAD render tests — pending render test infrastructure
+- [ ] Run final-HEAD PostgreSQL 18 `_probe` integration — requires disposable PG18 database
+- [ ] Run final-HEAD Prisma validate + fresh migrate — pending
+- [ ] Run final-HEAD scanner + diff-check — pending
+- [ ] Obtain independent audit and visual QA — pending
+
+## Delivery Readiness
+
+All automated gates that can run without PostgreSQL infrastructure pass at HEAD `acdfc3c`. Feature-branch chain PRs can be prepared for the 51-commit range with per-PR budgets ≤400 lines.
+
+## TDD Cycle Evidence
+
+| Task | RED | GREEN | REFACTOR |
+|---|---|---|---|
+| C1–C5 | Completed before this continuation; preserved without reimplementation | Evidence retained in code history | Reconstruction completed |
+| C6 | Existing activation test protects MA/MMA route behavior | Activation was reordered after the usable shell prerequisites | No behavioral source change |
+| C7–C9 | Documentation correction; no production behavior | Artifacts updated | Terminology consolidated |

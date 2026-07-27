@@ -1,9 +1,25 @@
 import { Prisma } from "@prisma/client";
 
 import { getPrisma } from "./prisma";
+import { getHeadSnapshotCompletionBlock } from "./head-measurement-layout";
+import { classifyPersistedSnapshot } from "./template-snapshot";
 import { recordAudit, toAuditPayload } from "@/lib/audit-log";
 
 export type MeasurementSessionStatus = "DRAFT" | "COMPLETED" | "VOID";
+
+/**
+ * What the persisted `templateSnapshot` Json column actually holds.
+ *
+ * "absent"    -> the column is null; the session never carried a snapshot.
+ * "malformed" -> the column holds JSON that is NOT a usable snapshot.
+ * "valid"     -> the column parsed into a TemplateSnapshot.
+ *
+ * These are deliberately three states, not two. Collapsing "malformed" into
+ * "absent" — which is what returning a bare null did — made the malformed
+ * branch unreachable through the real repository, so a stored-but-unreadable
+ * snapshot surfaced as a misleading 500 instead of its intended response.
+ */
+export type TemplateSnapshotState = "absent" | "malformed" | "valid";
 
 export type TemplateSnapshotField = {
   id: string;
@@ -69,6 +85,11 @@ export type MeasurementSessionDetail = {
   productFlags: Record<string, boolean> | null;
   metadata: Record<string, unknown> | null;
   templateSnapshot: TemplateSnapshot | null;
+  /**
+   * Distinguishes "no snapshot" from "unreadable snapshot". Required, so no
+   * repository implementation can silently reintroduce the collapse.
+   */
+  templateSnapshotState: TemplateSnapshotState;
   values: Record<string, number | null>;
   createdAt: Date;
   updatedAt: Date;
@@ -94,8 +115,18 @@ type ServiceErrorCode =
   | "NOT_FOUND"
   | "INVALID_STATE"
   | "TEMPLATE_NOT_FOUND"
+  // The session HAS a persisted template snapshot, but the stored JSON does
+  // not match the snapshot contract (e.g. rows written without a `sections`
+  // key). Distinct from TEMPLATE_NOT_FOUND so the caller can tell "never had
+  // one" apart from "has one we cannot trust".
+  | "MALFORMED_TEMPLATE_SNAPSHOT"
   | "PATIENT_NOT_FOUND"
   | "UNKNOWN_KEYS"
+  // The session's persisted template snapshot claims a head garment
+  // (mentonera-v1 / mascara-v1) but does not carry that garment's full
+  // measurement set, so finalizing it would freeze an incomplete clinical
+  // record. Draft saving stays allowed; only completion is refused.
+  | "INCOMPLETE_TEMPLATE_SNAPSHOT"
   | "UNKNOWN";
 
 export type ServiceResult<T> = { ok: true; value: T } | { ok: false; error: ServiceErrorCode };
@@ -129,6 +160,35 @@ export type UpdateContextRepositoryInput = {
   metadata?: Record<string, unknown> | null;
 };
 
+/**
+ * One atomic draft save: context and values together.
+ *
+ * They used to be two repository calls with two transactions. If the second
+ * failed, or the session was completed concurrently between them, the API
+ * reported failure while the context change had already committed — leaving new
+ * context beside old values, and no audit entry describing it.
+ */
+export type SaveDraftRepositoryInput = {
+  sessionId: string;
+  /** Omitted entirely when the request carries no context change. */
+  context?: Omit<UpdateContextRepositoryInput, "sessionId">;
+  values: Array<{ fieldId: string; valueNumber: number | null }>;
+};
+
+export type SaveDraftAndCompleteRepositoryInput = SaveDraftRepositoryInput;
+
+/**
+ * Create a destination draft and its copied values in ONE transaction.
+ *
+ * Duplication used to create the draft and then write the values in a second
+ * call. A failure between them left an empty DRAFT session behind, and because
+ * the UI offers a retry, every retry could strand another one.
+ */
+export type CreateDraftWithValuesRepositoryInput = {
+  draft: CreateDraftRepositoryInput;
+  values: Array<{ fieldId: string; valueNumber: number | null }>;
+};
+
 export type MarkCompletedResult =
   | { status: "COMPLETED" }
   | { status: "NOT_FOUND" }
@@ -141,6 +201,19 @@ export type MeasurementsRepository = {
   getDetail(id: string): Promise<MeasurementSessionDetail | null>;
   listByPatient(patientId: string, limit: number): Promise<MeasurementSessionSummary[]>;
   replaceValues(input: ReplaceValuesRepositoryInput): Promise<{ ok: boolean; status: MeasurementSessionStatus | null }>;
+  /**
+   * Apply context and values in ONE transaction, re-checking DRAFT status
+   * inside it so a concurrent completion cannot be half-applied.
+   */
+  saveDraft(input: SaveDraftRepositoryInput): Promise<{ ok: boolean; status: MeasurementSessionStatus | null }>;
+  /** Atomically applies a draft save and transitions it to COMPLETED. */
+  saveDraftAndComplete?(
+    input: SaveDraftAndCompleteRepositoryInput,
+  ): Promise<MarkCompletedResult>;
+  /** Atomic duplication: destination draft and copied values commit together. */
+  createDraftWithValues(
+    input: CreateDraftWithValuesRepositoryInput,
+  ): Promise<{ ok: true; id: string }>;
   updateContext(input: UpdateContextRepositoryInput): Promise<{ ok: boolean; status: MeasurementSessionStatus | null }>;
   markCompleted(id: string): Promise<MarkCompletedResult>;
   reopenToDraft(id: string): Promise<{ ok: boolean; status: MeasurementSessionStatus | null }>;
@@ -156,6 +229,25 @@ function hasContextChanges(input: UpdateMeasurementValuesInput): boolean {
     input.productFlags !== undefined ||
     input.metadata !== undefined
   );
+}
+
+function safeErrorDetails(error: unknown): { errorName: string; errorCode: string | null } {
+  const errorName = error instanceof Error ? error.name : "UnknownError";
+  const code =
+    typeof error === "object" && error !== null && "code" in error
+      ? (error as { code?: unknown }).code
+      : null;
+  return {
+    errorName,
+    errorCode:
+      (typeof code === "string" && code.length > 0 && code.length <= 16) || typeof code === "number"
+        ? String(code)
+        : null,
+  };
+}
+
+function logMeasurementFailure(operation: string, error: unknown, identifiers: Record<string, string>) {
+  console.error(`[measurements:${operation}] failed`, { ...identifiers, ...safeErrorDetails(error) });
 }
 
 function indexFieldsByKey(snapshot: TemplateSnapshot): Map<string, TemplateSnapshotField> {
@@ -213,7 +305,7 @@ export async function createDraftMeasurement(
 
     return { ok: true, value: { id: created.id, templateSnapshot: snapshot } };
   } catch (error) {
-    console.error("[measurements:createDraft]", error);
+    logMeasurementFailure("createDraft", error, { patientId: input.patientId });
     return { ok: false, error: "UNKNOWN" };
   }
 }
@@ -227,6 +319,16 @@ export async function updateMeasurementValues(
     const detail = await repository.getDetail(sessionId);
     if (!detail) return { ok: false, error: "NOT_FOUND" };
     if (detail.status !== "DRAFT") return { ok: false, error: "INVALID_STATE" };
+    // Malformed is checked BEFORE absent: both leave templateSnapshot null, and
+    // reporting an unreadable snapshot as a missing one hid the only branch that
+    // can answer with an intentional, machine-readable response.
+    if (detail.templateSnapshotState === "malformed") {
+      console.error("[measurements:updateValues] malformed template snapshot", {
+        sessionId,
+        templateId: detail.templateId,
+      });
+      return { ok: false, error: "MALFORMED_TEMPLATE_SNAPSHOT" };
+    }
     if (!detail.templateSnapshot) return { ok: false, error: "TEMPLATE_NOT_FOUND" };
 
     const fieldsByKey = indexFieldsByKey(detail.templateSnapshot);
@@ -246,25 +348,26 @@ export async function updateMeasurementValues(
       beforeValues[key] = value;
     }
 
-    if (hasContextChanges(input)) {
-      const contextResult = await repository.updateContext({
-        sessionId,
-        measuredAt: input.measuredAt,
-        notes: input.notes,
-        diagnosis: input.diagnosis,
-        garmentType: input.garmentType,
-        compressionClass: input.compressionClass,
-        productFlags: input.productFlags,
-        metadata: input.metadata,
-      });
-      if (!contextResult.ok) {
-        if (contextResult.status === null) return { ok: false, error: "NOT_FOUND" };
-        if (contextResult.status !== "DRAFT") return { ok: false, error: "INVALID_STATE" };
-        return { ok: false, error: "UNKNOWN" };
-      }
-    }
-
-    const result = await repository.replaceValues({ sessionId, values: resolved });
+    // ONE transaction: either the context change and the values both land, or
+    // neither does. Splitting them let a failed value write leave committed
+    // context behind, with no audit entry describing the change.
+    const result = await repository.saveDraft({
+      sessionId,
+      ...(hasContextChanges(input)
+        ? {
+            context: {
+              measuredAt: input.measuredAt,
+              notes: input.notes,
+              diagnosis: input.diagnosis,
+              garmentType: input.garmentType,
+              compressionClass: input.compressionClass,
+              productFlags: input.productFlags,
+              metadata: input.metadata,
+            },
+          }
+        : {}),
+      values: resolved,
+    });
     if (!result.ok) {
       if (result.status === null) return { ok: false, error: "NOT_FOUND" };
       if (result.status !== "DRAFT") return { ok: false, error: "INVALID_STATE" };
@@ -311,7 +414,77 @@ export async function updateMeasurementValues(
 
     return { ok: true, value: { updated: resolved.length } };
   } catch (error) {
-    console.error("[measurements:updateValues]", error);
+    logMeasurementFailure("updateValues", error, { sessionId });
+    return { ok: false, error: "UNKNOWN" };
+  }
+}
+
+/**
+ * Complete a structurally complete draft with its accompanying values/context in
+ * one repository transaction. This path is deliberately separate from the
+ * incomplete-snapshot refusal: that path commits a DRAFT save then returns 422.
+ */
+export async function saveAndCompleteMeasurement(
+  sessionId: string,
+  input: UpdateMeasurementValuesInput,
+  repository: MeasurementsRepository,
+): Promise<ServiceResult<{ id: string; status: "COMPLETED" }>> {
+  try {
+    const detail = await repository.getDetail(sessionId);
+    if (!detail) return { ok: false, error: "NOT_FOUND" };
+    if (detail.status !== "DRAFT") return { ok: false, error: "INVALID_STATE" };
+    if (detail.templateSnapshotState === "malformed") return { ok: false, error: "MALFORMED_TEMPLATE_SNAPSHOT" };
+    if (!detail.templateSnapshot) return { ok: false, error: "TEMPLATE_NOT_FOUND" };
+    if (getHeadSnapshotCompletionBlock(detail.templateSnapshot)) {
+      return { ok: false, error: "INCOMPLETE_TEMPLATE_SNAPSHOT" };
+    }
+
+    const fieldsByKey = indexFieldsByKey(detail.templateSnapshot);
+    const values: Array<{ fieldId: string; valueNumber: number | null }> = [];
+    for (const [key, valueNumber] of Object.entries(input.valuesByKey)) {
+      const field = fieldsByKey.get(key);
+      if (!field) return { ok: false, error: "UNKNOWN_KEYS" };
+      values.push({ fieldId: field.id, valueNumber });
+    }
+    const draft = {
+      sessionId,
+      ...(hasContextChanges(input)
+        ? {
+            context: {
+              measuredAt: input.measuredAt,
+              notes: input.notes,
+              diagnosis: input.diagnosis,
+              garmentType: input.garmentType,
+              compressionClass: input.compressionClass,
+              productFlags: input.productFlags,
+              metadata: input.metadata,
+            },
+          }
+        : {}),
+      values,
+    };
+    // Injected legacy unit-test repositories can retain the old two-method
+    // protocol; production always supplies the atomic primitive below.
+    const result = repository.saveDraftAndComplete
+      ? await repository.saveDraftAndComplete(draft)
+      : (await repository.saveDraft(draft)).ok
+        ? await repository.markCompleted(sessionId)
+        : { status: "INVALID_STATE" as const };
+    if (result.status === "NOT_FOUND") return { ok: false, error: "NOT_FOUND" };
+    if (result.status !== "COMPLETED") return { ok: false, error: "INVALID_STATE" };
+
+    await recordAudit({
+      action: "UPDATE",
+      entityType: "MeasurementSession",
+      entityId: sessionId,
+      diff: {
+        before: toAuditPayload({ id: sessionId, status: "DRAFT" }),
+        after: toAuditPayload({ id: sessionId, status: "COMPLETED" }),
+      },
+    });
+    return { ok: true, value: { id: sessionId, status: "COMPLETED" } };
+  } catch (error) {
+    logMeasurementFailure("saveAndComplete", error, { sessionId });
     return { ok: false, error: "UNKNOWN" };
   }
 }
@@ -324,21 +497,17 @@ export async function duplicateCompletedMeasurement(
     const detail = await repository.getDetail(sessionId);
     if (!detail) return { ok: false, error: "NOT_FOUND" };
     if (detail.status !== "COMPLETED") return { ok: false, error: "INVALID_STATE" };
+    if (detail.templateSnapshotState === "malformed") {
+      console.error("[measurements:duplicate] malformed template snapshot", {
+        sessionId,
+        templateId: detail.templateId,
+      });
+      return { ok: false, error: "MALFORMED_TEMPLATE_SNAPSHOT" };
+    }
     if (!detail.templateId || !detail.templateSnapshot) return { ok: false, error: "TEMPLATE_NOT_FOUND" };
 
-    const created = await repository.createDraft({
-      patientId: detail.patientId,
-      templateId: detail.templateId,
-      measuredAt: detail.measuredAt,
-      notes: detail.notes,
-      diagnosis: detail.diagnosis,
-      garmentType: detail.garmentType,
-      compressionClass: detail.compressionClass,
-      productFlags: detail.productFlags,
-      metadata: detail.metadata,
-      templateSnapshot: detail.templateSnapshot,
-    });
-
+    // ORDER MATTERS: index the snapshot BEFORE opening any write, so a bad
+    // snapshot can never strand a destination draft.
     const fieldsByKey = indexFieldsByKey(detail.templateSnapshot);
     const values: Array<{ fieldId: string; valueNumber: number | null }> = [];
     for (const [key, valueNumber] of Object.entries(detail.values)) {
@@ -346,8 +515,28 @@ export async function duplicateCompletedMeasurement(
       if (field) values.push({ fieldId: field.id, valueNumber });
     }
 
-    const copied = await repository.replaceValues({ sessionId: created.id, values });
-    if (!copied.ok) return { ok: false, error: "UNKNOWN" };
+    // ONE transaction: the destination draft and its copied values commit
+    // together. Previously the draft was created first and the values written
+    // in a second call, so a failure between them stranded an empty DRAFT — and
+    // because the UI offers a retry, every retry could strand another one.
+    const created = await repository.createDraftWithValues({
+      draft: {
+        patientId: detail.patientId,
+        templateId: detail.templateId,
+        measuredAt: detail.measuredAt,
+        notes: detail.notes,
+        diagnosis: detail.diagnosis,
+        garmentType: detail.garmentType,
+        compressionClass: detail.compressionClass,
+        productFlags: detail.productFlags,
+        metadata: detail.metadata,
+        // The ORIGINAL snapshot is copied, not the parsed projection: parsing
+        // normalizes and drops unknown extra keys, and a duplicated clinical
+        // record should carry the source snapshot verbatim.
+        templateSnapshot: detail.templateSnapshot,
+      },
+      values,
+    });
 
     await recordAudit({
       action: "CREATE",
@@ -358,7 +547,7 @@ export async function duplicateCompletedMeasurement(
 
     return { ok: true, value: { id: created.id } };
   } catch (error) {
-    console.error("[measurements:duplicate]", error);
+    logMeasurementFailure("duplicate", error, { sessionId });
     return { ok: false, error: "UNKNOWN" };
   }
 }
@@ -398,7 +587,7 @@ export async function reopenMeasurementForCorrection(
 
     return { ok: true, value: { id: sessionId, status: "DRAFT" } };
   } catch (error) {
-    console.error("[measurements:reopen]", error);
+    logMeasurementFailure("reopen", error, { sessionId });
     return { ok: false, error: "UNKNOWN" };
   }
 }
@@ -412,6 +601,21 @@ export async function completeMeasurement(
     const detailBefore = await repository.getDetail(sessionId);
     if (!detailBefore) return { ok: false, error: "NOT_FOUND" };
     if (detailBefore.status !== "DRAFT") return { ok: false, error: "INVALID_STATE" };
+
+    // DOMAIN INVARIANT: a head-garment session whose snapshot is degraded or
+    // empty must never be finalized. Enforced here, in the service, so it holds
+    // for every caller — the UI's disabled button is a convenience, not the
+    // guard. Uses the same pure classifier the UI derives its layout from, so
+    // the two can never disagree. Non-head templates are untouched.
+    const completionBlock = getHeadSnapshotCompletionBlock(detailBefore.templateSnapshot);
+    if (completionBlock) {
+      console.error("[measurements:completeMeasurement] refused incomplete head snapshot", {
+        sessionId,
+        templateCode: detailBefore.templateSnapshot?.code ?? null,
+        reason: completionBlock,
+      });
+      return { ok: false, error: "INCOMPLETE_TEMPLATE_SNAPSHOT" };
+    }
 
     const result = await repository.markCompleted(sessionId);
     if (result.status === "COMPLETED") {
@@ -457,7 +661,7 @@ export async function completeMeasurement(
     if (result.status === "NOT_FOUND") return { ok: false, error: "NOT_FOUND" };
     return { ok: false, error: "INVALID_STATE" };
   } catch (error) {
-    console.error("[measurements:complete]", error);
+    logMeasurementFailure("complete", error, { sessionId });
     return { ok: false, error: "UNKNOWN" };
   }
 }
@@ -471,7 +675,7 @@ export async function getMeasurement(
     if (!detail) return { ok: false, error: "NOT_FOUND" };
     return { ok: true, value: detail };
   } catch (error) {
-    console.error("[measurements:get]", error);
+    logMeasurementFailure("get", error, { sessionId });
     return { ok: false, error: "UNKNOWN" };
   }
 }
@@ -485,7 +689,7 @@ export async function listPatientMeasurements(
     const list = await repository.listByPatient(patientId, query.limit);
     return { ok: true, value: list };
   } catch (error) {
-    console.error("[measurements:list]", error);
+    logMeasurementFailure("list", error, { patientId });
     return { ok: false, error: "UNKNOWN" };
   }
 }
@@ -513,10 +717,17 @@ const defaultRepository: MeasurementsRepository = {
     const template = await prisma.measurementTemplate.findUnique({
       where: { code },
       include: {
+        // Only the CURRENT definition is projected into a new session's
+        // snapshot. Retired rows stay in the database so history and existing
+        // draft snapshots keep resolving, but a new session must never inherit
+        // them — an obsolete field would make the head-garment classifier see a
+        // snapshot that does not match the declared set, marking every new
+        // session degraded and permanently unfinalizable.
         sections: {
+          where: { isActive: true },
           orderBy: { sortOrder: "asc" },
           include: {
-            fields: { orderBy: { sortOrder: "asc" } },
+            fields: { where: { isActive: true }, orderBy: { sortOrder: "asc" } },
           },
         },
       },
@@ -603,7 +814,9 @@ const defaultRepository: MeasurementsRepository = {
       compressionClass: session.compressionClass,
       productFlags: jsonToRecord<Record<string, boolean>>(session.productFlags),
       metadata: jsonToRecord<Record<string, unknown>>(session.metadata),
-      templateSnapshot: (session.templateSnapshot as unknown as TemplateSnapshot | null) ?? null,
+      // Parsed exactly ONCE, here at the boundary, and classified so callers
+      // can tell "never had a snapshot" from "has one we cannot read".
+      ...classifyPersistedSnapshot(session.templateSnapshot),
       values: valuesByKey,
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
@@ -661,6 +874,158 @@ const defaultRepository: MeasurementsRepository = {
     });
   },
 
+  async createDraftWithValues(input) {
+    const prisma = getPrisma();
+    return prisma.$transaction(async (tx) => {
+      const created = await tx.measurementSession.create({
+        data: {
+          patientId: input.draft.patientId,
+          templateId: input.draft.templateId,
+          status: "DRAFT",
+          measuredAt: input.draft.measuredAt,
+          notes: input.draft.notes,
+          diagnosis: input.draft.diagnosis,
+          garmentType: input.draft.garmentType,
+          compressionClass: input.draft.compressionClass,
+          productFlags: input.draft.productFlags as Prisma.InputJsonValue,
+          metadata: input.draft.metadata as Prisma.InputJsonValue,
+          templateSnapshot: input.draft.templateSnapshot as unknown as Prisma.InputJsonValue,
+        },
+        select: { id: true },
+      });
+
+      // Any failure here rolls the session back with it, so a failed
+      // duplication can never strand an empty draft — not even across retries.
+      for (const value of input.values) {
+        if (value.valueNumber === null) continue;
+        await tx.measurementValue.create({
+          data: {
+            sessionId: created.id,
+            fieldId: value.fieldId,
+            valueNumber: new Prisma.Decimal(value.valueNumber),
+          },
+        });
+      }
+
+      return { ok: true as const, id: created.id };
+    });
+  },
+
+  async saveDraft(input) {
+    const prisma = getPrisma();
+    return prisma.$transaction(async (tx) => {
+      // This conditional UPDATE is both the DRAFT assertion and the row lock.
+      // A plain SELECT under PostgreSQL Read Committed lets markCompleted commit
+      // between observation and write; every following write here is protected
+      // by the lock held until this transaction commits or rolls back.
+      const locked = await tx.measurementSession.updateMany({
+        where: { id: input.sessionId, status: "DRAFT" },
+        data: { updatedAt: new Date() },
+      });
+      if (locked.count !== 1) {
+        const session = await tx.measurementSession.findUnique({
+          where: { id: input.sessionId },
+          select: { status: true },
+        });
+        return { ok: false, status: session?.status ?? null };
+      }
+
+      if (input.context) {
+        const context = input.context;
+        await tx.measurementSession.update({
+          where: { id: input.sessionId },
+          data: {
+            ...(context.measuredAt !== undefined ? { measuredAt: context.measuredAt } : {}),
+            ...(context.notes !== undefined ? { notes: context.notes } : {}),
+            ...(context.diagnosis !== undefined ? { diagnosis: context.diagnosis } : {}),
+            ...(context.garmentType !== undefined ? { garmentType: context.garmentType } : {}),
+            ...(context.compressionClass !== undefined
+              ? { compressionClass: context.compressionClass }
+              : {}),
+            ...(context.productFlags !== undefined
+              ? { productFlags: context.productFlags as Prisma.InputJsonValue }
+              : {}),
+            ...(context.metadata !== undefined
+              ? { metadata: context.metadata as Prisma.InputJsonValue }
+              : {}),
+          },
+        });
+      }
+
+      for (const value of input.values) {
+        if (value.valueNumber === null) {
+          await tx.measurementValue.deleteMany({
+            where: { sessionId: input.sessionId, fieldId: value.fieldId },
+          });
+          continue;
+        }
+        await tx.measurementValue.upsert({
+          where: { sessionId_fieldId: { sessionId: input.sessionId, fieldId: value.fieldId } },
+          update: { valueNumber: new Prisma.Decimal(value.valueNumber) },
+          create: {
+            sessionId: input.sessionId,
+            fieldId: value.fieldId,
+            valueNumber: new Prisma.Decimal(value.valueNumber),
+          },
+        });
+      }
+
+      return { ok: true, status: "DRAFT" as MeasurementSessionStatus };
+    });
+  },
+
+  async saveDraftAndComplete(input) {
+    const prisma = getPrisma();
+    return prisma.$transaction(async (tx) => {
+      // Acquire the same conditional DRAFT lock as saveDraft before ANY
+      // context/value write. A concurrent completion either happens first and
+      // makes this return INVALID_STATE, or waits and observes COMPLETED later.
+      const locked = await tx.measurementSession.updateMany({
+        where: { id: input.sessionId, status: "DRAFT" },
+        data: { updatedAt: new Date() },
+      });
+      if (locked.count !== 1) {
+        const session = await tx.measurementSession.findUnique({
+          where: { id: input.sessionId },
+          select: { status: true },
+        });
+        return session ? { status: "INVALID_STATE" as const } : { status: "NOT_FOUND" as const };
+      }
+
+      if (input.context) {
+        const context = input.context;
+        await tx.measurementSession.update({
+          where: { id: input.sessionId },
+          data: {
+            ...(context.measuredAt !== undefined ? { measuredAt: context.measuredAt } : {}),
+            ...(context.notes !== undefined ? { notes: context.notes } : {}),
+            ...(context.diagnosis !== undefined ? { diagnosis: context.diagnosis } : {}),
+            ...(context.garmentType !== undefined ? { garmentType: context.garmentType } : {}),
+            ...(context.compressionClass !== undefined ? { compressionClass: context.compressionClass } : {}),
+            ...(context.productFlags !== undefined ? { productFlags: context.productFlags as Prisma.InputJsonValue } : {}),
+            ...(context.metadata !== undefined ? { metadata: context.metadata as Prisma.InputJsonValue } : {}),
+          },
+        });
+      }
+      for (const value of input.values) {
+        if (value.valueNumber === null) {
+          await tx.measurementValue.deleteMany({ where: { sessionId: input.sessionId, fieldId: value.fieldId } });
+        } else {
+          await tx.measurementValue.upsert({
+            where: { sessionId_fieldId: { sessionId: input.sessionId, fieldId: value.fieldId } },
+            update: { valueNumber: new Prisma.Decimal(value.valueNumber) },
+            create: { sessionId: input.sessionId, fieldId: value.fieldId, valueNumber: new Prisma.Decimal(value.valueNumber) },
+          });
+        }
+      }
+      const completed = await tx.measurementSession.updateMany({
+        where: { id: input.sessionId, status: "DRAFT" },
+        data: { status: "COMPLETED" },
+      });
+      return completed.count === 1 ? { status: "COMPLETED" as const } : { status: "INVALID_STATE" as const };
+    });
+  },
+
   async updateContext(input) {
     const prisma = getPrisma();
     const data: Prisma.MeasurementSessionUpdateInput = {};
@@ -691,18 +1056,13 @@ const defaultRepository: MeasurementsRepository = {
   async markCompleted(id) {
     const prisma = getPrisma();
     return prisma.$transaction(async (tx) => {
-      const session = await tx.measurementSession.findUnique({
-        where: { id },
-        select: { status: true },
-      });
-      if (!session) return { status: "NOT_FOUND" } as const;
-      if (session.status !== "DRAFT") return { status: "INVALID_STATE" } as const;
-
-      await tx.measurementSession.update({
-        where: { id },
+      const completed = await tx.measurementSession.updateMany({
+        where: { id, status: "DRAFT" },
         data: { status: "COMPLETED" },
       });
-      return { status: "COMPLETED" } as const;
+      if (completed.count === 1) return { status: "COMPLETED" } as const;
+      const session = await tx.measurementSession.findUnique({ where: { id }, select: { id: true } });
+      return session ? { status: "INVALID_STATE" } as const : { status: "NOT_FOUND" } as const;
     });
   },
 

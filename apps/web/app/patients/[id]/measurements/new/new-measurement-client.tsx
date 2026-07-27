@@ -15,9 +15,11 @@ import {
 } from "@/lib/garment-catalog";
 import type { TemplateSnapshot } from "@/lib/measurements";
 import { toClinicDatetimeLocal } from "@/lib/datetime";
+import { interpretSaveResponse } from "@/lib/measurement-save-outcome";
 
 import {
   getFilledZoneIdsFromValues,
+  getHeadLayoutCompletionBlock,
 } from "../measurements-ui";
 import { PatientHeaderStrip } from "./_components/patient-header-strip";
 import { MeasurementShell } from "./_components/measurement-shell";
@@ -188,8 +190,27 @@ export default function NewMeasurementClient({ patientId, patientName, patientSe
         },
       );
 
-      if (!response.ok) {
-        setError("No se pudieron guardar las medidas. Revisá rangos y campos.");
+      // A refused completion still persisted the draft. Reporting it as a save
+      // failure would push the clinician to re-enter data that is already
+      // stored, so the outcome is interpreted rather than assumed from `ok`.
+      let payload: unknown = null;
+      try {
+        payload = (await response.json()) as unknown;
+      } catch {
+        payload = null;
+      }
+
+      const outcome = interpretSaveResponse(response.status, payload);
+
+      if (outcome.kind === "draft-saved-completion-refused") {
+        setError(outcome.message);
+        // The values ARE saved, so the status must not read as an error.
+        setSaveStatus("saved");
+        return;
+      }
+
+      if (outcome.kind === "failed") {
+        setError(outcome.message);
         setSaveStatus("error");
         return;
       }
@@ -429,6 +450,7 @@ export default function NewMeasurementClient({ patientId, patientName, patientSe
             saving={saveStatus === "saving"}
             onSaveDraft={() => saveValues(false)}
             onComplete={() => saveValues(true)}
+            completeBlockedReason={getHeadLayoutCompletionBlock(draft.templateSnapshot)}
           />
         }
       />

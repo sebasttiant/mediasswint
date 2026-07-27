@@ -20,9 +20,11 @@ import {
   buildMeasurementTableRows,
   getFilledZoneIdsFromValues,
   measurementSnapshotRequiresFaceGuide,
+  resolveHeadMeasurementLayout,
   type MeasurementUiField,
 } from "../../measurements-ui";
 import { DetailFieldStrip } from "./detail-field-strip";
+import { HeadMeasurementShellLayout } from "./head-measurement-shell-layout";
 import { ZoneStrip } from "./zone-strip";
 import { MobileStripTabs, MobileStripPanel, type StripTabId } from "./mobile-strip-tabs";
 
@@ -162,6 +164,33 @@ export function MeasurementShell({
 
   const activeTabLimb: "leg" | "arm" = mobileTab.endsWith("L") ? "leg" : "arm";
   const activeTabSide: "right" | "left" = mobileTab.startsWith("R") ? "right" : "left";
+
+  // Head templates own their layout in EVERY state, not just the fully-valid
+  // one. Falling through to the generic compression layout for a partial head
+  // snapshot rendered zero inputs, because head fields carry {anatomyZone,
+  // kind} and no {group, side, point} for buildMeasurementTableRows to project.
+  // The resolver therefore keeps degraded and empty snapshots here, with a
+  // warning banner and completion blocked.
+  const headLayout = resolveHeadMeasurementLayout(templateSnapshot);
+
+  if (headLayout.kind !== "none") {
+    return (
+      <HeadMeasurementShellLayout
+        composition={headLayout.composition}
+        visibleHeadZoneKeys={headLayout.zoneKeys}
+        sex={sex}
+        activeZoneId={activeZoneId}
+        filledZoneIds={filledZoneIds}
+        fields={headLayout.fields}
+        valuesByKey={valuesByKey}
+        onFocus={handleFocus}
+        onChange={onValueChange}
+        onZoneClick={handleFocus}
+        warning={headLayout.warning}
+        footer={footer}
+      />
+    );
+  }
 
   return (
     <div className="flex flex-col flex-1 min-h-0">

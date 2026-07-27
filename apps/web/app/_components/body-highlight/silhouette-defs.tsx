@@ -21,6 +21,24 @@ export function SilhouetteDefs({ id }: { id: string }) {
         </feMerge>
       </filter>
 
+      {/* Red glow for active Mentonera measurement lines */}
+      <filter
+        id={`${id}-head-glow`}
+        x="-30%"
+        y="-30%"
+        width="160%"
+        height="160%"
+        filterUnits="objectBoundingBox"
+      >
+        <feGaussianBlur in="SourceAlpha" stdDeviation="2.5" result="blurAlpha" />
+        <feFlood floodColor="#dc2626" floodOpacity="0.5" result="glowColor" />
+        <feComposite in="glowColor" in2="blurAlpha" operator="in" result="coloredGlow" />
+        <feMerge>
+          <feMergeNode in="coloredGlow" />
+          <feMergeNode in="SourceGraphic" />
+        </feMerge>
+      </filter>
+
       {/* Subtle inner shading gradient for the silhouette fill */}
       <linearGradient id={`${id}-body-fill`} x1="0" y1="0" x2="0" y2="1">
         <stop offset="0" stopColor="#f7f9fc" />

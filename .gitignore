@@ -28,6 +28,7 @@ pnpm-debug.log*
 .atl/
 .pi/
 .windsurf/
+.codegraph/
 
 # OS
 .DS_Store

@@ -22,8 +22,11 @@ concurrency:
 # Placeholder CI-only — needed so prisma.config.ts's env("DATABASE_URL")
 # resolves during `pnpm install` (postinstall runs `prisma generate`) and
 # `pnpm build`. Neither command opens a DB connection.
+#
+# Carries NO password: a committed credential-shaped literal is worth avoiding
+# even when the thing it names is ephemeral and unreachable.
 env:
-  DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+  DATABASE_URL: postgresql://ci@localhost:5432/ci
 
 jobs:
   validate:
@@ -62,6 +65,73 @@ jobs:
 
       - name: Unit tests
         run: pnpm --filter @mediasswint/web test:unit
+
+      - name: Rendered behaviour tests
+        run: pnpm --filter @mediasswint/web test:render
+
+  integration:
+    name: Disposable PostgreSQL integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_DB: mediass_ci_probe
+          # No password exists for this service, so no credential can be
+          # committed. It is bound to the runner's loopback interface only and
+          # is destroyed with the job.
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d mediass_ci_probe"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # Non-secret ephemeral parts. The connection URL is assembled from them at
+      # runtime so no complete connection string is committed.
+      INTEGRATION_DB_HOST: localhost
+      INTEGRATION_DB_PORT: "5432"
+      INTEGRATION_DB_USER: ci
+      INTEGRATION_DB_NAME: mediass_ci_probe
+      # Consumed by the disposable-database guard: the host must be allowed
+      # EXACTLY, so a *_probe name alone can never authorise a remote target.
+      INTEGRATION_DB_ALLOWED_HOSTS: localhost
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Compose disposable database URL
+        run: |
+          url="postgresql://${INTEGRATION_DB_USER}@${INTEGRATION_DB_HOST}:${INTEGRATION_DB_PORT}/${INTEGRATION_DB_NAME}"
+          # Written straight to the job environment; never echoed.
+          {
+            printf 'DATABASE_URL=%s\n' "$url"
+            printf 'INTEGRATION_DATABASE_URL=%s\n' "$url"
+          } >> "$GITHUB_ENV"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Prisma validate
+        run: pnpm --filter @mediasswint/web prisma:validate
+
+      - name: Apply migrations to disposable PostgreSQL
+        run: pnpm --filter @mediasswint/web exec prisma migrate deploy --schema prisma/schema.prisma
+
+      - name: Integration tests
+        run: pnpm --filter @mediasswint/web test:integration:ci
 
   build:
     name: Build web

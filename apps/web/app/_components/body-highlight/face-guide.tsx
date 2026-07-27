@@ -43,6 +43,7 @@ export function FaceGuide({
       viewBox={`0 0 ${FACE_GUIDE_VIEWBOX.width} ${FACE_GUIDE_VIEWBOX.height}`}
       className={svgClassName}
       data-sex={sex}
+      data-face-guide={sex}
     >
       <title>{label}</title>
       <desc>Referencia visual de cabeza y rostro para medidas faciales.</desc>

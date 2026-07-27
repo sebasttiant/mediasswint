@@ -2,13 +2,21 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { buildCompressionTemplate } from "../lib/compression-template";
+import { buildMentoneraTemplate } from "../lib/mentonera-template";
+import { buildMascaraTemplate } from "../lib/mascara-template";
 import type { TemplateSnapshot } from "../lib/measurements";
 import {
   buildMeasurementTableRows,
+  buildHeadMeasurementFields,
   getActiveZoneIdForField,
   getActiveZoneLabel,
   getFilledZoneIdsFromValues,
   measurementSnapshotRequiresFaceGuide,
+  getHeadLayoutCompletionBlock,
+  resolveHeadMeasurementLayout,
+  shouldRenderMentoneraLayout,
+  shouldRenderMascaraLayout,
+  usesHeadMeasurementLayout,
   type MeasurementUiField,
 } from "../app/patients/[id]/measurements/measurements-ui";
 import {
@@ -19,8 +27,32 @@ import {
   resolveLegacyGarmentSelectOption,
 } from "../lib/garment-catalog";
 
-function buildSnapshot(): TemplateSnapshot {
-  const template = buildCompressionTemplate();
+// Shared with buildSnapshot()/buildMentoneraSnapshot() below — mirrors how
+// lib/measurements.ts actually freezes a template into a persisted
+// TemplateSnapshot (id per field, metadata copied as-is).
+type MinimalTemplate = {
+  code: string;
+  name: string;
+  version: number;
+  description: string;
+  sections: ReadonlyArray<{
+    title: string;
+    sortOrder: number;
+    fields: ReadonlyArray<{
+      key: string;
+      label: string;
+      fieldType: string;
+      unit: string;
+      isRequired: boolean;
+      sortOrder: number;
+      minValue: number;
+      maxValue: number;
+      metadata: Record<string, unknown>;
+    }>;
+  }>;
+};
+
+function snapshotFromTemplate(template: MinimalTemplate): TemplateSnapshot {
   let fieldId = 0;
 
   return {
@@ -38,7 +70,7 @@ function buildSnapshot(): TemplateSnapshot {
           id: `field-${fieldId}`,
           key: field.key,
           label: field.label,
-          fieldType: field.fieldType,
+          fieldType: field.fieldType as "NUMBER",
           unit: field.unit,
           isRequired: field.isRequired,
           sortOrder: field.sortOrder,
@@ -48,6 +80,33 @@ function buildSnapshot(): TemplateSnapshot {
         };
       }),
     })),
+  };
+}
+
+function buildSnapshot(): TemplateSnapshot {
+  return snapshotFromTemplate(buildCompressionTemplate());
+}
+
+function buildMentoneraSnapshot(): TemplateSnapshot {
+  return snapshotFromTemplate(buildMentoneraTemplate());
+}
+
+function buildMascaraSnapshot(): TemplateSnapshot {
+  return snapshotFromTemplate(buildMascaraTemplate());
+}
+
+function buildPartialMentoneraSnapshot(fieldCount: 1 | 2): TemplateSnapshot {
+  const snapshot = buildMentoneraSnapshot();
+  const section = snapshot.sections[0]!;
+
+  return {
+    ...snapshot,
+    sections: [
+      {
+        ...section,
+        fields: section.fields.slice(0, fieldCount),
+      },
+    ],
   };
 }
 
@@ -178,12 +237,12 @@ describe("measurement UI helpers", () => {
     assert.equal(measurementSnapshotRequiresFaceGuide(buildSnapshot()), false);
   });
 
-  it("requires a face guide when section, field, or metadata references head/face", () => {
+  it("does not infer a face guide from head and face words in ordinary metadata", () => {
     const snapshot = buildSnapshot();
     const firstSection = snapshot.sections[0]!;
     const firstField = firstSection.fields[0]!;
 
-    const faceSnapshot: TemplateSnapshot = {
+    const substringOnlySnapshot: TemplateSnapshot = {
       ...snapshot,
       sections: [
         {
@@ -201,7 +260,254 @@ describe("measurement UI helpers", () => {
       ],
     };
 
-    assert.equal(measurementSnapshotRequiresFaceGuide(faceSnapshot), true);
+    assert.equal(measurementSnapshotRequiresFaceGuide(substringOnlySnapshot), false);
+  });
+
+  it("requires an explicit metadata flag and keeps Mentonera out of FaceGuide", () => {
+    const snapshot = buildSnapshot();
+    const section = snapshot.sections[0]!;
+    const flagged: TemplateSnapshot = {
+      ...snapshot,
+      sections: [
+        {
+          ...section,
+          fields: [{ ...section.fields[0]!, metadata: { requiresFaceGuide: true } }],
+        },
+      ],
+    };
+
+    assert.equal(measurementSnapshotRequiresFaceGuide(flagged), true);
+    assert.equal(measurementSnapshotRequiresFaceGuide(buildMentoneraSnapshot()), false);
+  });
+});
+
+describe("buildHeadMeasurementFields — generic field projection filtered to head.* zones", () => {
+  it("returns exactly the 3 Mentonera fields, in fixed order", () => {
+    const fields = buildHeadMeasurementFields(buildMentoneraSnapshot());
+
+    assert.deepEqual(
+      fields.map((f) => f.key),
+      ["mentoneraCrownChin", "mentoneraFaceLength", "mentoneraNeck"],
+    );
+  });
+
+  it("each field carries its head.* anatomyZone and kind in metadata", () => {
+    const fields = buildHeadMeasurementFields(buildMentoneraSnapshot());
+
+    assert.equal(fields[0]?.metadata.anatomyZone, "head.crownChin");
+    assert.equal(fields[0]?.metadata.kind, "circumference");
+    assert.equal(fields[1]?.metadata.anatomyZone, "head.faceLength");
+    assert.equal(fields[1]?.metadata.kind, "length");
+    assert.equal(fields[2]?.metadata.anatomyZone, "head.neck");
+    assert.equal(fields[2]?.metadata.kind, "circumference");
+  });
+
+  it("returns an empty list for a non-Mentonera snapshot (no head.* fields)", () => {
+    assert.deepEqual(buildHeadMeasurementFields(buildSnapshot()), []);
+  });
+});
+
+describe("Máscara head measurement projection", () => {
+  it("returns exactly the two PDF-backed Máscara fields in fixed order", () => {
+    const fields = buildHeadMeasurementFields(buildMascaraSnapshot());
+
+    assert.deepEqual(
+      fields.map((field) => [field.key, field.label, field.metadata.anatomyZone]),
+      [
+        ["mascaraForehead", "Contorno de la cabeza alrededor de la frente", "head.forehead"],
+        ["mascaraNeck", "Circunferencia del cuello", "head.neck"],
+      ],
+    );
+  });
+
+  it("maps partial Máscara values to only their corresponding visible zones", () => {
+    const filledZoneIds = getFilledZoneIdsFromValues(buildMascaraSnapshot(), {
+      mascaraForehead: "54.5",
+      mascaraNeck: "",
+    });
+
+    assert.equal(filledZoneIds.has("head.forehead"), true);
+    assert.equal(filledZoneIds.has("head.neck"), false);
+    assert.equal(filledZoneIds.size, 1);
+  });
+});
+
+describe("getFilledZoneIdsFromValues — proves the SAME generic mechanism drives Mentonera highlight sync", () => {
+  it("resolves head.* zones as filled from a Mentonera snapshot, exactly like legs/arms", () => {
+    const filledZoneIds = getFilledZoneIdsFromValues(buildMentoneraSnapshot(), {
+      mentoneraCrownChin: "38.5",
+      mentoneraFaceLength: "",
+      mentoneraNeck: 36,
+    });
+
+    assert.equal(filledZoneIds.has("head.crownChin"), true);
+    assert.equal(filledZoneIds.has("head.neck"), true);
+    assert.equal(filledZoneIds.has("head.faceLength"), false);
+    assert.equal(filledZoneIds.size, 2);
+  });
+});
+
+describe("shouldRenderMentoneraLayout — graceful-fallback guard used by MeasurementShell", () => {
+  it("is false for a compression-v1 snapshot (renders the generic legs/arms layout)", () => {
+    assert.equal(shouldRenderMentoneraLayout(buildSnapshot()), false);
+  });
+
+  it("is true for a real mentonera-v1 snapshot with its 3 fields present", () => {
+    assert.equal(shouldRenderMentoneraLayout(buildMentoneraSnapshot()), true);
+  });
+
+  it("falls back to the generic layout for a malformed mentonera-v1 snapshot with no head.* fields", () => {
+    // Guards the exact PR-A blocker: a session whose code says mentonera-v1
+    // but whose snapshot is empty/malformed must never render blank — it
+    // must fall back to the generic full-body figure + compression layout.
+    const malformed: TemplateSnapshot = { ...buildMentoneraSnapshot(), sections: [] };
+    assert.equal(shouldRenderMentoneraLayout(malformed), false);
+  });
+
+  it("falls back to the generic layout for a malformed mentonera-v1 snapshot with only 1 expected head field", () => {
+    assert.equal(shouldRenderMentoneraLayout(buildPartialMentoneraSnapshot(1)), false);
+  });
+
+  it("falls back to the generic layout for a malformed mentonera-v1 snapshot with only 2 expected head fields", () => {
+    assert.equal(shouldRenderMentoneraLayout(buildPartialMentoneraSnapshot(2)), false);
+  });
+});
+
+describe("shouldRenderMascaraLayout — exact snapshot contract and historical fallback", () => {
+  it("is true only for a complete mascara-v1 snapshot", () => {
+    assert.equal(shouldRenderMascaraLayout(buildMascaraSnapshot()), true);
+  });
+
+  it("falls back for a partial mascara-v1 snapshot", () => {
+    const snapshot = buildMascaraSnapshot();
+    const section = snapshot.sections[0]!;
+    const partial: TemplateSnapshot = {
+      ...snapshot,
+      sections: [{ ...section, fields: section.fields.slice(0, 1) }],
+    };
+
+    assert.equal(shouldRenderMascaraLayout(partial), false);
+  });
+
+  it("does not recognize a complete Mentonera snapshot as Máscara", () => {
+    assert.equal(shouldRenderMascaraLayout(buildMentoneraSnapshot()), false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Degraded head snapshots.
+//
+// The all-or-nothing guard sent any non-exact head snapshot to the generic
+// compression layout — which cannot project head fields at all, because they
+// carry {anatomyZone, kind} and no {group, side, point}. The result was a form
+// with ZERO inputs that could still be finalized. Resolution is now graded.
+// ---------------------------------------------------------------------------
+describe("resolveHeadMeasurementLayout — empty / partial / malformed / extra-field snapshots", () => {
+  function withFields(
+    snapshot: TemplateSnapshot,
+    fields: TemplateSnapshot["sections"][number]["fields"],
+  ): TemplateSnapshot {
+    const section = snapshot.sections[0]!;
+    return { ...snapshot, sections: [{ ...section, fields }] };
+  }
+
+  it("hands a non-head snapshot back to the generic layout", () => {
+    assert.equal(resolveHeadMeasurementLayout(buildSnapshot()).kind, "none");
+  });
+
+  it("resolves a complete Máscara snapshot with the full composition", () => {
+    const resolution = resolveHeadMeasurementLayout(buildMascaraSnapshot());
+
+    assert.equal(resolution.kind, "complete");
+    assert.equal(resolution.composition.garmentLabel, "Máscara");
+    assert.equal(resolution.fields.length, 2);
+    assert.deepEqual([...resolution.zoneKeys], ["head.forehead.front", "head.neck.front"]);
+    assert.equal(resolution.warning, null);
+    assert.equal(resolution.blocksCompletion, false);
+  });
+
+  it("keeps a PARTIAL Mentonera snapshot in the head layout with its surviving fields", () => {
+    const resolution = resolveHeadMeasurementLayout(buildPartialMentoneraSnapshot(2));
+
+    assert.equal(resolution.kind, "degraded");
+    // The critical assertion: it must NOT render zero fields.
+    assert.equal(resolution.fields.length, 2);
+    assert.deepEqual(
+      resolution.fields.map((field) => field.key),
+      ["mentoneraCrownChin", "mentoneraFaceLength"],
+    );
+    assert.ok(resolution.warning);
+    assert.equal(resolution.blocksCompletion, true);
+  });
+
+  it("paints only the markers that still have a field behind them", () => {
+    const resolution = resolveHeadMeasurementLayout(buildPartialMentoneraSnapshot(1));
+
+    assert.equal(resolution.kind, "degraded");
+    // Only crownChin survives, so the neck and face-length tapes must go.
+    assert.deepEqual([...resolution.zoneKeys], ["head.crownChin.profile"]);
+  });
+
+  it("keeps an EXTRA-field head snapshot usable instead of blanking it", () => {
+    const base = buildMascaraSnapshot();
+    const section = base.sections[0]!;
+    const withExtra = withFields(base, [
+      ...section.fields,
+      {
+        ...section.fields[0]!,
+        id: "field-extra",
+        key: "mascaraLegacyExtra",
+        label: "Medida heredada",
+        sortOrder: 99,
+        metadata: { anatomyZone: "head.forehead", kind: "circumference" },
+      },
+    ]);
+
+    const resolution = resolveHeadMeasurementLayout(withExtra);
+
+    assert.equal(resolution.kind, "degraded");
+    assert.equal(resolution.fields.length, 3);
+    assert.ok(resolution.warning);
+    assert.equal(resolution.blocksCompletion, true);
+  });
+
+  it("reports an EMPTY head snapshot explicitly and blocks completion", () => {
+    const empty: TemplateSnapshot = { ...buildMentoneraSnapshot(), sections: [] };
+    const resolution = resolveHeadMeasurementLayout(empty);
+
+    assert.equal(resolution.kind, "empty");
+    assert.equal(resolution.fields.length, 0);
+    assert.deepEqual([...resolution.zoneKeys], []);
+    assert.equal(resolution.blocksCompletion, true);
+    assert.match(resolution.warning ?? "", /Mentonera/);
+  });
+
+  it("treats a MALFORMED head snapshot (no anatomyZone metadata) as empty, not as a blank form", () => {
+    const base = buildMascaraSnapshot();
+    const section = base.sections[0]!;
+    const malformed = withFields(
+      base,
+      section.fields.map((field) => ({ ...field, metadata: {} })),
+    );
+
+    const resolution = resolveHeadMeasurementLayout(malformed);
+
+    assert.equal(resolution.kind, "empty");
+    assert.equal(resolution.blocksCompletion, true);
+  });
+
+  it("blocks completion for degraded and empty head sessions only", () => {
+    assert.equal(getHeadLayoutCompletionBlock(buildMascaraSnapshot()), null);
+    assert.equal(getHeadLayoutCompletionBlock(buildMentoneraSnapshot()), null);
+    assert.equal(getHeadLayoutCompletionBlock(buildSnapshot()), null);
+    assert.ok(getHeadLayoutCompletionBlock(buildPartialMentoneraSnapshot(2)));
+  });
+
+  it("recognizes both head garments as head-layout owners", () => {
+    assert.equal(usesHeadMeasurementLayout(buildMascaraSnapshot()), true);
+    assert.equal(usesHeadMeasurementLayout(buildMentoneraSnapshot()), true);
+    assert.equal(usesHeadMeasurementLayout(buildPartialMentoneraSnapshot(1)), true);
+    assert.equal(usesHeadMeasurementLayout(buildSnapshot()), false);
   });
 });
 
@@ -272,6 +578,7 @@ function buildMeasurement(
     productFlags: null,
     metadata: null,
     templateSnapshot: null,
+    templateSnapshotState: "absent",
     values: {},
     createdAt: new Date("2026-02-01T10:00:00.000Z"),
     updatedAt: new Date("2026-02-01T10:00:00.000Z"),

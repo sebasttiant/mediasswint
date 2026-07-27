@@ -19,7 +19,9 @@ export type CompressionMeasurementKey =
   | `armRight${ArmPoint}`
   | `armLeft${ArmPoint}`;
 
-export type AnatomyZoneId = `${"legs" | "arms"}.${"right" | "left"}.${number}`;
+export type AnatomyZoneId =
+  | `${"legs" | "arms"}.${"right" | "left"}.${number}`
+  | `head.${string}`;
 
 export type CompressionMeasurementDefinition = {
   key: CompressionMeasurementKey;

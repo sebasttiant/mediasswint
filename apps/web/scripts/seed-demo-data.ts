@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 
-import { syncCompressionTemplate } from "@/lib/measurement-templates";
+import { syncCompressionTemplate, syncMascaraTemplate, syncMentoneraTemplate } from "@/lib/measurement-templates";
 import { getPrisma } from "@/lib/prisma";
 
 import { DEMO_MARKER, resetDemoData } from "./reset-demo-data";
@@ -143,15 +143,60 @@ function measurementValue(fieldKey: string, index: number): Prisma.Decimal {
   return new Prisma.Decimal((base + sideAdjustment + patientAdjustment + taperAdjustment).toFixed(2));
 }
 
+type DemoTemplateWithSections = Prisma.MeasurementTemplateGetPayload<{
+  include: { sections: { include: { fields: true } } };
+}>;
+
+/**
+ * Mirrors the snapshot the application itself persists (see
+ * `getActiveTemplateSnapshot`), so demo rows exercise the same code paths as
+ * real ones instead of a shape no consumer can read.
+ */
+function buildDemoTemplateSnapshot(template: DemoTemplateWithSections) {
+  return {
+    templateId: template.id,
+    code: template.code ?? "compression-v1",
+    name: template.name,
+    version: template.version,
+    description: template.description,
+    sections: template.sections.map((section) => ({
+      title: section.title,
+      sortOrder: section.sortOrder,
+      fields: section.fields.map((field) => ({
+        id: field.id,
+        key: field.key,
+        label: field.label,
+        fieldType: "NUMBER" as const,
+        unit: field.unit ?? "cm",
+        isRequired: field.isRequired,
+        sortOrder: field.sortOrder,
+        minValue: Number(field.minValue ?? 0),
+        maxValue: Number(field.maxValue ?? 0),
+        metadata: (field.metadata as Record<string, unknown> | null) ?? {},
+      })),
+    })),
+  };
+}
+
 async function main(): Promise<void> {
   const prisma = getPrisma();
   const reset = await resetDemoData({ fullReset: false, deleteUsers: false });
   const templateResult = await syncCompressionTemplate();
+  // Additive: Mentonera must be seeded in every environment alongside
+  // compression, but the demo dataset itself still only seeds compression
+  // sessions/values below.
+  await syncMentoneraTemplate();
+  await syncMascaraTemplate();
   const template = await prisma.measurementTemplate.findUniqueOrThrow({
     where: { id: templateResult.templateId },
     include: { sections: { include: { fields: true }, orderBy: { sortOrder: "asc" } } },
   });
   const fields = template.sections.flatMap((section) => section.fields).filter((field) => field.fieldType === "NUMBER");
+  // The seeded snapshot must have the SAME shape the application persists for
+  // real sessions. It used to be written as bare template identity with no
+  // `sections`, which produced production-shaped rows that every snapshot
+  // consumer choked on.
+  const demoTemplateSnapshot = buildDemoTemplateSnapshot(template);
   const user = await prisma.user.findFirst({ orderBy: { createdAt: "asc" }, select: { id: true } });
 
   let patients = 0;
@@ -188,7 +233,7 @@ async function main(): Promise<void> {
         diagnosis: garment.diagnosis,
         garmentType: garment.garmentType,
         compressionClass: garment.compressionClass,
-        templateSnapshot: { templateCode: template.code, templateName: template.name, version: template.version, marker: DEMO_MARKER },
+        templateSnapshot: demoTemplateSnapshot as unknown as Prisma.InputJsonValue,
         productFlags: { demo: true, marker: DEMO_MARKER },
         metadata: { source: "demo-seed", marker: DEMO_MARKER },
       },

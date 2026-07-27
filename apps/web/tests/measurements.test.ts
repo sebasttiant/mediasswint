@@ -15,6 +15,7 @@ import {
   type MeasurementsRepository,
   type TemplateSnapshot,
 } from "../lib/measurements";
+import { classifyPersistedSnapshot } from "../lib/template-snapshot";
 
 function buildTemplateSnapshot(): TemplateSnapshot {
   const template = buildCompressionTemplate();
@@ -94,12 +95,24 @@ function createInMemoryRepository(options?: {
         productFlags: input.productFlags,
         metadata: input.metadata,
         templateSnapshot: input.templateSnapshot,
+        templateSnapshotState: classifyPersistedSnapshot(input.templateSnapshot).templateSnapshotState,
         values: {},
         createdAt: now,
         updatedAt: now,
       };
       sessions.set(id, { detail });
       return { id };
+    },
+
+    // Atomic in the fake too: if any value fails, no draft is recorded.
+    async createDraftWithValues(input) {
+      const created = await repository.createDraft(input.draft);
+      const copied = await repository.replaceValues({
+        sessionId: created.id,
+        values: input.values,
+      });
+      if (!copied.ok) throw new Error("createDraftWithValues rolled back");
+      return { ok: true as const, id: created.id };
     },
 
     async getDetail(id) {
@@ -146,6 +159,22 @@ function createInMemoryRepository(options?: {
       }
       stored.detail = { ...stored.detail, values: nextValues };
       return { ok: true, status: "DRAFT" };
+    },
+
+    // Mirrors the transactional contract: status is checked first, then both
+    // halves are applied; a failure in either leaves the session untouched.
+    async saveDraft(input) {
+      const stored = sessions.get(input.sessionId);
+      if (!stored) return { ok: false, status: null };
+      if (stored.detail.status !== "DRAFT") return { ok: false, status: stored.detail.status };
+      if (input.context) {
+        const context = await repository.updateContext({
+          sessionId: input.sessionId,
+          ...input.context,
+        });
+        if (!context.ok) return context;
+      }
+      return repository.replaceValues({ sessionId: input.sessionId, values: input.values });
     },
 
     async updateContext(input) {

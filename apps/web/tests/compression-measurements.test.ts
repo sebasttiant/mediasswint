@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { COMPRESSION_MEASUREMENTS, findCompressionMeasurement } from "../lib/compression-measurements";
+import {
+  COMPRESSION_MEASUREMENTS,
+  findCompressionMeasurement,
+  type AnatomyZoneId,
+} from "../lib/compression-measurements";
 
 describe("COMPRESSION_MEASUREMENTS catalog", () => {
   it("matches the scanned measurement form sections", () => {
@@ -70,5 +74,23 @@ describe("findCompressionMeasurement", () => {
   it("returns null for a vital sign key", () => {
     const result = findCompressionMeasurement("temperatureC");
     assert.equal(result, null);
+  });
+});
+
+describe("AnatomyZoneId (additive head.* extension)", () => {
+  function acceptsAnatomyZoneId(id: AnatomyZoneId): AnatomyZoneId {
+    return id;
+  }
+
+  it("still type-checks and accepts existing legs/arms zone ids", () => {
+    const legZone: AnatomyZoneId = "legs.right.1";
+    const armZone: AnatomyZoneId = "arms.left.19";
+    assert.equal(acceptsAnatomyZoneId(legZone), "legs.right.1");
+    assert.equal(acceptsAnatomyZoneId(armZone), "arms.left.19");
+  });
+
+  it("additively accepts head.* zone ids", () => {
+    const headZone: AnatomyZoneId = "head.crownChin";
+    assert.equal(acceptsAnatomyZoneId(headZone), "head.crownChin");
   });
 });

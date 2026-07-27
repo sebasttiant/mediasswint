@@ -46,6 +46,7 @@ function detailFixture(overrides: Partial<MeasurementSessionDetail> = {}): Measu
     productFlags: null,
     metadata: null,
     templateSnapshot: SNAPSHOT,
+    templateSnapshotState: "valid",
     values: { leg_b: 42 },
     createdAt: new Date("2026-05-01T10:00:00.000Z"),
     updatedAt: new Date("2026-05-01T10:00:00.000Z"),
@@ -92,7 +93,7 @@ describe("resolveDraftEditAccess", () => {
   it("returns notFound when the DRAFT has no template snapshot", () => {
     const access = resolveDraftEditAccess("pat-1", {
       ok: true,
-      value: detailFixture({ templateSnapshot: null }),
+      value: detailFixture({ templateSnapshot: null, templateSnapshotState: "absent" }),
     });
 
     assert.equal(access.action, "notFound");

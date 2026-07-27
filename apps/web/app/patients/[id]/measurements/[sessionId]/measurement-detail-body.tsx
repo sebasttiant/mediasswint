@@ -6,6 +6,7 @@ import { BodyHighlight } from "@/app/_components/body-highlight/body-highlight";
 import { resolveMeasurementBodyFigureSex } from "@/lib/body-figure-sex";
 import { resolveGarmentDisplay } from "@/lib/garment-catalog";
 import type { MeasurementSessionDetail } from "@/lib/measurements";
+import { parseTemplateSnapshot } from "@/lib/template-snapshot";
 import { formatClinicDateTime } from "@/lib/datetime";
 
 import styles from "../../../page.module.css";
@@ -98,7 +99,10 @@ export default function MeasurementDetailBody({
   measurement: MeasurementDetailViewMeasurement;
   isAdmin?: boolean;
 }): ReactElement {
-  const snapshot = measurement.templateSnapshot as MeasurementSessionDetail["templateSnapshot"];
+  // The view model carries the snapshot as `unknown` because it comes straight
+  // from a Json column. Validate it here rather than casting: an unreadable
+  // snapshot must render a session without its figure, never crash the page.
+  const snapshot = parseTemplateSnapshot(measurement.templateSnapshot);
   const filledZoneIds = snapshot
     ? getFilledZoneIdsFromValues(snapshot, measurement.values)
     : undefined;

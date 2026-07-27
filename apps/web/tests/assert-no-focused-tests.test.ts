@@ -7,6 +7,7 @@ import { describe, it } from "node:test";
 import { promisify } from "node:util";
 
 import {
+  DEFAULT_TEST_DIRECTORIES,
   DEFAULT_TESTS_DIR,
   findFocusedCalls,
   findFocusedTestFiles,
@@ -127,6 +128,25 @@ describe("focused-test guard — ignores every confirmed false positive", () => 
 });
 
 describe("focused-test guard — directory scan", () => {
+  it("scans unit, rendered, and integration roots with root-qualified paths", async () => {
+    const root = await makeTree({
+      "tests/clean.test.ts": 'it("unit", () => {});',
+      "tests-render/focused.render.test.ts": `test.${ONLY}("render", () => {});`,
+      "tests-integration/nested/focused.integration.test.ts": `describe.${ONLY}("db", () => {});`,
+    });
+    const directories = ["tests", "tests-render", "tests-integration"].map((directory) =>
+      path.join(root, directory),
+    );
+
+    assert.deepEqual(
+      await findFocusedTestFiles(directories),
+      [
+        { file: path.join("tests-render", "focused.render.test.ts"), lines: [1] },
+        { file: path.join("tests-integration", "nested", "focused.integration.test.ts"), lines: [1] },
+      ],
+    );
+  });
+
   it("reports focused files with line numbers, recursing and skipping non-test files", async () => {
     const root = await makeTree({
       "clean.test.ts": 'it("c", () => {});',
@@ -148,7 +168,15 @@ describe("focused-test guard — directory scan", () => {
     assert.deepEqual(await findFocusedTestFiles(root), []);
   });
 
-  it("defaults to the committed tests directory, which has no focused tests", async () => {
+  it("defaults to every committed test root, which has no focused tests", async () => {
+    assert.deepEqual(
+      DEFAULT_TEST_DIRECTORIES,
+      [
+        DEFAULT_TESTS_DIR,
+        path.resolve(DEFAULT_TESTS_DIR, "..", "tests-render"),
+        path.resolve(DEFAULT_TESTS_DIR, "..", "tests-integration"),
+      ],
+    );
     assert.deepEqual(await findFocusedTestFiles(), []);
   });
 });
@@ -177,7 +205,7 @@ describe("focused-test guard — end to end", () => {
     assert.equal(stderr, "");
   });
 
-  it("scans the real tests directory when run from the repository root", async () => {
+  it("scans every real test root when run from the repository root", async () => {
     const repoRoot = path.resolve(DEFAULT_TESTS_DIR, "..", "..", "..");
 
     const { stderr } = await execFileAsync(process.execPath, [SCRIPT_PATH], { cwd: repoRoot });
