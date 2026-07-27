@@ -150,6 +150,22 @@ function createInMemoryRepository(options?: {
       return { ok: true, status: "DRAFT" };
     },
 
+    // Mirrors the transactional contract: status is checked first, then both
+    // halves are applied; a failure in either leaves the session untouched.
+    async saveDraft(input) {
+      const stored = sessions.get(input.sessionId);
+      if (!stored) return { ok: false, status: null };
+      if (stored.detail.status !== "DRAFT") return { ok: false, status: stored.detail.status };
+      if (input.context) {
+        const context = await repository.updateContext({
+          sessionId: input.sessionId,
+          ...input.context,
+        });
+        if (!context.ok) return context;
+      }
+      return repository.replaceValues({ sessionId: input.sessionId, values: input.values });
+    },
+
     async updateContext(input) {
       const stored = sessions.get(input.sessionId);
       if (!stored) return { ok: false, status: null };

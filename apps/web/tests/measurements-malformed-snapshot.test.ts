@@ -74,6 +74,13 @@ function buildRepository(detail: MeasurementSessionDetail) {
       replacedFor.push(input.sessionId);
       return { ok: true, status: "DRAFT" };
     },
+    async saveDraft(input) {
+      // Records BOTH halves so a test can assert that a refused request wrote
+      // nothing at all.
+      if (input.context) contextUpdates.push(input.sessionId);
+      replacedFor.push(input.sessionId);
+      return { ok: true, status: "DRAFT" };
+    },
     async updateContext(input) {
       contextUpdates.push(input.sessionId);
       return { ok: true, status: "DRAFT" };

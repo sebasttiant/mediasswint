@@ -213,6 +213,22 @@ function buildInMemoryRepository(options: {
       sessions.set(input.sessionId, { ...session, values: next });
       return { ok: true, status: "DRAFT" };
     },
+    // Mirrors the transactional contract: status is checked first, then both
+    // halves are applied; a failure in either leaves the session untouched.
+    async saveDraft(input) {
+      const session = sessions.get(input.sessionId);
+      if (!session) return { ok: false, status: null };
+      if (session.status !== "DRAFT") return { ok: false, status: session.status };
+      if (input.context) {
+        const context = await repository.updateContext({
+          sessionId: input.sessionId,
+          ...input.context,
+        });
+        if (!context.ok) return context;
+      }
+      return repository.replaceValues({ sessionId: input.sessionId, values: input.values });
+    },
+
     async updateContext(input) {
       const session = sessions.get(input.sessionId);
       if (!session) return { ok: false, status: null };

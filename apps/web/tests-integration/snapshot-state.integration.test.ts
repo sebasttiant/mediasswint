@@ -179,3 +179,149 @@ describe(
     });
   },
 );
+
+/**
+ * B3 — the draft save must be ONE transaction against the real database.
+ */
+describe(
+  "atomic draft save against real PostgreSQL",
+  { skip: isDisposable ? false : "INTEGRATION_DATABASE_URL must point at a *_probe database" },
+  () => {
+    let prisma: import("@prisma/client").PrismaClient;
+    let repositoryFactory: typeof import("../lib/measurements").getDefaultMeasurementsRepository;
+
+    let patientId = "";
+    let templateId = "";
+    let fieldId = "";
+    let snapshot: unknown;
+
+    before(async () => {
+      const measurements = await import("../lib/measurements");
+      const templates = await import("../lib/measurement-templates");
+      const prismaModule = await import("../lib/prisma");
+      repositoryFactory = measurements.getDefaultMeasurementsRepository;
+      prisma = prismaModule.getPrisma();
+
+      const stale = await prisma.patient.findFirst({
+        where: { documentNumber: "PROBE-ATOMIC-1" },
+        select: { id: true },
+      });
+      if (stale) {
+        await prisma.measurementValue.deleteMany({ where: { session: { patientId: stale.id } } });
+        await prisma.measurementSession.deleteMany({ where: { patientId: stale.id } });
+        await prisma.patient.delete({ where: { id: stale.id } });
+      }
+
+      const synced = await templates.syncCompressionTemplate(
+        templates.getDefaultMeasurementTemplatesRepository(),
+      );
+      templateId = synced.templateId;
+      snapshot = await repositoryFactory().getActiveTemplateSnapshot("compression-v1");
+      const field = await prisma.templateField.findFirstOrThrow({
+        where: { section: { templateId } },
+      });
+      fieldId = field.id;
+
+      const patient = await prisma.patient.create({
+        data: {
+          documentType: "CC",
+          documentNumber: "PROBE-ATOMIC-1",
+          fullName: "Probe Atomic",
+          sex: "FEMALE",
+        },
+        select: { id: true },
+      });
+      patientId = patient.id;
+    });
+
+    it("commits context and values together", async () => {
+      const repository = repositoryFactory();
+      const session = await prisma.measurementSession.create({
+        data: {
+          patientId,
+          templateId,
+          status: "DRAFT",
+          measuredAt: new Date("2026-05-04T10:00:00.000Z"),
+          notes: "original",
+          templateSnapshot: snapshot as never,
+        },
+        select: { id: true },
+      });
+
+      const result = await repository.saveDraft({
+        sessionId: session.id,
+        context: { notes: "actualizado" },
+        values: [{ fieldId, valueNumber: 41.5 }],
+      });
+
+      assert.equal(result.ok, true);
+      const after = await prisma.measurementSession.findUniqueOrThrow({
+        where: { id: session.id },
+        include: { values: true },
+      });
+      assert.equal(after.notes, "actualizado");
+      assert.equal(after.values.length, 1);
+    });
+
+    it("rolls the context change back when a value write fails inside the transaction", async () => {
+      const repository = repositoryFactory();
+      const session = await prisma.measurementSession.create({
+        data: {
+          patientId,
+          templateId,
+          status: "DRAFT",
+          measuredAt: new Date("2026-05-04T11:00:00.000Z"),
+          notes: "original",
+          templateSnapshot: snapshot as never,
+        },
+        select: { id: true },
+      });
+
+      // A fieldId that does not exist violates the FK inside the transaction.
+      await assert.rejects(() =>
+        repository.saveDraft({
+          sessionId: session.id,
+          context: { notes: "no debe persistir" },
+          values: [{ fieldId: "does-not-exist", valueNumber: 10 }],
+        }),
+      );
+
+      const after = await prisma.measurementSession.findUniqueOrThrow({
+        where: { id: session.id },
+        include: { values: true },
+      });
+      assert.equal(after.notes, "original", "the context change must have rolled back");
+      assert.equal(after.values.length, 0);
+    });
+
+    it("refuses to touch a session that is no longer DRAFT", async () => {
+      const repository = repositoryFactory();
+      const session = await prisma.measurementSession.create({
+        data: {
+          patientId,
+          templateId,
+          status: "COMPLETED",
+          measuredAt: new Date("2026-05-04T12:00:00.000Z"),
+          notes: "original",
+          templateSnapshot: snapshot as never,
+        },
+        select: { id: true },
+      });
+
+      const result = await repository.saveDraft({
+        sessionId: session.id,
+        context: { notes: "no debe persistir" },
+        values: [{ fieldId, valueNumber: 20 }],
+      });
+
+      assert.equal(result.ok, false);
+      assert.equal(result.status, "COMPLETED");
+      const after = await prisma.measurementSession.findUniqueOrThrow({
+        where: { id: session.id },
+        include: { values: true },
+      });
+      assert.equal(after.notes, "original");
+      assert.equal(after.values.length, 0);
+    });
+  },
+);
