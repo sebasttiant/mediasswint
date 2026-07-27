@@ -19,6 +19,7 @@ import { interpretSaveResponse } from "@/lib/measurement-save-outcome";
 
 import {
   getFilledZoneIdsFromValues,
+  getHeadLayoutCompletionBlock,
 } from "../measurements-ui";
 import { PatientHeaderStrip } from "./_components/patient-header-strip";
 import { MeasurementShell } from "./_components/measurement-shell";
@@ -449,6 +450,7 @@ export default function NewMeasurementClient({ patientId, patientName, patientSe
             saving={saveStatus === "saving"}
             onSaveDraft={() => saveValues(false)}
             onComplete={() => saveValues(true)}
+            completeBlockedReason={getHeadLayoutCompletionBlock(draft.templateSnapshot)}
           />
         }
       />
