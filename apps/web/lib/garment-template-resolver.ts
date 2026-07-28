@@ -2,6 +2,8 @@ import { COMPRESSION_TEMPLATE_CODE } from "./compression-template";
 import { MASCARA_TEMPLATE_CODE } from "./mascara-template";
 import { MENTONERA_TEMPLATE_CODE } from "./mentonera-template";
 
+export const MP_BERMUDA_TEMPLATE_CODE = "mp-bermuda-v1";
+
 /**
  * Maps a garment catalog reference (see `garment-catalog.ts`) to the
  * measurement `templateCode` that should back a new draft session. Only
@@ -12,6 +14,12 @@ const TEMPLATE_CODE_BY_REFERENCE: Record<string, string> = {
   MA: MASCARA_TEMPLATE_CODE,
   MMA: MASCARA_TEMPLATE_CODE,
   ME: MENTONERA_TEMPLATE_CODE,
+  MP: MP_BERMUDA_TEMPLATE_CODE,
+  MPD: MP_BERMUDA_TEMPLATE_CODE,
+  MPI: MP_BERMUDA_TEMPLATE_CODE,
+  BP: MP_BERMUDA_TEMPLATE_CODE,
+  BD: MP_BERMUDA_TEMPLATE_CODE,
+  BI: MP_BERMUDA_TEMPLATE_CODE,
 };
 
 /**

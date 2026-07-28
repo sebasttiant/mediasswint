@@ -1356,8 +1356,8 @@ describe("POST /api/patients/[id]/measurements — garmentSnapshot metadata", ()
 
 describe("PATCH /api/patients/[id]/measurements/[sessionId] — garmentSnapshot metadata", () => {
   const VALID_SNAPSHOT = {
-    reference: "BP",
-    label: "Bermuda Ambas Piernas Adulto",
+    reference: "MR",
+    label: "Media a la Rodilla Par Adulto",
     family: "Lower limb",
     figureKey: GARMENT_FIGURE_KEY.LOWER_LIMB,
   };
