@@ -1,6 +1,11 @@
 import { Prisma } from "@prisma/client";
 
-import { syncCompressionTemplate, syncMascaraTemplate, syncMentoneraTemplate } from "@/lib/measurement-templates";
+import {
+  syncCompressionTemplate,
+  syncMascaraTemplate,
+  syncMentoneraTemplate,
+  syncMpBermudaTemplate,
+} from "@/lib/measurement-templates";
 import { getPrisma } from "@/lib/prisma";
 
 import { DEMO_MARKER, resetDemoData } from "./reset-demo-data";
@@ -187,6 +192,7 @@ async function main(): Promise<void> {
   // sessions/values below.
   await syncMentoneraTemplate();
   await syncMascaraTemplate();
+  await syncMpBermudaTemplate();
   const template = await prisma.measurementTemplate.findUniqueOrThrow({
     where: { id: templateResult.templateId },
     include: { sections: { include: { fields: true }, orderBy: { sortOrder: "asc" } } },

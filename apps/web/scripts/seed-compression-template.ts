@@ -2,6 +2,7 @@ import {
   syncCompressionTemplate,
   syncMascaraTemplate,
   syncMentoneraTemplate,
+  syncMpBermudaTemplate,
 } from "@/lib/measurement-templates";
 
 async function main() {
@@ -18,6 +19,11 @@ async function main() {
   const mascaraResult = await syncMascaraTemplate();
   console.log(
     `[templates:seed] synced template ${mascaraResult.templateId} (${mascaraResult.sectionsCount} sections, ${mascaraResult.fieldsCount} fields)`,
+  );
+
+  const mpBermudaResult = await syncMpBermudaTemplate();
+  console.log(
+    `[templates:seed] synced template ${mpBermudaResult.templateId} (${mpBermudaResult.sectionsCount} sections, ${mpBermudaResult.fieldsCount} fields)`,
   );
 }
 

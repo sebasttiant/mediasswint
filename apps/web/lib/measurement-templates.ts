@@ -12,6 +12,8 @@ import { getPrisma } from "./prisma";
  * lets the sync pipeline stay additive across garment-specific templates
  * without narrowing to a single shape.
  */
+import { buildMpBermudaTemplate } from "./mp-bermuda-template";
+
 export type MeasurementTemplateFieldInput = {
   key: string;
   label: string;
@@ -310,4 +312,10 @@ export async function syncMascaraTemplate(
   repository: MeasurementTemplatesRepository = defaultRepository,
 ): Promise<SyncTemplateResult> {
   return syncMeasurementTemplate(buildMascaraTemplate(), repository);
+}
+
+export async function syncMpBermudaTemplate(
+  repository: MeasurementTemplatesRepository = defaultRepository,
+): Promise<SyncTemplateResult> {
+  return syncMeasurementTemplate(buildMpBermudaTemplate(), repository);
 }
