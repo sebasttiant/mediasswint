@@ -299,6 +299,18 @@ export async function handlePatchMeasurementRequest(
     if (!completed.ok) {
       if (completed.error === "NOT_FOUND") return notFound("Measurement");
       if (completed.error === "INVALID_STATE") return NextResponse.json({ error: "Measurement is not editable" }, { status: 409 });
+      if (completed.error === "MP_COMPLETION_INVALID") {
+        const savedDraft = await updateMeasurementValues(sessionId, updateInput, deps.repository);
+        if (!savedDraft.ok) {
+          if (savedDraft.error === "NOT_FOUND") return notFound("Measurement");
+          if (savedDraft.error === "INVALID_STATE") return NextResponse.json({ error: "Measurement is not editable" }, { status: 409 });
+          return NextResponse.json({ error: "Internal server error", committed: false }, { status: 500 });
+        }
+        return NextResponse.json(
+          { error: "MP/Bermuda completion requirements are incomplete", errors: completed.errors, committed: true },
+          { status: 422 },
+        );
+      }
       // Snapshot state stays machine-readable inside the atomic branch too, so
       // `complete: true` can never downgrade it to an opaque 500.
       if (completed.error === "MALFORMED_TEMPLATE_SNAPSHOT") {

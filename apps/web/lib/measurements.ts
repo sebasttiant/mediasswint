@@ -2,6 +2,12 @@ import { Prisma } from "@prisma/client";
 
 import { getPrisma } from "./prisma";
 import { getHeadSnapshotCompletionBlock } from "./head-measurement-layout";
+import {
+  classifyMpCompletionSnapshot,
+  mergeAndValidateMpCompletionValues,
+  type MpCompletionError,
+} from "./mp-bermuda-completion";
+import { MP_BERMUDA_TEMPLATE_CODE } from "./mp-bermuda-template";
 import { classifyPersistedSnapshot } from "./template-snapshot";
 import { recordAudit, toAuditPayload } from "@/lib/audit-log";
 
@@ -424,17 +430,27 @@ export async function updateMeasurementValues(
  * one repository transaction. This path is deliberately separate from the
  * incomplete-snapshot refusal: that path commits a DRAFT save then returns 422.
  */
+export type SaveAndCompleteMeasurementResult =
+  | ServiceResult<{ id: string; status: "COMPLETED" }>
+  | { ok: false; error: "MP_COMPLETION_INVALID"; errors: MpCompletionError[] };
+
 export async function saveAndCompleteMeasurement(
   sessionId: string,
   input: UpdateMeasurementValuesInput,
   repository: MeasurementsRepository,
-): Promise<ServiceResult<{ id: string; status: "COMPLETED" }>> {
+): Promise<SaveAndCompleteMeasurementResult> {
   try {
     const detail = await repository.getDetail(sessionId);
     if (!detail) return { ok: false, error: "NOT_FOUND" };
     if (detail.status !== "DRAFT") return { ok: false, error: "INVALID_STATE" };
     if (detail.templateSnapshotState === "malformed") return { ok: false, error: "MALFORMED_TEMPLATE_SNAPSHOT" };
     if (!detail.templateSnapshot) return { ok: false, error: "TEMPLATE_NOT_FOUND" };
+    if (detail.templateSnapshot.code === MP_BERMUDA_TEMPLATE_CODE) {
+      const snapshotValidation = classifyMpCompletionSnapshot(detail.templateSnapshot);
+      if (!snapshotValidation.ok) return { ok: false, error: "MP_COMPLETION_INVALID", errors: snapshotValidation.errors };
+      const valuesValidation = mergeAndValidateMpCompletionValues(detail.values, input.valuesByKey);
+      if (!valuesValidation.ok) return { ok: false, error: "MP_COMPLETION_INVALID", errors: valuesValidation.errors };
+    }
     if (getHeadSnapshotCompletionBlock(detail.templateSnapshot)) {
       return { ok: false, error: "INCOMPLETE_TEMPLATE_SNAPSHOT" };
     }

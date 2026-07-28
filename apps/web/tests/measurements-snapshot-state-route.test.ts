@@ -14,6 +14,7 @@ import {
 } from "../lib/measurements";
 import { classifyPersistedSnapshot } from "../lib/template-snapshot";
 import { buildMascaraTemplate } from "../lib/mascara-template";
+import { buildMpBermudaTemplate } from "../lib/mp-bermuda-template";
 
 /**
  * The persisted snapshot column has THREE states — absent, malformed, valid —
@@ -78,6 +79,18 @@ function buildMascaraSnapshot(): TemplateSnapshot {
   };
 }
 
+function buildMpSnapshot(): TemplateSnapshot {
+  const template = buildMpBermudaTemplate();
+  let counter = 0;
+  return {
+    templateId: "tpl-mp-1", code: template.code, name: template.name, version: template.version, description: template.description,
+    sections: template.sections.map((section) => ({
+      title: section.title, sortOrder: section.sortOrder,
+      fields: section.fields.map((field) => ({ ...field, id: `fld-mp-${++counter}`, metadata: field.metadata as unknown as Record<string, unknown> })),
+    })),
+  };
+}
+
 function degrade(snapshot: TemplateSnapshot, fieldCount: number): TemplateSnapshot {
   const section = snapshot.sections[0]!;
   return {
@@ -107,7 +120,7 @@ function buildRepository(persistedSnapshot: unknown) {
     measuredAt: now,
     notes: null,
     diagnosis: null,
-    garmentType: "MA",
+    garmentType: classified.templateSnapshot?.code === "mp-bermuda-v1" ? "MP" : "MA",
     compressionClass: null,
     productFlags: null,
     metadata: null,
@@ -311,5 +324,18 @@ describe("PATCH snapshot-state x complete matrix", () => {
     assert.equal(response.status, 200);
     assert.equal(sessions.get("sess-1")?.status, "DRAFT");
     assert.deepEqual(sessions.get("sess-1")?.values, { mascaraForehead: 56.5 });
+  });
+
+  it("an incomplete MP completion saves accepted values, returns key errors, and never invokes atomic completion", async () => {
+    const { patch, sessions, writes } = patchSession(buildMpSnapshot());
+
+    const response = await patch({ valuesByKey: { mpHeight: 180 }, complete: true });
+    const body = (await response.json()) as { committed?: boolean; errors?: Array<{ field: string }> };
+
+    assert.equal(response.status, 422);
+    assert.equal(body.committed, true);
+    assert.deepEqual(body.errors?.slice(0, 4).map((error) => error.field), ["valuesByKey.mpWeight", "valuesByKey.mpShoeSize", "valuesByKey.mpWaistToGlutealFoldLength", "valuesByKey.mpGlutealFoldToFloorLength"]);
+    assert.deepEqual(sessions.get("sess-1")?.values, { mpHeight: 180 });
+    assert.equal(writes.includes("saveDraftAndComplete"), false);
   });
 });
