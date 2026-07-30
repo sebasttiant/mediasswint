@@ -8,7 +8,7 @@ import {
 import { MASCARA_TEMPLATE_CODE } from "@/lib/mascara-template";
 import { MENTONERA_TEMPLATE_CODE } from "@/lib/mentonera-template";
 import type { TemplateSnapshot, TemplateSnapshotField } from "@/lib/measurements";
-import { MP_BERMUDA_ENDPOINT_LABELS } from "@/lib/mp-bermuda-template";
+import { MP_BERMUDA_ENDPOINT_LABELS, MP_BERMUDA_TEMPLATE_CODE } from "@/lib/mp-bermuda-template";
 
 export type MeasurementUiGroup = "legs" | "arms";
 export type MeasurementUiSide = "right" | "left";
@@ -171,8 +171,6 @@ export function buildHeadMeasurementFields(snapshot: TemplateSnapshot): Measurem
 // last way to record the measurement. Unusable context degrades to null.
 // ---------------------------------------------------------------------------
 
-const MP_BERMUDA_LAYOUT = "mp-bermuda";
-
 export type MpBermudaFieldSide = "right" | "left" | "shared";
 
 export type MpBermudaFieldStripItem = {
@@ -200,31 +198,53 @@ function toMpBermudaSide(value: unknown): MpBermudaFieldSide | null {
   return value === "right" || value === "left" || value === "shared" ? value : null;
 }
 
-export function buildMpBermudaFieldStripItems(snapshot: TemplateSnapshot): MpBermudaFieldStripItem[] {
-  const items: MpBermudaFieldStripItem[] = [];
+// The single ordered projection of a frozen MP/Bermuda snapshot. Drawing and
+// strip both derive from THIS list, so a marker can never describe a field the
+// strip does not show, and neither view drifts onto the mutable catalog.
+//
+// It does NOT filter on `layout`. Ownership is already settled by template code
+// before this runs, and inside an MP session the frozen snapshot IS the
+// contract: dropping a field because its presentation metadata is corrupt would
+// silently delete a required clinical measurement from the only view that can
+// still capture it. Whether such a snapshot may be COMPLETED stays with the W3
+// server invariant, which this projection never relaxes.
+export function buildMpBermudaFields(snapshot: TemplateSnapshot): TemplateSnapshotField[] {
+  const fields: TemplateSnapshotField[] = [];
 
   for (const section of [...snapshot.sections].sort((a, b) => a.sortOrder - b.sortOrder)) {
     for (const field of [...section.fields].sort((a, b) => a.sortOrder - b.sortOrder)) {
-      if (field.metadata.layout !== MP_BERMUDA_LAYOUT) continue;
-
-      const from = toEndpointLabel(field.metadata.fromStationId);
-      const to = toEndpointLabel(field.metadata.toStationId);
-
-      items.push({
-        key: field.key,
-        label: field.label,
-        unit: field.unit,
-        minValue: field.minValue,
-        maxValue: field.maxValue,
-        isRequired: field.isRequired,
-        side: toMpBermudaSide(field.metadata.side),
-        station: toEndpointLabel(field.metadata.stationId),
-        endpoints: from && to ? `${from} → ${to}` : null,
-      });
+      fields.push(field);
     }
   }
 
-  return items;
+  return fields;
+}
+
+// Exact frozen identity, never inferred from field metadata: one contaminated
+// field must not be able to hijack a Mentonera or compression session, and an MP
+// session whose metadata was corrupted must not silently fall into a generic
+// shell that cannot project its fields at all.
+export function usesMpBermudaLayout(snapshot: TemplateSnapshot): boolean {
+  return snapshot.code === MP_BERMUDA_TEMPLATE_CODE;
+}
+
+export function buildMpBermudaFieldStripItems(snapshot: TemplateSnapshot): MpBermudaFieldStripItem[] {
+  return buildMpBermudaFields(snapshot).map((field) => {
+    const from = toEndpointLabel(field.metadata.fromStationId);
+    const to = toEndpointLabel(field.metadata.toStationId);
+
+    return {
+      key: field.key,
+      label: field.label,
+      unit: field.unit,
+      minValue: field.minValue,
+      maxValue: field.maxValue,
+      isRequired: field.isRequired,
+      side: toMpBermudaSide(field.metadata.side),
+      station: toEndpointLabel(field.metadata.stationId),
+      endpoints: from && to ? `${from} → ${to}` : null,
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------

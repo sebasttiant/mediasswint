@@ -20,8 +20,24 @@ type MpBermudaFieldStripProps = {
   valuesByKey: Record<string, string>;
   errorsByKey?: Record<string, string>;
   activeFieldKey?: string | null;
+  onFocus?: (key: string) => void;
   onChange: (key: string, value: string) => void;
 };
+
+/** DOM id of a field's input. The one place the drawing and the strip agree on. */
+export function mpBermudaFieldInputId(key: string): string {
+  return `mp-field-${key}`;
+}
+
+// Takes the document instead of reaching for the global, so the marker-to-input
+// bridge stays testable and safe on the server, where there is no document.
+export function focusMpBermudaField(
+  key: string,
+  doc: Pick<Document, "getElementById"> | null,
+): void {
+  const input = doc?.getElementById(mpBermudaFieldInputId(key));
+  if (input instanceof Object && typeof input.focus === "function") input.focus();
+}
 
 const SIDE_LABEL: Readonly<Record<string, string>> = {
   right: "Lado derecho",
@@ -43,6 +59,7 @@ export function MpBermudaFieldStrip({
   valuesByKey,
   errorsByKey = {},
   activeFieldKey = null,
+  onFocus,
   onChange,
 }: MpBermudaFieldStripProps) {
   return (
@@ -53,7 +70,7 @@ export function MpBermudaFieldStrip({
           const isFilled = value.trim().length > 0;
           const isActive = item.key === activeFieldKey;
           const error = errorsByKey[item.key];
-          const inputId = `mp-field-${item.key}`;
+          const inputId = mpBermudaFieldInputId(item.key);
           const contextId = `${inputId}-context`;
           const errorId = `${inputId}-error`;
 
@@ -93,7 +110,11 @@ export function MpBermudaFieldStrip({
                   aria-required={item.isRequired}
                   aria-invalid={error ? "true" : undefined}
                   aria-describedby={error ? `${contextId} ${errorId}` : contextId}
-                  onChange={(event) => onChange(item.key, event.target.value)}
+                  onFocus={() => onFocus?.(item.key)}
+                  onChange={(event) => {
+                    onFocus?.(item.key);
+                    onChange(item.key, event.target.value);
+                  }}
                   className="h-9 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 font-mono text-base text-slate-800 lg:text-sm"
                 />
                 <span className="w-7 text-center text-xs font-medium text-slate-400">{item.unit}</span>

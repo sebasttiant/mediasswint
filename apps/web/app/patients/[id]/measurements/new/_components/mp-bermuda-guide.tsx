@@ -1,3 +1,5 @@
+"use client";
+
 import { buildMpBermudaTemplate, type MpBermudaTemplateField } from "@/lib/mp-bermuda-template";
 
 const MP_BERMUDA_MARKER_SHAPE = {
@@ -28,6 +30,8 @@ export type MpBermudaGuideProps = {
   fields?: ReadonlyArray<MpBermudaGuideField>;
   activeMarkerId?: string | null;
   filledMarkerIds?: ReadonlySet<string>;
+  /** Pointer shortcut to a field, by FIELD KEY. Markers stay out of the tab order on purpose: the strip already gives all 55 fields a native keyboard stop, so focusable markers would only double the tab order. */
+  onMarkerActivate?: (key: string) => void;
 };
 
 const STATION_Y = {
@@ -152,6 +156,7 @@ export function MpBermudaGuide({
   fields = CANONICAL_FIELDS,
   activeMarkerId = null,
   filledMarkerIds = new Set<string>(),
+  onMarkerActivate,
 }: MpBermudaGuideProps) {
   const markers = resolveMpBermudaMarkers(fields);
   if (!markers) return null;
@@ -171,6 +176,7 @@ export function MpBermudaGuide({
         const isActive = marker.markerId === activeMarkerId;
         const isFilled = filledMarkerIds.has(marker.markerId);
         const state = isActive ? "active" : isFilled ? "filled" : "pending";
+        const activate = onMarkerActivate ? () => onMarkerActivate(marker.key) : undefined;
         const common = {
           "data-mp-marker-id": marker.markerId,
           "data-mp-marker-side": marker.side,
@@ -178,6 +184,16 @@ export function MpBermudaGuide({
           "data-filled": isFilled ? "true" : undefined,
           "aria-current": isActive ? ("true" as const) : undefined,
           "aria-label": markerDescription(marker),
+          // One activation path for pointer and keyboard, so the two can never drift.
+          role: activate && "button",
+          tabIndex: activate && 0,
+          onClick: activate,
+          onKeyDown: activate && ((event: { key: string; preventDefault: () => void }) => {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            if (event.key === " ") event.preventDefault(); // Space would scroll the page.
+            activate();
+          }),
+          className: activate && "cursor-pointer",
         };
 
         return (

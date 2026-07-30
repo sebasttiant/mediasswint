@@ -21,10 +21,13 @@ import {
   getFilledZoneIdsFromValues,
   measurementSnapshotRequiresFaceGuide,
   resolveHeadMeasurementLayout,
+  usesMpBermudaLayout,
   type MeasurementUiField,
 } from "../../measurements-ui";
 import { DetailFieldStrip } from "./detail-field-strip";
 import { HeadMeasurementShellLayout } from "./head-measurement-shell-layout";
+import { focusMpBermudaField } from "./mp-bermuda-field-strip";
+import { MpBermudaShellLayout } from "./mp-bermuda-shell-layout";
 import { ZoneStrip } from "./zone-strip";
 import { MobileStripTabs, MobileStripPanel, type StripTabId } from "./mobile-strip-tabs";
 
@@ -89,6 +92,8 @@ function buildDetailStrips(region: DetailRegion, side: DetailSide | null): Detai
 type MeasurementShellProps = {
   templateSnapshot: TemplateSnapshot;
   valuesByKey: Record<string, string>;
+  /** Key-addressable validation errors, as returned by a refused completion. */
+  fieldErrors?: Record<string, string>;
   sex: BodyFigureSex;
   footer: ReactNode;
   onValueChange: (key: string, value: string) => void;
@@ -97,11 +102,15 @@ type MeasurementShellProps = {
 export function MeasurementShell({
   templateSnapshot,
   valuesByKey,
+  fieldErrors,
   sex,
   footer,
   onValueChange,
 }: MeasurementShellProps) {
   const [activeZoneId, setActiveZoneId] = useState<AnatomyZoneId | null>(null);
+  // MP/Bermuda fields are addressed by field key, not by anatomy zone: the same
+  // station exists on both legs, so a zone id could not tell them apart.
+  const [activeFieldKey, setActiveFieldKey] = useState<string | null>(null);
   const [mobileTab, setMobileTab] = useState<StripTabId>("RL");
   const [detailRegion, setDetailRegion] = useState<DetailRegion | null>(null);
   const [detailSide, setDetailSide] = useState<DetailSide | null>(null);
@@ -171,6 +180,27 @@ export function MeasurementShell({
   // kind} and no {group, side, point} for buildMeasurementTableRows to project.
   // The resolver therefore keeps degraded and empty snapshots here, with a
   // warning banner and completion blocked.
+  // MP/Bermuda owns its own two-view capture. It cannot fall through to the
+  // generic layout either: its fields carry {layout, side, markerId} and no
+  // {group, side, point}, so buildMeasurementTableRows would project nothing.
+  if (usesMpBermudaLayout(templateSnapshot)) {
+    return (
+      <MpBermudaShellLayout
+        snapshot={templateSnapshot}
+        valuesByKey={valuesByKey}
+        errorsByKey={fieldErrors}
+        activeFieldKey={activeFieldKey}
+        onFocus={setActiveFieldKey}
+        onMarkerActivate={(key) => {
+          setActiveFieldKey(key);
+          focusMpBermudaField(key, typeof document === "undefined" ? null : document);
+        }}
+        onChange={onValueChange}
+        footer={footer}
+      />
+    );
+  }
+
   const headLayout = resolveHeadMeasurementLayout(templateSnapshot);
 
   if (headLayout.kind !== "none") {

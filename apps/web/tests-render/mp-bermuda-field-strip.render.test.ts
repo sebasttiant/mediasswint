@@ -74,7 +74,11 @@ describe("MP/Bermuda textual fallback", () => {
     assert.match(textContent(strip({ items: degraded })), /Peso Pendiente Opcional Sin contexto anatómico disponible/);
   });
 
-  it("never leaks unknown or inherited endpoint metadata and excludes foreign layouts", () => {
+  // Retention supersedes the earlier layout-exclusion rule: ownership is now the
+  // frozen template code, and a field whose `layout` is corrupt is indistinguishable
+  // from a stray one. Inside an MP session, showing an extra row is safer than
+  // silently deleting a required measurement. Structural rejection belongs to W7.
+  it("never leaks unknown or inherited endpoint metadata, and hides no frozen field", () => {
     const foreign = { id: "x", key: "compressionLegR1", label: "Punto 1", fieldType: "NUMBER" as const, unit: "cm", isRequired: true, sortOrder: 99, minValue: 1, maxValue: 2, metadata: { group: "legs", side: "right", point: 1 } };
     const base = snapshot((field) => field.key === "mpRightWaistToHipDistance"
       ? { ...field, metadata: { ...field.metadata, stationId: "internal_debug_id", fromStationId: "toString" } }
@@ -82,8 +86,8 @@ describe("MP/Bermuda textual fallback", () => {
     const mixed = buildMpBermudaFieldStripItems({ ...base, sections: [...base.sections, { title: "Foreign", sortOrder: 9, fields: [foreign] }] });
     const malformed = mixed.find((item) => item.key === "mpRightWaistToHipDistance");
 
-    assert.equal(mixed.length, 55);
-    assert.equal(mixed.some((item) => item.key === "compressionLegR1"), false);
+    assert.equal(mixed.length, 56);
+    assert.equal(mixed.some((item) => item.key === "compressionLegR1"), true);
     assert.deepEqual({ station: malformed?.station, endpoints: malformed?.endpoints }, { station: null, endpoints: null });
     assert.doesNotMatch(textContent(strip({ items: mixed })), /internal_debug_id|function toString/);
   });
