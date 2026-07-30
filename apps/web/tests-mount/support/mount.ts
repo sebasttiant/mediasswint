@@ -13,11 +13,7 @@ import { flushSync } from "react-dom";
  * Each test must call `cleanup()` (see afterEach in mount.smoke.test.ts) so the
  * global DOM is unregistered between tests and state never leaks forward.
  */
-export function mount<T>(element: React.ReactElement<T>): {
-  document: Document;
-  window: Window & typeof globalThis;
-  container: HTMLElement;
-} {
+export function mount<T>(element: React.ReactElement<T>): MountResult {
   GlobalRegistrator.register();
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -26,6 +22,12 @@ export function mount<T>(element: React.ReactElement<T>): {
   roots.set(container, root);
   return { document, window, container };
 }
+
+export type MountResult = {
+  document: Document;
+  window: Window & typeof globalThis;
+  container: HTMLElement;
+};
 
 const roots = new Map<HTMLElement, Root>();
 

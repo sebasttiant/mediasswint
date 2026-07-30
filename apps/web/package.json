@@ -14,6 +14,7 @@
     "test:integration": "node --test --import tsx \"tests-integration/**/*.integration.test.ts\"",
     "test:integration:ci": "node scripts/assert-disposable-integration-db.mjs && node --test --import tsx \"tests-integration/**/*.integration.test.ts\"",
     "test:render": "node --import tsx --import ./tests-render/support/register-css-stub.mjs --test \"tests-render/**/*.render.test.ts\"",
+    "test:mount": "node --import tsx --import ./tests-render/support/register-css-stub.mjs --test \"tests-mount/**/*.test.tsx\"",
     "prisma:validate": "prisma validate --schema prisma/schema.prisma",
     "prisma:format": "prisma format --schema prisma/schema.prisma",
     "prisma:generate": "prisma generate --schema prisma/schema.prisma",
