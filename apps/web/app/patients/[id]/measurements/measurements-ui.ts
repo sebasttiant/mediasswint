@@ -8,6 +8,7 @@ import {
 import { MASCARA_TEMPLATE_CODE } from "@/lib/mascara-template";
 import { MENTONERA_TEMPLATE_CODE } from "@/lib/mentonera-template";
 import type { TemplateSnapshot, TemplateSnapshotField } from "@/lib/measurements";
+import { MP_BERMUDA_ENDPOINT_LABELS } from "@/lib/mp-bermuda-template";
 
 export type MeasurementUiGroup = "legs" | "arms";
 export type MeasurementUiSide = "right" | "left";
@@ -153,6 +154,77 @@ export function buildHeadMeasurementFields(snapshot: TemplateSnapshot): Measurem
   }
 
   return entries.sort((a, b) => a.sortOrder - b.sortOrder).map((entry) => entry.field);
+}
+
+// ---------------------------------------------------------------------------
+// MP/Bermuda textual fallback.
+//
+// The bilateral drawing is guidance, never the contract. This projection is the
+// non-visual view of the SAME frozen snapshot: label, unit, required flag, side
+// ownership and anatomical endpoints survive as text, so a session stays
+// capturable when the SVG, CSS or colour is unavailable.
+//
+// Presentation metadata is optional HERE BY DESIGN, which is the deliberate
+// opposite of the drawing's fail-closed rule. A marker with unusable geometry
+// must not be painted in the wrong place; a FIELD with unusable ownership
+// metadata must still be enterable, or the fallback would delete the operator's
+// last way to record the measurement. Unusable context degrades to null.
+// ---------------------------------------------------------------------------
+
+const MP_BERMUDA_LAYOUT = "mp-bermuda";
+
+export type MpBermudaFieldSide = "right" | "left" | "shared";
+
+export type MpBermudaFieldStripItem = {
+  key: string;
+  label: string;
+  unit: string;
+  minValue: number;
+  maxValue: number;
+  isRequired: boolean;
+  /** Null when the snapshot does not declare a usable side. */
+  side: MpBermudaFieldSide | null;
+  /** Anatomical station of a circumference field, e.g. "Rodilla". */
+  station: string | null;
+  /** Endpoints of an adjacent-distance or bracketed length, e.g. "Cintura → Cadera". */
+  endpoints: string | null;
+};
+
+// `hasOwn`, never `?? value`: an unrecognised id is not a label, and a plain index would also reach inherited members such as `toString`. An endpoint we cannot name degrades to null, exactly like an absent one.
+function toEndpointLabel(value: unknown): string | null {
+  if (typeof value !== "string" || value.length === 0) return null;
+  return Object.hasOwn(MP_BERMUDA_ENDPOINT_LABELS, value) ? MP_BERMUDA_ENDPOINT_LABELS[value] : null;
+}
+
+function toMpBermudaSide(value: unknown): MpBermudaFieldSide | null {
+  return value === "right" || value === "left" || value === "shared" ? value : null;
+}
+
+export function buildMpBermudaFieldStripItems(snapshot: TemplateSnapshot): MpBermudaFieldStripItem[] {
+  const items: MpBermudaFieldStripItem[] = [];
+
+  for (const section of [...snapshot.sections].sort((a, b) => a.sortOrder - b.sortOrder)) {
+    for (const field of [...section.fields].sort((a, b) => a.sortOrder - b.sortOrder)) {
+      if (field.metadata.layout !== MP_BERMUDA_LAYOUT) continue;
+
+      const from = toEndpointLabel(field.metadata.fromStationId);
+      const to = toEndpointLabel(field.metadata.toStationId);
+
+      items.push({
+        key: field.key,
+        label: field.label,
+        unit: field.unit,
+        minValue: field.minValue,
+        maxValue: field.maxValue,
+        isRequired: field.isRequired,
+        side: toMpBermudaSide(field.metadata.side),
+        station: toEndpointLabel(field.metadata.stationId),
+        endpoints: from && to ? `${from} → ${to}` : null,
+      });
+    }
+  }
+
+  return items;
 }
 
 // ---------------------------------------------------------------------------

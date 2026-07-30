@@ -83,6 +83,18 @@ const SIDE_DEFINITIONS = [
   { side: MP_BERMUDA_SIDE.LEFT, name: "Left", label: "izquierda" },
 ] as const;
 
+/**
+ * Human name for every endpoint a field's metadata may reference: the ordered
+ * leg stations plus the two landmarks used only by the shared bracketed
+ * lengths. Exported so the textual fallback names endpoints from THIS catalog
+ * instead of keeping a second, drift-prone copy of the same labels.
+ */
+export const MP_BERMUDA_ENDPOINT_LABELS: Readonly<Record<string, string>> = {
+  ...Object.fromEntries(STATIONS.map((station) => [station.id, station.label])),
+  glutealFold: "Pliegue de la nalga",
+  floor: "Piso",
+};
+
 function metadata(
   kind: MpBermudaFieldKind,
   side: MpBermudaSide,
