@@ -9,11 +9,31 @@ allowBuilds:
   sharp: true
   unrs-resolver: true
 
+# GHSA-mh99-v99m-4gvg (CVE-2026-14257) is reported against `<=5.0.7`, a range
+# that spans every brace-expansion major line, so it keeps matching 1.1.18 and
+# 2.1.4 even though both ship the EXPANSION_MAX_LENGTH backport that fixes it.
+# The overrides below pin each line to a release that carries the fix, so this
+# entry silences a range artefact, not an unpatched dependency. Remove it once
+# exceljs and eslint-config-next stop pulling minimatch 3 and 5.
+auditConfig:
+  ignoreGhsas:
+    - GHSA-mh99-v99m-4gvg
+
 overrides:
   "@babel/core": ">=7.29.1"
-  "@hono/node-server": ">=1.19.13"
+  "@hono/node-server": ">=2.0.10"
+  # Patched per major line on purpose: brace-expansion 5 exports a named
+  # `expand` instead of a callable default, so forcing every consumer onto 5.x
+  # breaks the CommonJS `require('brace-expansion')(...)` call that minimatch 3
+  # still makes underneath exceljs and the eslint resolver chain.
+  "brace-expansion@1": "^1.1.18"
+  "brace-expansion@2": "^2.1.4"
+  "brace-expansion@5": "^5.0.8"
   esbuild: ">=0.28.1"
-  hono: ">=4.12.25"
-  js-yaml: ">=4.1.2"
-  postcss: ">=8.5.10"
+  fast-uri: ">=3.1.4"
+  hono: ">=4.12.27"
+  js-yaml: ">=4.3.0"
+  postcss: ">=8.5.18"
+  sharp: ">=0.35.0"
   uuid: ">=11.1.1"
+  valibot: ">=1.4.2"
