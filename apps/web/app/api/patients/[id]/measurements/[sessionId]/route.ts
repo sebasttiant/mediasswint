@@ -307,7 +307,13 @@ export async function handlePatchMeasurementRequest(
           return NextResponse.json({ error: "Internal server error", committed: false }, { status: 500 });
         }
         return NextResponse.json(
-          { error: "MP/Bermuda completion requirements are incomplete", errors: completed.errors, committed: true },
+          {
+            error: "MP/Bermuda completion requirements are incomplete",
+            code: "MP_COMPLETION_INVALID",
+            reason: "The MP/Bermuda draft was saved, but completion requirements are incomplete.",
+            errors: completed.errors,
+            committed: true,
+          },
           { status: 422 },
         );
       }

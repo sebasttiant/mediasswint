@@ -21,6 +21,7 @@ const GENERIC_FAILURE = "No se pudieron guardar las medidas. Revisá rangos y ca
  * bug this contract exists to fix, only in the opposite direction.
  */
 const COMPLETION_REFUSED_CODE = "INCOMPLETE_TEMPLATE_SNAPSHOT";
+const MP_COMPLETION_REFUSED_CODE = "MP_COMPLETION_INVALID";
 
 /** An unreadable stored snapshot: nothing was written, and it is not the user's input. */
 const UNREADABLE_SNAPSHOT_CODE = "MALFORMED_TEMPLATE_SNAPSHOT";
@@ -45,6 +46,15 @@ function readString(body: unknown, key: string): string | null {
   if (!isRecord(body)) return null;
   const value = body[key];
   return typeof value === "string" && value.trim() !== "" ? value : null;
+}
+
+export function completionFieldErrors(body: unknown): Record<string, string> {
+  if (!isRecord(body) || !Array.isArray(body.errors)) return {};
+  return Object.fromEntries(body.errors.flatMap((error) => {
+    if (!isRecord(error) || typeof error.field !== "string" || typeof error.message !== "string") return [];
+    const key = error.field.replace(/^(valuesByKey|templateSnapshot\.fields)\./, "");
+    return key === error.field ? [] : [[key, error.message]];
+  }));
 }
 
 export function interpretSaveResponse(status: number, body: unknown): SaveOutcome {
@@ -74,7 +84,15 @@ export function interpretSaveResponse(status: number, body: unknown): SaveOutcom
     };
   }
 
-  if (status === 422 && code === COMPLETION_REFUSED_CODE) {
+  // Two distinct domain refusals reach the same clinician-facing outcome: the
+  // head-template one, which writes the draft before refusing, and the MP one,
+  // which says so on the wire. MP is only trusted to be a draft-saved refusal
+  // when it actually claims `committed`, so a future non-committing 422 under
+  // the same code cannot silently tell a clinician their values were kept.
+  const mpDraftSavedRefusal =
+    code === MP_COMPLETION_REFUSED_CODE && isRecord(body) && body.committed === true;
+
+  if (status === 422 && (code === COMPLETION_REFUSED_CODE || mpDraftSavedRefusal)) {
     // Deliberately explicit about BOTH halves: what was kept and what was not.
     const head = "Guardamos el borrador, pero no pudimos finalizar la sesión.";
     const tail = reason ?? "La plantilla de medidas de esta sesión no está completa.";

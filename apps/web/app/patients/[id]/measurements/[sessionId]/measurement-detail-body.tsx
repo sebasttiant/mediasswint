@@ -8,9 +8,10 @@ import { resolveGarmentDisplay } from "@/lib/garment-catalog";
 import type { MeasurementSessionDetail } from "@/lib/measurements";
 import { parseTemplateSnapshot } from "@/lib/template-snapshot";
 import { formatClinicDateTime } from "@/lib/datetime";
+import { classifyMpBermudaSnapshot, type MpBermudaLayoutState } from "@/lib/mp-bermuda-layout";
 
 import styles from "../../../page.module.css";
-import { buildMeasurementTableRows, getFilledZoneIdsFromValues, type MeasurementUiGroup } from "../measurements-ui";
+import { buildMeasurementTableRows, buildMpBermudaFieldStripItems, getFilledZoneIdsFromValues, type MeasurementUiGroup } from "../measurements-ui";
 import type {
   MeasurementDetailViewMeasurement,
   MeasurementDetailViewPatient,
@@ -49,6 +50,123 @@ function formatDateTime(date: Date): string {
 
 function buildMeasurementEditHref(patientId: string, sessionId: string): string {
   return `/patients/${encodeURIComponent(patientId)}/measurements/${encodeURIComponent(sessionId)}/edit`;
+}
+
+// W7 — Historical/degraded rendering for MP/Bermuda sessions. The detail page
+// must never be blank for an MP session: when classification succeeds it shows
+// the structured 55-field summary; when it does not, it falls back to a raw
+// key/label/value table plus a visible warning. Raw values are preserved
+// exactly, never coerced to canonical, never silently hidden.
+
+// The classifier's `reason` is an English diagnostic meant for logs and tests.
+// What a clinician reads is decided here, in the language of the rest of the UI,
+// and it says what they can still trust rather than naming the broken invariant.
+const MP_DEGRADATION_NOTICE: Partial<Record<MpBermudaLayoutState, string>> = {
+  "visual-degraded":
+    "Esta sesión no conserva las marcas visuales de su plantilla. Las medidas se muestran en formato de texto.",
+  "clinical-incomplete":
+    "La plantilla de esta sesión no coincide con el contrato clínico vigente. Se muestran las medidas tal como quedaron registradas.",
+};
+
+function MpBermudaDetailSummary({
+  snapshot,
+  classification,
+  values,
+}: {
+  snapshot: NonNullable<MeasurementSessionDetail["templateSnapshot"]>;
+  classification: MpBermudaLayoutState;
+  values: Record<string, number | null>;
+}): ReactElement {
+  const notice = MP_DEGRADATION_NOTICE[classification] ?? null;
+  const items = buildMpBermudaFieldStripItems(snapshot);
+
+  return (
+    <section className={styles.card}>
+      <div className={styles.measurementWorkspace}>
+        <div className={styles.measurementTables}>
+          <h3>Medidas MP/Bermuda</h3>
+          {notice ? (
+            <p role="status" className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              {notice}
+            </p>
+          ) : null}
+          <div className={styles.tableWrap}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Medida</th>
+                  <th>Lado</th>
+                  <th>Valor</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item, index) => {
+                  const value = values[item.key];
+                  const sideText =
+                    item.side === "right" ? "Derecho" : item.side === "left" ? "Izquierdo" : "Compartido";
+                  return (
+                    <tr key={`${item.key}-${index}`}>
+                      <td data-label="Medida">{item.label}</td>
+                      <td data-label="Lado">{sideText}</td>
+                      <td data-label="Valor">
+                        {value === null || value === undefined ? "—" : String(value)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// Last-resort fallback: a frozen MP session whose snapshot cannot even be
+// classified (or carries no parseable fields) still has stored values worth
+// showing. Render them as a raw key/label/value table plus a visible warning.
+// Raw values are preserved exactly, never coerced to canonical, never hidden.
+function RawValuesTable({
+  values,
+}: {
+  values: Record<string, number | null>;
+}): ReactElement {
+  const entries = Object.entries(values);
+  return (
+    <section className={styles.card}>
+      <p className={styles.error}>
+        No pudimos leer la plantilla de medidas de esta sesión. Se muestran los
+        valores crudos almacenados; avisá al equipo para regenerar la plantilla.
+      </p>
+      <div className={styles.measurementTables}>
+        <div className={styles.tableWrap}>
+          <table>
+            <thead>
+              <tr>
+                <th>Clave</th>
+                <th>Valor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entries.length === 0 ? (
+                <tr>
+                  <td colSpan={2} data-label="Sin valores">Sin valores almacenados</td>
+                </tr>
+              ) : (
+                entries.map(([key, value]) => (
+                  <tr key={key}>
+                    <td data-label="Clave">{key}</td>
+                    <td data-label="Valor">{value === null ? "—" : String(value)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 function ReadOnlyMeasurementTable({
@@ -103,6 +221,19 @@ export default function MeasurementDetailBody({
   // from a Json column. Validate it here rather than casting: an unreadable
   // snapshot must render a session without its figure, never crash the page.
   const snapshot = parseTemplateSnapshot(measurement.templateSnapshot);
+
+  // W7 — MP/Bermuda sessions own their own detail rendering. They cannot fall
+  // through to `ReadOnlyMeasurementTable` because `buildMeasurementTableRows`
+  // projects compression's {group, side, point} groups and MP fields carry no
+  // such metadata. The structured summary shows every field the frozen snapshot
+  // still carries; the raw key/value table is the last resort when it carries
+  // none. `not-mp` is the ownership answer for every foreign template, and it
+  // must reach neither branch — compression, Mentonera and Máscara keep their
+  // existing BodyHighlight + legs/arms rendering untouched.
+  const mpLayout = classifyMpBermudaSnapshot(snapshot).kind;
+  const isMpBermuda = mpLayout !== "not-mp" && mpLayout !== "structurally-malformed";
+  const showMpRawFallback = mpLayout === "structurally-malformed";
+
   const filledZoneIds = snapshot
     ? getFilledZoneIdsFromValues(snapshot, measurement.values)
     : undefined;
@@ -171,7 +302,11 @@ export default function MeasurementDetailBody({
         </div>
       </section>
 
-      {snapshot ? (
+      {snapshot && isMpBermuda ? (
+        <MpBermudaDetailSummary snapshot={snapshot} classification={mpLayout} values={measurement.values} />
+      ) : showMpRawFallback ? (
+        <RawValuesTable values={measurement.values} />
+      ) : snapshot ? (
         <section className={styles.card}>
           <div className={styles.measurementWorkspace}>
             <aside className={styles.bodyHighlightRail} aria-label="Zonas anatómicas">

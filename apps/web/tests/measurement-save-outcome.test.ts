@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { interpretSaveResponse } from "../lib/measurement-save-outcome";
+import { completionFieldErrors, interpretSaveResponse } from "../lib/measurement-save-outcome";
 
 /**
  * F9 — the client told the user "no se pudieron guardar las medidas" for EVERY
@@ -32,6 +32,24 @@ describe("interpretSaveResponse — partial success must not be reported as fail
       "must never claim the measurements were not saved",
     );
     assert.match(outcome.message, /finaliz/i, "must say finalization was refused");
+  });
+
+  it("recognizes the MP completion refusal code returned with committed draft values", () => {
+    const outcome = interpretSaveResponse(422, {
+      code: "MP_COMPLETION_INVALID",
+      committed: true,
+      errors: [{ field: "valuesByKey.mpHeight", message: "required" }],
+    });
+
+    assert.equal(outcome.kind, "draft-saved-completion-refused");
+    assert.equal(outcome.draftSaved, true);
+  });
+
+  it("maps key-addressable completion errors to their owning field keys", () => {
+    assert.deepEqual(completionFieldErrors({ errors: [
+      { field: "valuesByKey.mpHeight", message: "required" },
+      { field: "templateSnapshot.fields.mpWeight", message: "invalid" },
+    ] }), { mpHeight: "required", mpWeight: "invalid" });
   });
 
   it("carries the server's reason through so the user can act on it", () => {

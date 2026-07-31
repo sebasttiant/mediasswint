@@ -15,7 +15,7 @@ import {
 } from "@/lib/garment-catalog";
 import type { TemplateSnapshot } from "@/lib/measurements";
 import { toClinicDatetimeLocal } from "@/lib/datetime";
-import { interpretSaveResponse } from "@/lib/measurement-save-outcome";
+import { completionFieldErrors, interpretSaveResponse } from "@/lib/measurement-save-outcome";
 
 import {
   getFilledZoneIdsFromValues,
@@ -107,6 +107,7 @@ export default function NewMeasurementClient({ patientId, patientName, patientSe
     : null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const patientSexSnapshot = initialDraft?.patientSex ?? patientSex;
   const bodyFigureSex = resolveBodyFigureSex(patientSexSnapshot);
@@ -204,6 +205,7 @@ export default function NewMeasurementClient({ patientId, patientName, patientSe
 
       if (outcome.kind === "draft-saved-completion-refused") {
         setError(outcome.message);
+        setFieldErrors(completionFieldErrors(payload));
         // The values ARE saved, so the status must not read as an error.
         setSaveStatus("saved");
         return;
@@ -225,6 +227,9 @@ export default function NewMeasurementClient({ patientId, patientName, patientSe
   }
 
   function updateValue(key: string, value: string) {
+    setFieldErrors((current) => {
+      return Object.fromEntries(Object.entries(current).filter(([fieldKey]) => fieldKey !== key));
+    });
     setDraft((current) =>
       current ? { ...current, valuesByKey: { ...current.valuesByKey, [key]: value } } : current,
     );
@@ -441,6 +446,7 @@ export default function NewMeasurementClient({ patientId, patientName, patientSe
       <MeasurementShell
         templateSnapshot={draft.templateSnapshot}
         valuesByKey={draft.valuesByKey}
+        fieldErrors={fieldErrors}
         sex={bodyFigureSex}
         onValueChange={updateValue}
         footer={
