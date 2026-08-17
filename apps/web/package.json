@@ -38,18 +38,18 @@
     "redis": "4.7.0"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.11.1",
-    "@tailwindcss/postcss": "^4.3.1",
+    "@happy-dom/global-registrator": "^20.11.2",
+    "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^24",
     "@types/pdfkit": "^0.17.6",
     "@types/pg": "^8.11.10",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.2.9",
-    "prisma": "7.8.0",
-    "tailwindcss": "^4.3.1",
-    "tsx": "4.22.4",
+    "eslint-config-next": "16.3.1",
+    "prisma": "7.9.1",
+    "tailwindcss": "^4.3.3",
+    "tsx": "4.23.12",
     "typescript": "^5"
   }
 }
