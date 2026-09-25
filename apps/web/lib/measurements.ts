@@ -181,7 +181,18 @@ export type SaveDraftRepositoryInput = {
   values: Array<{ fieldId: string; valueNumber: number | null }>;
 };
 
-export type SaveDraftAndCompleteRepositoryInput = SaveDraftRepositoryInput;
+export type SaveDraftAndCompleteRepositoryInput = SaveDraftRepositoryInput & {
+  /**
+   * Runs under the DRAFT lock, before any write, with the values persisted at
+   * that moment. Returning errors refuses the completion with zero writes, so
+   * the decision cannot rest on a read a concurrent save has since changed.
+   */
+  validatePersistedValues?: (valuesByFieldId: ReadonlyMap<string, number | null>) => MpCompletionError[] | null;
+};
+
+export type SaveDraftAndCompleteResult =
+  | MarkCompletedResult
+  | { status: "COMPLETION_INVALID"; errors: MpCompletionError[] };
 
 /**
  * Create a destination draft and its copied values in ONE transaction.
@@ -215,7 +226,7 @@ export type MeasurementsRepository = {
   /** Atomically applies a draft save and transitions it to COMPLETED. */
   saveDraftAndComplete?(
     input: SaveDraftAndCompleteRepositoryInput,
-  ): Promise<MarkCompletedResult>;
+  ): Promise<SaveDraftAndCompleteResult>;
   /** Atomic duplication: destination draft and copied values commit together. */
   createDraftWithValues(
     input: CreateDraftWithValuesRepositoryInput,
@@ -462,8 +473,22 @@ export async function saveAndCompleteMeasurement(
       if (!field) return { ok: false, error: "UNKNOWN_KEYS" };
       values.push({ fieldId: field.id, valueNumber });
     }
+    // The check above can go stale before the lock is taken; this one re-runs
+    // it against the values persisted under the lock.
+    const snapshotFields = detail.templateSnapshot.sections.flatMap((section) => section.fields);
+    const validatePersistedValues =
+      detail.templateSnapshot.code === MP_BERMUDA_TEMPLATE_CODE
+        ? (valuesByFieldId: ReadonlyMap<string, number | null>) => {
+            const persisted = Object.fromEntries(
+              snapshotFields.map((field) => [field.key, valuesByFieldId.get(field.id) ?? null]),
+            );
+            const validation = mergeAndValidateMpCompletionValues(persisted, input.valuesByKey);
+            return validation.ok ? null : validation.errors;
+          }
+        : undefined;
     const draft = {
       sessionId,
+      ...(validatePersistedValues ? { validatePersistedValues } : {}),
       ...(hasContextChanges(input)
         ? {
             context: {
@@ -487,6 +512,9 @@ export async function saveAndCompleteMeasurement(
         ? await repository.markCompleted(sessionId)
         : { status: "INVALID_STATE" as const };
     if (result.status === "NOT_FOUND") return { ok: false, error: "NOT_FOUND" };
+    if (result.status === "COMPLETION_INVALID") {
+      return { ok: false, error: "MP_COMPLETION_INVALID", errors: result.errors };
+    }
     if (result.status !== "COMPLETED") return { ok: false, error: "INVALID_STATE" };
 
     await recordAudit({
@@ -1006,6 +1034,19 @@ const defaultRepository: MeasurementsRepository = {
           select: { status: true },
         });
         return session ? { status: "INVALID_STATE" as const } : { status: "NOT_FOUND" as const };
+      }
+
+      if (input.validatePersistedValues) {
+        // saveDraft takes the same lock before writing values, so no draft save
+        // can change these rows between this read and the commit.
+        const persisted = await tx.measurementValue.findMany({
+          where: { sessionId: input.sessionId },
+          select: { fieldId: true, valueNumber: true },
+        });
+        const errors = input.validatePersistedValues(
+          new Map(persisted.map((value) => [value.fieldId, nullableDecimalToNumber(value.valueNumber)])),
+        );
+        if (errors) return { status: "COMPLETION_INVALID" as const, errors };
       }
 
       if (input.context) {
