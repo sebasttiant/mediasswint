@@ -46,10 +46,10 @@ describe("interpretSaveResponse — partial success must not be reported as fail
   });
 
   it("maps key-addressable completion errors to their owning field keys", () => {
-    assert.deepEqual(completionFieldErrors({ errors: [
+    assert.deepEqual(Object.keys(completionFieldErrors({ errors: [
       { field: "valuesByKey.mpHeight", message: "required" },
       { field: "templateSnapshot.fields.mpWeight", message: "invalid" },
-    ] }), { mpHeight: "required", mpWeight: "invalid" });
+    ] })), ["mpHeight", "mpWeight"]);
   });
 
   it("carries the server's reason through so the user can act on it", () => {
@@ -127,5 +127,51 @@ describe("interpretSaveResponse — partial success must not be reported as fail
 
     assert.equal(outcome.kind, "failed");
     assert.equal(outcome.draftSaved, false);
+  });
+});
+
+/**
+ * The API speaks English machine text (`reason`, per-field `message`); the
+ * clinician must only ever read Spanish, and every field error must stay
+ * attached to the field it belongs to — for 400 range errors as well as for
+ * 422 completion refusals.
+ */
+describe("save errors are shown in Spanish and stay attached to their field", () => {
+  const mpRefusal = {
+    code: "MP_COMPLETION_INVALID",
+    reason: "The MP/Bermuda draft was saved, but completion requirements are incomplete.",
+    committed: true,
+    errors: [{ field: "valuesByKey.mpHeight", message: "a finite value is required" }],
+  };
+
+  it("never shows the English MP refusal reason", () => {
+    const outcome = interpretSaveResponse(422, mpRefusal);
+
+    assert.equal(outcome.kind, "draft-saved-completion-refused");
+    assert.doesNotMatch(outcome.message, /MP\/Bermuda draft|requirements/);
+    assert.match(outcome.message, /Guardamos el borrador/);
+    assert.match(outcome.message, /campos marcados/);
+  });
+
+  it("translates a missing required value", () => {
+    assert.deepEqual(completionFieldErrors(mpRefusal), {
+      mpHeight: "Completá este valor para poder finalizar.",
+    });
+  });
+
+  it("maps a 400 range error to its field, in Spanish, keeping the range", () => {
+    const body = { errors: [{ field: "valuesByKey.mpLeftWaistCircumference", message: "must be between 0.1 and 300" }] };
+
+    assert.deepEqual(completionFieldErrors(body), {
+      mpLeftWaistCircumference: "Debe estar entre 0.1 y 300.",
+    });
+    assert.equal(interpretSaveResponse(400, body).kind, "failed");
+  });
+
+  it("replaces an unknown message with a generic Spanish one without losing the field", () => {
+    assert.deepEqual(
+      completionFieldErrors({ errors: [{ field: "valuesByKey.mpWeight", message: "must be a number or null" }] }),
+      { mpWeight: "Revisá este valor." },
+    );
   });
 });

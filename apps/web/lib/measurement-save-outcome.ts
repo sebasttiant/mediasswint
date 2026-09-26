@@ -48,12 +48,27 @@ function readString(body: unknown, key: string): string | null {
   return typeof value === "string" && value.trim() !== "" ? value : null;
 }
 
+const RANGE_MESSAGE = /^must be between (\S+) and (\S+)$/;
+
+/**
+ * The API's per-field messages are English machine text. Known ones are
+ * translated; anything else gets a generic Spanish message so the clinician
+ * never reads English, while the field itself stays marked.
+ */
+function toSpanishFieldMessage(message: string): string {
+  if (message === "a finite value is required") return "Completá este valor para poder finalizar.";
+  const range = RANGE_MESSAGE.exec(message);
+  if (range) return `Debe estar entre ${range[1]} y ${range[2]}.`;
+  return "Revisá este valor.";
+}
+
+/** Field-addressable errors from a 400 or 422 body, keyed by field key. */
 export function completionFieldErrors(body: unknown): Record<string, string> {
   if (!isRecord(body) || !Array.isArray(body.errors)) return {};
   return Object.fromEntries(body.errors.flatMap((error) => {
     if (!isRecord(error) || typeof error.field !== "string" || typeof error.message !== "string") return [];
     const key = error.field.replace(/^(valuesByKey|templateSnapshot\.fields)\./, "");
-    return key === error.field ? [] : [[key, error.message]];
+    return key === error.field ? [] : [[key, toSpanishFieldMessage(error.message)]];
   }));
 }
 
@@ -95,7 +110,10 @@ export function interpretSaveResponse(status: number, body: unknown): SaveOutcom
   if (status === 422 && (code === COMPLETION_REFUSED_CODE || mpDraftSavedRefusal)) {
     // Deliberately explicit about BOTH halves: what was kept and what was not.
     const head = "Guardamos el borrador, pero no pudimos finalizar la sesión.";
-    const tail = reason ?? "La plantilla de medidas de esta sesión no está completa.";
+    // The MP reason is English machine text; its field errors say what is missing.
+    const tail = mpDraftSavedRefusal
+      ? "Completá los campos marcados para poder finalizar."
+      : (reason ?? "La plantilla de medidas de esta sesión no está completa.");
     return {
       kind: "draft-saved-completion-refused",
       draftSaved: true,

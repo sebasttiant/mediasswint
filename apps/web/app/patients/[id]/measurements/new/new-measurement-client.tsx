@@ -171,6 +171,8 @@ export default function NewMeasurementClient({ patientId, patientName, patientSe
     if (!draft) return;
     setSaveStatus("saving");
     setError(null);
+    // Each attempt reports only its own field errors, never a previous response's.
+    setFieldErrors({});
 
     try {
       const response = await fetch(
@@ -213,6 +215,8 @@ export default function NewMeasurementClient({ patientId, patientName, patientSe
 
       if (outcome.kind === "failed") {
         setError(outcome.message);
+        // A 400 names the out-of-range fields; mark them like a refused completion.
+        setFieldErrors(completionFieldErrors(payload));
         setSaveStatus("error");
         return;
       }
