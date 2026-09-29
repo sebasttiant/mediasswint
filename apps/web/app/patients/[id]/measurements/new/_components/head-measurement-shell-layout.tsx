@@ -94,14 +94,30 @@ export function HeadMeasurementShellLayout({
         data-head-layout="mobile"
         className="lg:hidden border-b border-slate-200 bg-slate-50 px-3 py-3 sm:px-4"
       >
-        <div className="mx-auto flex max-w-sm flex-col items-center gap-2.5 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm sm:p-4">
+        <div
+          className={`mx-auto flex flex-col items-center gap-2.5 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm sm:p-4 ${
+            composition.mobileMaxWidthPx ? "w-full" : "max-w-sm"
+          }`}
+          style={composition.mobileMaxWidthPx ? { maxWidth: `${composition.mobileMaxWidthPx + 32}px` } : undefined}
+        >
           <div className="text-center">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</p>
             <p className="mt-1 text-xs text-slate-600">
               Tocá una zona o enfocá un campo para sincronizar la medición.
             </p>
           </div>
-          <div className="w-full max-w-[220px] sm:max-w-[260px]">{figure}</div>
+          {/* A two-head figure takes the width it needs; a single head keeps the narrow cap. */}
+          {composition.mobileMaxWidthPx ? (
+            <div
+              className="w-full"
+              style={{ maxWidth: `${composition.mobileMaxWidthPx}px` }}
+              data-head-figure-max-width={String(composition.mobileMaxWidthPx)}
+            >
+              {figure}
+            </div>
+          ) : (
+            <div className="w-full max-w-[220px] sm:max-w-[260px]">{figure}</div>
+          )}
         </div>
       </div>
 

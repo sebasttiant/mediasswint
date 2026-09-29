@@ -84,4 +84,13 @@ describe("head measurement shell — rendered clinician contract", () => {
     assert.match(textContent(markup), /No se puede finalizar hasta regenerarla/);
     assert.match(textContent(markup), /No hay medidas disponibles para Mentonera/);
   });
+
+  it("lets the two-head MENTONERA figure use the width it needs on phone and tablet, in the page flow", () => {
+    assert.ok(mentonera);
+    const markup = renderLayout();
+    const mobile = markup.slice(markup.indexOf('data-head-layout="mobile"'), markup.indexOf('data-head-layout="desktop"'));
+
+    assert.deepEqual(attributeValues(mobile, "data-head-figure-max-width"), [String(mentonera.maxWidthPx)]);
+    assert.doesNotMatch(mobile, /sticky|fixed/, "the phone figure must scroll with the page");
+  });
 });

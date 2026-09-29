@@ -112,7 +112,9 @@ describe("generated accessibility text", () => {
     assert.match(description, /vista frontal/);
     assert.match(description, /2 medidas/);
     assert.match(description, /Contorno de la cabeza alrededor de la frente/);
-    assert.match(description, /Contorno de cuello/);
+    // Named like the Máscara field, not like the Mentonera one.
+    assert.match(description, /Circunferencia del cuello/);
+    assert.doesNotMatch(description, /Contorno de cuello/);
     // The old hardcoded sentence must never reappear.
     assert.doesNotMatch(description, /mentonera/i);
     assert.doesNotMatch(description, /3 medidas/);

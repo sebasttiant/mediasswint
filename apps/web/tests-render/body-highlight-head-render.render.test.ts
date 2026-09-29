@@ -204,3 +204,42 @@ describe("compression rendering is unaffected by the head branch", () => {
     );
   });
 });
+
+/** WCAG 2.x relative luminance of an sRGB hex colour blended over white. */
+function luminanceOnWhite(hex: string, opacity: number): number {
+  const channels = [1, 3, 5].map((start) => parseInt(hex.slice(start, start + 2), 16) / 255);
+  return channels
+    .map((channel) => channel * opacity + (1 - opacity))
+    .map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4))
+    .reduce((sum, c, i) => sum + c * [0.2126, 0.7152, 0.0722][i]!, 0);
+}
+
+function measurementLine(markup: string, zoneId: string): { stroke: string; opacity: number } {
+  const group = new RegExp(`<g[^>]*data-zone-id="${zoneId.replace(".", "\\.")}"[^>]*>\\s*<path([^>]*)>`).exec(markup);
+  assert.ok(group, `the ${zoneId} line must render`);
+  const stroke = /stroke="(#[0-9a-fA-F]{6})"/.exec(group[1]!)?.[1];
+  const opacity = Number(/opacity="([\d.]+)"/.exec(group[1]!)?.[1] ?? "1");
+  assert.ok(stroke, "the line must carry a solid stroke colour");
+  return { stroke, opacity };
+}
+
+describe("head figure — legibility and names", () => {
+  it("draws a line that is still unmeasured with at least 3:1 contrast on white, like the form's printed lines", () => {
+    assert.ok(mascara);
+    const { stroke, opacity } = measurementLine(renderHead(mascara), "head.forehead");
+
+    const contrast = 1.05 / (luminanceOnWhite(stroke, opacity) + 0.05);
+    assert.ok(contrast >= 3, `unmeasured line contrast ${contrast.toFixed(2)}:1 is too faint`);
+  });
+
+  it("names the MÁSCARA neck line exactly like its field, and keeps the MENTONERA name", () => {
+    assert.ok(mascara);
+    assert.ok(mentonera);
+    const mascaraText = attributeValues(renderHead(mascara), "aria-label").join(" | ");
+    const mentoneraText = attributeValues(renderHead(mentonera), "aria-label").join(" | ");
+
+    assert.match(mascaraText, /Circunferencia del cuello/);
+    assert.doesNotMatch(mascaraText, /Contorno de cuello/);
+    assert.match(mentoneraText, /Contorno de cuello/);
+  });
+});

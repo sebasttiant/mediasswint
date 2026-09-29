@@ -48,6 +48,16 @@ export type HeadViewComposition = {
   readonly zoneKeys: ReadonlyArray<string>;
   /** Ordered [fieldKey, anatomyZone] pairs a complete snapshot must contain. */
   readonly expectedFields: ReadonlyArray<readonly [string, string]>;
+  /**
+   * Zone names that differ from HEAD_ZONE_LABELS for this garment, so the
+   * figure names a line exactly like the field it belongs to.
+   */
+  readonly zoneLabels?: Readonly<Record<string, string>>;
+  /**
+   * Phone/tablet cap for the figure. Unset keeps the default narrow cap, which
+   * suits a single head; a two-head figure needs its full width to stay legible.
+   */
+  readonly mobileMaxWidthPx?: number;
 };
 
 /**
@@ -94,6 +104,7 @@ const MENTONERA_COMPOSITION: HeadViewComposition = {
   crop: HEAD_FIGURE_FULL_CROP,
   // User-approved scale. 560 / 331 * 247 = 418px tall.
   maxWidthPx: 560,
+  mobileMaxWidthPx: 560,
   zoneKeys: [
     "head.crownChin.profile",
     "head.faceLength.profile",
@@ -120,6 +131,8 @@ const MASCARA_COMPOSITION: HeadViewComposition = {
     ["mascaraForehead", "head.forehead"],
     ["mascaraNeck", "head.neck"],
   ],
+  // The Máscara field is "Circunferencia del cuello", as on the printed form.
+  zoneLabels: { "head.neck": "Circunferencia del cuello" },
 };
 
 const COMPOSITIONS_BY_TEMPLATE_CODE: Readonly<Record<string, HeadViewComposition>> = {
@@ -183,10 +196,15 @@ export function buildHeadFigureDescription(
     return `Referencia clínica de ${composition.garmentLabel}: ${panelText}. Sin medidas disponibles.`;
   }
 
-  const labels = zoneIds.map((zoneId) => HEAD_ZONE_LABELS[zoneId] ?? zoneId);
+  const labels = zoneIds.map((zoneId) => headZoneLabel(composition, zoneId));
   const measureWord = zoneIds.length === 1 ? "medida" : "medidas";
 
   return `Referencia clínica de ${composition.garmentLabel}: ${panelText}. ${zoneIds.length} ${measureWord}: ${labels.join(", ")}.`;
+}
+
+/** A zone's name for this garment: its own override first, then the shared one. */
+export function headZoneLabel(composition: HeadViewComposition | null | undefined, zoneId: string): string {
+  return composition?.zoneLabels?.[zoneId] ?? HEAD_ZONE_LABELS[zoneId] ?? zoneId;
 }
 
 /** aria-label for the figure, generated the same way. */
