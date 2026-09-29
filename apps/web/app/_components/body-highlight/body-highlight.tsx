@@ -288,6 +288,7 @@ type HeadZoneLayerProps = {
   onHoverChange: (data: TooltipData | null) => void;
   visibleHeadZoneKeys?: ReadonlyArray<string>;
   visiblePanels?: ReadonlyArray<HeadPanelId>;
+  zoneLabels?: Readonly<Record<string, string>>;
 };
 
 // Standalone Mentonera head view: renders the Mentonera-only PDF-derived
@@ -317,12 +318,15 @@ function MeasurementLineMarker({
   const isActive = marker.active === "true";
   const isFilled = marker.filled === "true";
   const isInteractive = marker.role === "button";
-  const lineColor = isActive ? "#dc2626" : isFilled ? "#10b981" : "#94a3b8";
+  // An unmeasured line still has to read like the form's printed tape line:
+  // slate-500 at full opacity keeps it above 3:1 on white, while width and
+  // colour still set it apart from the active (red) and measured (green) lines.
+  const lineColor = isActive ? "#dc2626" : isFilled ? "#10b981" : "#64748b";
   // Widths are tuned for HEAD_FIGURE_VIEWBOX (331 wide), the PDF-traced head's
   // coordinate space — roughly 1/2.3 of the old raster space, so strokes are
   // proportionally thinner than the compression limb fill-bands.
-  const lineWidth = isActive ? 2.2 : isFilled ? 1.9 : 1.5;
-  const lineOpacity = isActive ? 1 : isFilled ? 0.85 : 0.5;
+  const lineWidth = isActive ? 2.2 : isFilled ? 1.9 : 1.6;
+  const lineOpacity = isActive ? 1 : isFilled ? 0.85 : 1;
   const barWidth = isActive ? 1.7 : isFilled ? 1.5 : 1.2;
   const activeFilter = isActive ? `url(#${defsId}-head-glow)` : undefined;
 
@@ -409,6 +413,7 @@ function HeadZoneLayer({
   onHoverChange,
   visibleHeadZoneKeys,
   visiblePanels,
+  zoneLabels,
 }: HeadZoneLayerProps) {
   return (
     <>
@@ -424,6 +429,7 @@ function HeadZoneLayer({
               !visibleHeadZoneKeys || visibleHeadZoneKeys.includes(`${zone.zoneId}.${zone.panel}`)
             );
           })
+          .map((zone) => zoneLabels?.[zone.zoneId] ? { ...zone, label: zoneLabels[zone.zoneId]! } : zone)
           .map((zone) => (
             <MeasurementLineMarker
               // Neck is drawn on both the front and profile heads, so the id
@@ -738,6 +744,7 @@ export function BodyHighlight({
             onHoverChange={setTooltip}
             visibleHeadZoneKeys={headZoneKeys}
             visiblePanels={headComposition?.panels}
+            zoneLabels={headComposition?.zoneLabels}
           />
         ) : null}
 
