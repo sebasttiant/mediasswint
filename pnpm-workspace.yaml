@@ -21,6 +21,8 @@ auditConfig:
 
 overrides:
   "@babel/core": ">=7.29.1"
+  baseline-browser-mapping: "^2.11.0"
+  browserslist: "^4.28.7"
   "@hono/node-server": ">=2.0.10"
   # Patched per major line on purpose: brace-expansion 5 exports a named
   # `expand` instead of a callable default, so forcing every consumer onto 5.x
@@ -29,11 +31,17 @@ overrides:
   "brace-expansion@1": "^1.1.18"
   "brace-expansion@2": "^2.1.4"
   "brace-expansion@5": "^5.0.8"
+  # prisma 7.x pins deepmerge-ts 7.1.5; @prisma/config only calls the plain
+  # `deepmerge` export, whose contract is unchanged in 8.x.
+  deepmerge-ts: "^8.0.2"
   esbuild: ">=0.28.1"
-  fast-uri: ">=3.1.4"
-  hono: ">=4.12.27"
+  fast-uri: "^4.1.4"
+  hono: ">=4.13.5"
+  mysql2: "^3.23.1"
+  # postcss still requires nanoid 3 through CommonJS; 4+ is ESM-only.
+  "nanoid@3": "^3.3.18"
   js-yaml: ">=4.3.0"
   postcss: ">=8.5.18"
-  sharp: ">=0.35.0"
+  sharp: ">=0.35.4"
   uuid: ">=11.1.1"
   valibot: ">=1.4.2"
