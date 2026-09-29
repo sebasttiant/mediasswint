@@ -23,7 +23,7 @@ function mpSnapshot(): TemplateSnapshot {
     description: template.description,
     sections: template.sections.map((section) => ({
       ...section,
-      fields: section.fields.map((field, index) => ({ ...field, id: `field-${index}` })),
+      fields: section.fields.map((field) => ({ ...field, id: `field-${field.key}` })),
     })),
   };
 }
@@ -104,5 +104,34 @@ describe("MP/Bermuda completion contract", () => {
     const completed = await saveAndCompleteMeasurement("session-1", { valuesByKey: { mpHeight: 180 } }, repository);
     assert.deepEqual(completed, { ok: true, value: { id: "session-1", status: "COMPLETED" } });
     assert.equal(atomicCalls, 1);
+  });
+  it("re-validates MP values under the lock and reports a stale completion as MP_COMPLETION_INVALID", async () => {
+    const snapshot = mpSnapshot();
+    const fields = snapshot.sections.flatMap((section) => section.fields);
+    const completeValues = Object.fromEntries(fields.map((field) => [field.key, field.minValue]));
+    const detail: MeasurementSessionDetail = {
+      id: "session-1", patientId: "patient-1", templateId: "mp-template", status: "DRAFT", measuredAt: new Date(),
+      notes: null, diagnosis: null, garmentType: "MP", compressionClass: null, productFlags: null, metadata: null,
+      templateSnapshot: snapshot, templateSnapshotState: "valid", values: completeValues, createdAt: new Date(), updatedAt: new Date(),
+    };
+    const [cleared, ...rest] = fields;
+    // What the lock observes: a concurrent save already cleared `cleared`.
+    const lockedValues = new Map(rest.map((field) => [field.id, field.minValue]));
+    const repository = {
+      getDetail: async () => detail,
+      saveDraftAndComplete: async (input: { validatePersistedValues?: (values: ReadonlyMap<string, number | null>) => unknown }) => {
+        assert.ok(input.validatePersistedValues, "MP completion must hand a validator to the locked transaction");
+        const errors = input.validatePersistedValues(lockedValues);
+        return errors ? { status: "COMPLETION_INVALID" as const, errors } : { status: "COMPLETED" as const };
+      },
+    } as unknown as MeasurementsRepository;
+
+    const result = await saveAndCompleteMeasurement("session-1", { valuesByKey: {} }, repository);
+
+    assert.deepEqual(result, {
+      ok: false,
+      error: "MP_COMPLETION_INVALID",
+      errors: [{ field: `valuesByKey.${cleared!.key}`, message: "a finite value is required" }],
+    });
   });
 });
