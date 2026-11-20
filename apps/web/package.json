@@ -23,23 +23,23 @@
     "templates:seed": "tsx scripts/seed-compression-template.ts"
   },
   "dependencies": {
-    "@node-rs/argon2": "^2.0.2",
-    "@node-rs/argon2-linux-x64-gnu": "^2.0.2",
-    "@prisma/adapter-pg": "7.8.0",
-    "@prisma/client": "7.8.0",
+    "@node-rs/argon2": "^2.2.2",
+    "@node-rs/argon2-linux-x64-gnu": "^2.2.2",
+    "@prisma/adapter-pg": "7.10.1",
+    "@prisma/client": "7.10.1",
     "exceljs": "^4.4.0",
-    "framer-motion": "^12.40.0",
-    "lucide-react": "^1.16.0",
+    "framer-motion": "^12.43.0",
+    "lucide-react": "^1.77.0",
     "next": "16.4.6",
     "pdfkit": "^0.19.1",
-    "pg": "8.21.0",
+    "pg": "8.23.1",
     "react": "19.2.7",
     "react-dom": "19.2.7",
-    "redis": "4.7.0"
+    "redis": "5.12.4"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.11.1",
-    "@tailwindcss/postcss": "^4.3.1",
+    "@happy-dom/global-registrator": "^21.0.4",
+    "@tailwindcss/postcss": "^4.3.5",
     "@types/node": "^26",
     "@types/pdfkit": "^0.17.6",
     "@types/pg": "^8.11.10",
@@ -47,8 +47,8 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.4.6",
-    "prisma": "7.8.0",
-    "tailwindcss": "^4.3.1",
+    "prisma": "7.10.1",
+    "tailwindcss": "^4.3.5",
     "tsx": "4.22.4",
     "typescript": "^5"
   }

@@ -19,29 +19,40 @@ auditConfig:
   ignoreGhsas:
     - GHSA-mh99-v99m-4gvg
 
+minimumReleaseAgeExclude:
+  - lucide-react@1.77.0
+
 overrides:
   "@babel/core": ">=7.29.1"
   baseline-browser-mapping: "^2.11.0"
   browserslist: "^4.28.7"
-  "@hono/node-server": ">=2.0.10"
+  "@hono/node-server": ">=2.1.6"
   # Patched per major line on purpose: brace-expansion 5 exports a named
   # `expand` instead of a callable default, so forcing every consumer onto 5.x
   # breaks the CommonJS `require('brace-expansion')(...)` call that minimatch 3
   # still makes underneath exceljs and the eslint resolver chain.
-  "brace-expansion@1": "^1.1.18"
-  "brace-expansion@2": "^2.1.4"
-  "brace-expansion@5": "^5.0.8"
+  "brace-expansion@1": "^1.1.21"
+  "brace-expansion@2": "^2.1.7"
+  "brace-expansion@5": "^5.0.12"
   # prisma 7.x pins deepmerge-ts 7.1.5; @prisma/config only calls the plain
   # `deepmerge` export, whose contract is unchanged in 8.x.
   deepmerge-ts: "^8.0.2"
+  # Prisma 7.x @prisma/config breaks on effect 4 (config parse .right).
+  effect: "^3.22.1"
   esbuild: ">=0.28.1"
-  fast-uri: "^4.1.4"
-  hono: ">=4.13.5"
+  fast-uri: "^4.2.3"
+  hono: ">=4.13.16"
   mysql2: "^3.23.1"
   # postcss still requires nanoid 3 through CommonJS; 4+ is ESM-only.
   "nanoid@3": "^3.3.18"
-  js-yaml: ">=4.3.0"
+  js-yaml: ">=5.4.1"
+  # typescript-estree / eslint pull minimatch 9–10; GHSA-g3hv-75wg-m249 only
+  # patches from 11.0.1. Force those majors onto 11.x (eslint-only consumers).
+  "minimatch@9": "^11.0.1"
+  "minimatch@10": "^11.0.1"
   postcss: ">=8.5.18"
   sharp: ">=0.35.4"
+  source-map-js: ">=1.2.2"
   uuid: ">=11.1.1"
   valibot: ">=1.4.2"
+  zod: ">=4.6.6"
