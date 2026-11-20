@@ -6,8 +6,8 @@ umask 077
 # mediasswint — safe VPS deploy
 #
 # Flow:
-#   lock -> preflight -> backup -> pull -> build -> db/cache up -> migrate ->
-#   bootstrap/seed -> web up -> health check -> cleanup
+#   lock -> preflight -> backup -> pull (ff-only) -> CI green gate -> build ->
+#   db/cache up -> migrate -> bootstrap/seed -> web up -> health check -> cleanup
 #
 # This project uses a Next.js standalone runtime image. Prisma migrations and
 # bootstrap/seed tasks are executed through dedicated Dockerfile targets and
@@ -19,6 +19,12 @@ umask 077
 # Common usage on the VPS:
 #   ./deploy.sh
 #   BRANCH=fix/some-branch ./deploy.sh
+#
+# CI gate (webnueva-class):
+#   After a fast-forward pull, deploy refuses to build unless GitHub
+#   workflow ci-main.yml is green for the exact HEAD SHA.
+#   Override (logged): DEPLOY_SKIP_CI_CHECK='motivo de 10+ chars' ./deploy.sh
+#   Optional: DEPLOY_GITHUB_TOKEN for private repos; DEPLOY_GITHUB_REPO=owner/name
 # ===========================================================================
 
 APP_DIR="${APP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
@@ -46,6 +52,9 @@ HEALTH_URL="${HEALTH_URL:-}"
 LOCK_FILE="${LOCK_FILE:-/tmp/mediasswint-deploy.lock}"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 BACKUP_DIR="${BACKUP_ROOT}/${TIMESTAMP}"
+STATE_ROOT="${DEPLOY_STATE_DIR:-${APP_DIR}/.deploy}"
+CI_LOG="${STATE_ROOT}/ci-checks.log"
+CI_STATUS_SCRIPT="${CI_STATUS_SCRIPT:-${APP_DIR}/scripts/ci-status.sh}"
 
 cd "$APP_DIR"
 
@@ -92,8 +101,42 @@ ensure_preconditions() {
   [[ -d "$APP_DIR" ]] || fail "APP_DIR does not exist: $APP_DIR"
   [[ -d "$APP_DIR/.git" ]] || fail "APP_DIR is not a git repo: $APP_DIR"
   [[ -f "$APP_DIR/$COMPOSE_FILE" ]] || fail "Compose file not found: $APP_DIR/$COMPOSE_FILE"
+  [[ -f "$CI_STATUS_SCRIPT" ]] || fail "CI status script not found: $CI_STATUS_SCRIPT"
 
-  mkdir -p "$BACKUP_DIR"
+  # Override must be intentional on the command line, never parked in .env.
+  if [[ -f "$APP_DIR/.env" ]] && grep -q '^[[:space:]]*\(export[[:space:]]\+\)\?DEPLOY_SKIP_CI_CHECK=' "$APP_DIR/.env"; then
+    fail "DEPLOY_SKIP_CI_CHECK must not live in .env; pass it on the command line when you truly need an override"
+  fi
+
+  mkdir -p "$BACKUP_DIR" "$STATE_ROOT"
+}
+
+verify_ci_green() {
+  local sha
+  local skip_reason
+  local ci
+
+  sha="$(git -C "$APP_DIR" rev-parse HEAD)"
+  skip_reason="$(printf '%s' "${DEPLOY_SKIP_CI_CHECK:-}" | tr -d '\r\n"')"
+
+  if [[ -n "${skip_reason}" ]]; then
+    [[ "${#skip_reason}" -ge 10 ]] || fail "DEPLOY_SKIP_CI_CHECK needs a reason of 10+ characters; logged in ${CI_LOG}"
+    printf 'at=%s sha=%s user=%s ci=override reason="%s"\n' \
+      "$(date -u +%FT%TZ)" "${sha}" "$(id -un)" "${skip_reason}" >>"${CI_LOG}"
+    log "WARNING: deploying ${sha} WITHOUT verifying GitHub CI. Reason: ${skip_reason} (logged in ${CI_LOG})"
+    return 0
+  fi
+
+  require_command jq
+  log "Verifying GitHub CI (ci-main.yml) is green for ${sha}"
+  if ! ci="$(bash "$CI_STATUS_SCRIPT" "${sha}")"; then
+    printf 'at=%s sha=%s user=%s ci=refused\n' "$(date -u +%FT%TZ)" "${sha}" "$(id -un)" >>"${CI_LOG}"
+    fail "CI for ${sha} is not green on GitHub; refusing deploy. Emergency override: DEPLOY_SKIP_CI_CHECK='reason here' ./deploy.sh (logged in ${CI_LOG})"
+  fi
+
+  printf 'at=%s sha=%s user=%s ci=verified %s\n' \
+    "$(date -u +%FT%TZ)" "${sha}" "$(id -un)" "${ci}" >>"${CI_LOG}"
+  log "CI green: ${ci}"
 }
 
 backup_app_directory() {
@@ -316,6 +359,7 @@ main() {
   write_backup_manifest
 
   update_code
+  verify_ci_green
   build_images
   start_data_services
   run_migrations

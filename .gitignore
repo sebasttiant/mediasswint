@@ -37,6 +37,9 @@ Thumbs.db
 # Docker volumes
 docker/data/
 
+# Deploy state (CI gate logs on the VPS)
+.deploy/
+
 # Testing / coverage
 coverage/
 .nyc_output/

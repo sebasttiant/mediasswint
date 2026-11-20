@@ -1,5 +1,8 @@
 name: CI (main)
 
+# Free-tier GitHub Actions. Patterns aligned with ILASESORIAS webnueva.
+# deploy.sh gates on this workflow file (ci-main.yml) being green for HEAD.
+
 on:
   push:
     branches: [main]
@@ -9,37 +12,73 @@ concurrency:
   group: ci-main-${{ github.ref }}
   cancel-in-progress: false
 
-# Placeholder CI-only — needed so prisma.config.ts's env("DATABASE_URL")
-# resolves during `pnpm install` (postinstall runs `prisma generate`) and
-# `pnpm build`. Neither command opens a DB connection.
-#
-# Carries NO password: a committed credential-shaped literal is worth avoiding
-# even when the thing it names is ephemeral and unreachable.
+permissions:
+  contents: read
+
 env:
   DATABASE_URL: postgresql://ci@localhost:5432/ci
+  NODE_IMAGE: node:26.13.1-trixie-slim@sha256:e6bedef217677b276c591795e169840edd9096dbf13f29df8ef8d1856b8820bc
+  POSTGRES_IMAGE: postgres:18-alpine@sha256:ff64c9e3bdf8e2120107d3559de8db314e8305f7e38c5105903c6295876738ff
+  REDIS_IMAGE: redis:8.6-alpine@sha256:91c71f9ea78fa3fe268ff832a985c48e592244f707993773f8b3e1b244ac1137
+  TRIVY_VERSION: "0.75.0"
+  TRIVY_SHA256: c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f
 
 jobs:
   full-validation:
     name: Full validation
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-
       - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Enable Corepack (packageManager)
+        run: |
+          if ! command -v corepack >/dev/null 2>&1; then
+            npm install -g corepack@latest
+          fi
+          corepack enable
+          corepack prepare --activate
+
+      - name: Setup Node with pnpm cache
         uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
           cache: pnpm
 
       - name: Install (frozen lockfile)
+        id: install
         run: pnpm install --frozen-lockfile
 
-      - name: Security audit
-        run: pnpm audit --audit-level moderate
+      - name: Audit report
+        if: ${{ always() && steps.install.outcome == 'success' }}
+        run: |
+          set +e
+          pnpm audit --json > "$GITHUB_WORKSPACE/pnpm-audit.json" 2> "$GITHUB_WORKSPACE/pnpm-audit.err"
+          status=$?
+          set -e
+          echo "pnpm audit exit ${status}"
+          if [ ! -s "$GITHUB_WORKSPACE/pnpm-audit.json" ]; then
+            echo 'pnpm audit wrote no JSON; gate will classify as invalid'
+          fi
+
+      - name: Audit gate (HIGH and CRITICAL)
+        if: always()
+        run: bash scripts/audit-gate.sh "$GITHUB_WORKSPACE/pnpm-audit.json"
+
+      - name: Upload audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pnpm-audit-main
+          path: |
+            pnpm-audit.json
+            pnpm-audit.err
+          if-no-files-found: warn
 
       - name: Prisma validate
         run: pnpm --filter @mediasswint/web prisma:validate
@@ -73,13 +112,10 @@ jobs:
     timeout-minutes: 15
     services:
       postgres:
-        image: postgres:18-alpine
+        image: postgres:18-alpine@sha256:ff64c9e3bdf8e2120107d3559de8db314e8305f7e38c5105903c6295876738ff
         env:
           POSTGRES_USER: ci
           POSTGRES_DB: mediass_ci_probe
-          # No password exists for this service, so no credential can be
-          # committed. It is bound to the runner's loopback interface only and
-          # is destroyed with the job.
           POSTGRES_HOST_AUTH_METHOD: trust
         ports:
           - 5432:5432
@@ -89,14 +125,10 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      # Non-secret ephemeral parts. The connection URL is assembled from them at
-      # runtime so no complete connection string is committed.
       INTEGRATION_DB_HOST: localhost
       INTEGRATION_DB_PORT: "5432"
       INTEGRATION_DB_USER: ci
       INTEGRATION_DB_NAME: mediass_ci_probe
-      # Consumed by the disposable-database guard: the host must be allowed
-      # EXACTLY, so a *_probe name alone can never authorise a remote target.
       INTEGRATION_DB_ALLOWED_HOSTS: localhost
     steps:
       - uses: actions/checkout@v5
@@ -104,16 +136,25 @@ jobs:
       - name: Compose disposable database URL
         run: |
           url="postgresql://${INTEGRATION_DB_USER}@${INTEGRATION_DB_HOST}:${INTEGRATION_DB_PORT}/${INTEGRATION_DB_NAME}"
-          # Written straight to the job environment; never echoed.
           {
             printf 'DATABASE_URL=%s\n' "$url"
             printf 'INTEGRATION_DATABASE_URL=%s\n' "$url"
           } >> "$GITHUB_ENV"
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-
       - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Enable Corepack (packageManager)
+        run: |
+          if ! command -v corepack >/dev/null 2>&1; then
+            npm install -g corepack@latest
+          fi
+          corepack enable
+          corepack prepare --activate
+
+      - name: Setup Node with pnpm cache
         uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
@@ -131,11 +172,120 @@ jobs:
       - name: Integration tests
         run: pnpm --filter @mediasswint/web test:integration:ci
 
+  trivy:
+    name: Trivy fs, config, base images
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Trivy binary
+        run: |
+          curl -fsSL -o trivy.tgz \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          echo "${TRIVY_SHA256}  trivy.tgz" | sha256sum -c -
+          tar -xzf trivy.tgz trivy
+
+      - name: Scan filesystem
+        if: always()
+        run: ./trivy fs --scanners vuln --severity HIGH,CRITICAL --format json --output trivy-fs.json .
+
+      - name: Scan Dockerfile and Compose config
+        if: always()
+        run: ./trivy config --severity HIGH,CRITICAL --format json --output trivy-config.json .
+
+      - name: Scan node base image
+        if: always()
+        run: |
+          ./trivy image --scanners vuln --severity HIGH,CRITICAL --format json --output trivy-node.json \
+            ${{ env.NODE_IMAGE }}
+
+      - name: Scan postgres base image
+        if: always()
+        run: |
+          ./trivy image --scanners vuln --severity HIGH,CRITICAL --format json --output trivy-postgres.json \
+            ${{ env.POSTGRES_IMAGE }}
+
+      - name: Scan redis base image
+        if: always()
+        run: |
+          ./trivy image --scanners vuln --severity HIGH,CRITICAL --format json --output trivy-redis.json \
+            ${{ env.REDIS_IMAGE }}
+
+      - name: Summarize reports
+        if: always()
+        run: |
+          python3 scripts/trivy-hc-summary.py trivy-fs.json
+          python3 scripts/trivy-hc-summary.py trivy-config.json
+          python3 scripts/trivy-hc-summary.py trivy-node.json
+          python3 scripts/trivy-hc-summary.py trivy-postgres.json
+          python3 scripts/trivy-hc-summary.py trivy-redis.json
+
+      - name: Upload Trivy reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-reports-main
+          path: |
+            trivy-fs.json
+            trivy-config.json
+            trivy-node.json
+            trivy-postgres.json
+            trivy-redis.json
+          if-no-files-found: warn
+
+      - name: Gate filesystem
+        if: always()
+        run: ./trivy fs --ignorefile .trivyignore.yaml --scanners vuln --severity HIGH,CRITICAL --exit-code 1 --quiet .
+
+      - name: Gate config
+        if: always()
+        run: ./trivy config --severity HIGH,CRITICAL --exit-code 1 --quiet .
+
+      - name: Record node base HIGH findings (informational)
+        if: always()
+        run: ./trivy image --scanners vuln --severity HIGH,CRITICAL --exit-code 0 --quiet ${{ env.NODE_IMAGE }}
+
+      - name: Record postgres base HIGH findings (informational)
+        if: always()
+        run: ./trivy image --scanners vuln --severity HIGH,CRITICAL --exit-code 0 --quiet ${{ env.POSTGRES_IMAGE }}
+
+      - name: Record redis base HIGH findings (informational)
+        if: always()
+        run: ./trivy image --scanners vuln --severity HIGH,CRITICAL --exit-code 0 --quiet ${{ env.REDIS_IMAGE }}
+
   docker-image:
     name: Docker image (runner)
     needs: full-validation
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:18-alpine@sha256:ff64c9e3bdf8e2120107d3559de8db314e8305f7e38c5105903c6295876738ff
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_DB: mediass_ci_smoke
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d mediass_ci_smoke"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:8.6-alpine@sha256:91c71f9ea78fa3fe268ff832a985c48e592244f707993773f8b3e1b244ac1137
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 3s
+          --health-retries 5
+    env:
+      AUTH_SECRET: ci-placeholder-auth-secret-32chars-min
+      DATABASE_URL: postgresql://ci@127.0.0.1:5432/mediass_ci_smoke
+      REDIS_URL: redis://127.0.0.1:6379
     steps:
       - uses: actions/checkout@v5
 
@@ -149,6 +299,54 @@ jobs:
           file: apps/web/Dockerfile
           target: runner
           push: false
+          load: true
+          build-args: |
+            NODE_IMAGE=${{ env.NODE_IMAGE }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           tags: mediasswint/web:main-${{ github.sha }}
+
+      - name: Build migrator
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          target: migrator
+          push: false
+          load: true
+          build-args: |
+            NODE_IMAGE=${{ env.NODE_IMAGE }}
+          cache-from: type=gha
+          tags: mediasswint/migrate:main-${{ github.sha }}
+
+      - name: Smoke migrator + runner health
+        run: |
+          chmod +x scripts/ci-runner-smoke.sh
+          RUNNER_IMAGE="mediasswint/web:main-${{ github.sha }}" \
+          MIGRATE_IMAGE="mediasswint/migrate:main-${{ github.sha }}" \
+            bash scripts/ci-runner-smoke.sh
+
+      - name: Trivy binary
+        run: |
+          curl -fsSL -o trivy.tgz \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          echo "${TRIVY_SHA256}  trivy.tgz" | sha256sum -c -
+          tar -xzf trivy.tgz trivy
+
+      - name: Scan derived runner image
+        run: |
+          ./trivy image --scanners vuln --severity HIGH,CRITICAL --format json \
+            --output trivy-runner.json \
+            "mediasswint/web:main-${{ github.sha }}"
+          python3 scripts/trivy-hc-summary.py trivy-runner.json
+          ./trivy image --scanners vuln --ignorefile .trivyignore.runner.yaml \
+            --severity HIGH,CRITICAL --exit-code 1 --quiet \
+            "mediasswint/web:main-${{ github.sha }}"
+
+      - name: Upload runner Trivy report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-runner-main
+          path: trivy-runner.json
+          if-no-files-found: warn

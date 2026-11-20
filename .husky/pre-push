@@ -10,6 +10,10 @@ set -e
 echo "→ pnpm audit (moderate+) — block known CVEs"
 pnpm audit --audit-level moderate
 
+echo "→ audit-gate (HIGH/CRITICAL, webnueva-class)"
+pnpm audit --json > /tmp/mediasswint-pnpm-audit.json 2>/tmp/mediasswint-pnpm-audit.err || true
+bash scripts/audit-gate.sh /tmp/mediasswint-pnpm-audit.json
+
 echo "→ pnpm lint"
 pnpm lint
 

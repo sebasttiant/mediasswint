@@ -1,11 +1,14 @@
 # syntax=docker/dockerfile:1.7
 # ------------------------------------------------------------
-# mediasswint - web (Next.js 16.2.9) - multi-stage
-# Base: Debian 13 (trixie) slim + Node 24.16.0 LTS
+# mediasswint - web (Next.js 16) - multi-stage
+# Base: Debian 13 (trixie) slim + Node 26.13.1 LTS (Lithium)
+# Index digest pins the multi-arch tag; BuildKit resolves the
+# matching platform manifest (linux/amd64 or arm64).
 # ------------------------------------------------------------
 
-ARG NODE_IMAGE=node:24.16.0-trixie-slim
-ARG PNPM_VERSION=11.7.0
+ARG NODE_IMAGE=node:26.13.1-trixie-slim@sha256:e6bedef217677b276c591795e169840edd9096dbf13f29df8ef8d1856b8820bc
+# PNPM_VERSION must match root package.json packageManager.
+ARG PNPM_VERSION=12.21.0
 
 # ---------- base ----------
 FROM ${NODE_IMAGE} AS base
@@ -15,7 +18,11 @@ ENV PNPM_HOME=/pnpm \
     NEXT_TELEMETRY_DISABLED=1 \
     CI=1
 WORKDIR /app
-RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
+# Node 26+ official slim images no longer ship Corepack on PATH. Install it
+# first, then activate the exact pnpm pinned by packageManager / PNPM_VERSION.
+RUN npm install -g corepack@latest \
+ && corepack enable \
+ && corepack prepare pnpm@${PNPM_VERSION} --activate
 
 # ---------- deps (cacheable) ----------
 FROM base AS deps
@@ -90,16 +97,29 @@ ENV NODE_ENV=production \
     PORT=3131 \
     HOSTNAME=0.0.0.0
 
-# Usuario no-root dedicado
+# Absorb Debian security uploads that the pinned Node digest may lag
+# (zlib1g). CMD is `node apps/web/server.js`: npm and corepack are unused
+# at runtime, so they leave with their nested HIGH advisories (brace-
+# expansion, undici) — same hardening as ILASESORIAS webnueva.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      zlib1g \
+ && rm -rf /usr/local/lib/node_modules/npm \
+           /usr/local/lib/node_modules/corepack \
+ && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+ && rm -rf /var/lib/apt/lists/*
+
+# Dedicated non-root user (uid 10001). No CAP_SYS_ADMIN; app does not mount.
 RUN groupadd --system --gid 10001 app \
  && useradd  --system --uid 10001 --gid app --home /app --shell /usr/sbin/nologin app
 
-# Copio el output standalone (incluye node_modules traced por Next)
+# Standalone output (includes Next-traced node_modules)
 COPY --from=builder --chown=app:app /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=app:app /app/apps/web/.next/static ./apps/web/.next/static
 COPY --from=builder --chown=app:app /app/apps/web/public ./apps/web/public
 
-# Prisma runtime support (pnpm + monorepo): asegura cliente/engines presentes
+# Prisma runtime support (pnpm + monorepo): keep client/engines present
 COPY --from=deps --chown=app:app /app/node_modules ./node_modules
 COPY --from=deps --chown=app:app /app/apps/web/node_modules ./apps/web/node_modules
 

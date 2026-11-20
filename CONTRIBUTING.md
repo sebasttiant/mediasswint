@@ -9,14 +9,15 @@ this protects against accidental file mix-ups).
 
 | Gate              | Local command                                         | CI job              |
 | ----------------- | ----------------------------------------------------- | ------------------- |
-| Security audit    | `pnpm audit --audit-level moderate`                   | `validate`          |
-| Lint              | `pnpm lint`                                           | `validate`          |
-| Type check        | `pnpm typecheck`                                      | `validate`          |
-| Unit tests        | `pnpm --filter @mediasswint/web test:unit`            | `validate`          |
-| Production build  | `pnpm build`                                          | `build`             |
-| Docker image      | `docker build -f apps/web/Dockerfile --target runner .` (optional locally) | `docker-build` |
-| Secrets scan      | n/a (CI-only)                                         | `gitleaks` (PR only) |
-| Static analysis   | n/a (CI-only)                                         | `codeql` (code paths only) |
+| Security audit    | `pnpm audit --audit-level moderate` + `bash scripts/audit-gate.sh` | `Lint + Typecheck` / `Full validation` (JSON + HIGH/CRITICAL gate) |
+| Lint              | `pnpm lint`                                           | `Lint + Typecheck` / `Full validation` |
+| Type check        | `pnpm typecheck`                                      | `Lint + Typecheck` / `Full validation` |
+| Unit tests        | `pnpm --filter @mediasswint/web test:unit`            | `Lint + Typecheck` / `Full validation` |
+| Production build  | `pnpm build`                                          | `Build web` / `Full validation` |
+| Docker + smoke    | `docker build … --target runner` + health smoke       | `Docker build (verify image builds)` / `Docker image (runner)` |
+| Trivy             | n/a (CI-only; binary pinned; `.trivyignore.runner.yaml` for Debian no-fix only) | `Trivy fs, config, base images` + runner image gate |
+| Secrets scan      | n/a (CI-only)                                         | `Scan commits for secrets` (PR only) |
+| Static analysis   | n/a (CI-only)                                         | `Analyze (javascript-typescript)` |
 
 ## Actions usage budget
 
@@ -61,6 +62,7 @@ admin. The required-status-checks list **must include**:
 - `Lint + Typecheck`
 - `Build web`
 - `Docker build (verify image builds)`
+- `Trivy fs, config, base images`
 - `Analyze (javascript-typescript)` (CodeQL)
 - `Scan commits for secrets` (Gitleaks)
 

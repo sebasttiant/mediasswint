@@ -1,0 +1,8 @@
+# Trivy ignore rules for filesystem scans.
+# Prefer fixing or upgrading over ignores. Each rule must name a CVE/GHSA
+# and a short justification in a comment above it.
+# Example:
+#   - id: CVE-2024-0000
+#     paths:
+#       - path/to/file
+#     expired_at: 2026-12-31
