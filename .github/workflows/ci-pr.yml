@@ -14,6 +14,8 @@ on:
       - "pnpm-workspace.yaml"
       - ".github/workflows/**"
       - ".nvmrc"
+      - "deploy.sh"
+      - "scripts/**"
 
 concurrency:
   group: ci-pr-${{ github.ref }}
@@ -36,10 +38,22 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-
       - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Enable Corepack (packageManager)
+        run: |
+          # Node 26+ slim images omit Corepack; full setup-node builds usually
+          # ship it, but install explicitly so CI cannot drift from Docker.
+          if ! command -v corepack >/dev/null 2>&1; then
+            npm install -g corepack@latest
+          fi
+          corepack enable
+          corepack prepare --activate
+
+      - name: Setup Node with pnpm cache
         uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
@@ -115,10 +129,22 @@ jobs:
             printf 'INTEGRATION_DATABASE_URL=%s\n' "$url"
           } >> "$GITHUB_ENV"
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-
       - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Enable Corepack (packageManager)
+        run: |
+          # Node 26+ slim images omit Corepack; full setup-node builds usually
+          # ship it, but install explicitly so CI cannot drift from Docker.
+          if ! command -v corepack >/dev/null 2>&1; then
+            npm install -g corepack@latest
+          fi
+          corepack enable
+          corepack prepare --activate
+
+      - name: Setup Node with pnpm cache
         uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
@@ -144,10 +170,22 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-
       - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Enable Corepack (packageManager)
+        run: |
+          # Node 26+ slim images omit Corepack; full setup-node builds usually
+          # ship it, but install explicitly so CI cannot drift from Docker.
+          if ! command -v corepack >/dev/null 2>&1; then
+            npm install -g corepack@latest
+          fi
+          corepack enable
+          corepack prepare --activate
+
+      - name: Setup Node with pnpm cache
         uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
@@ -165,7 +203,7 @@ jobs:
     name: Docker build (verify image builds)
     needs: validate
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
 

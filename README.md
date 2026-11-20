@@ -2,7 +2,7 @@
 
 Software Interno Medias Elasticas — monorepo production-ready, **Docker-first**.
 
-Stack Etapa 1: Next.js 16.2.4 · Node 24.15.0 LTS · React 19.2 · PostgreSQL 18 · Redis 8.6 · Debian 13 (trixie).
+Stack: Next.js 16.4 · Node 26.13.1 LTS (Lithium) · React 19.2 · PostgreSQL 18 · Redis 8.6 · Debian 13 (trixie) · pnpm 12.
 
 ---
 
@@ -11,7 +11,7 @@ Stack Etapa 1: Next.js 16.2.4 · Node 24.15.0 LTS · React 19.2 · PostgreSQL 18
 ```
 mediasswint/
 ├── apps/
-│   └── web/                        # Next.js 16.2.4 (App Router, TS, standalone)
+│   └── web/                        # Next.js 16.4 (App Router, TS, standalone)
 │       ├── app/
 │       │   └── api/health/         # Healthcheck (app + postgres + redis)
 │       └── Dockerfile              # Multi-stage: base, deps, builder, dev, runner
@@ -23,7 +23,7 @@ mediasswint/
 │   ├── workflows/                  # ci-pr, ci-main, deploy-coolify
 │   └── renovate.json               # política de updates
 ├── .env.example
-├── .nvmrc                          # 24.15.0 (host recomendado)
+├── .nvmrc                          # 26.13.1 (host recomendado)
 ├── pnpm-workspace.yaml
 └── package.json                    # raíz (scripts del monorepo)
 ```
@@ -37,7 +37,7 @@ mediasswint/
 ### Requisitos del host
 
 - **Docker** 24+ y **Docker Compose v2**
-- *(Opcional)* Node 24.15.0 + pnpm 10, solo si querés instalar deps fuera del contenedor para tu IDE (ver `.nvmrc`)
+- *(Opcional)* Node 26.13.1 + pnpm 12.21, solo si querés instalar deps fuera del contenedor para tu IDE (ver `.nvmrc`)
 
 ### 1. Clonar y preparar `.env`
 
@@ -170,6 +170,13 @@ Node version: leída de `.nvmrc`. pnpm cache habilitado. Builds de Docker cachea
 
 Coolify se encarga del TLS, dominios y health monitoring.
 
+### Deploy en VPS (`./deploy.sh`)
+
+En el servidor (`/opt/docker/swmedias` por defecto) el flujo hace backup, `git pull --ff-only`, **exige que el workflow `CI (main)` esté verde para ese SHA**, construye imágenes y levanta el stack.
+
+- Override de emergencia (queda en `.deploy/ci-checks.log`): `DEPLOY_SKIP_CI_CHECK='motivo de 10+ chars' ./deploy.sh`
+- Repo privado: exportá `DEPLOY_GITHUB_TOKEN` (Actions read). Opcional: `DEPLOY_GITHUB_REPO=owner/name`
+
 ### Bootstrap del usuario inicial (one-off)
 
 Tras el primer deploy, la tabla `User` arranca vacía. Para provisionar el usuario inicial sin meter el script en la imagen `runner`, el Dockerfile expone un stage `bootstrapper` que hereda de `builder` (source + deps completas) y se ejecuta a demanda:
@@ -214,12 +221,12 @@ Para activar Renovate en el repo: instalar la [Renovate GitHub App](https://gith
 
 | Contexto | Versión | Source of truth |
 |---|---|---|
-| Runtime (contenedor) | `node:24.15.0-trixie-slim` | `apps/web/Dockerfile` |
-| Host recomendado | `24.15.0` | `.nvmrc` |
-| `engines.node` | `>=24.15.0 <25` | `package.json` raíz |
+| Runtime (contenedor) | `node:26.13.1-trixie-slim` (digest-pinned) | `apps/web/Dockerfile` |
+| Host recomendado | `26.13.1` | `.nvmrc` |
+| `engines.node` | `>=26.13.1 <27` | `package.json` raíz |
 | CI GitHub Actions | lee `.nvmrc` | workflows |
 
-**Qué pasa si el host tiene Node 22 o cualquier otra versión:** la app igual funciona porque se ejecuta en Docker. El `.nvmrc` solo ayuda a herramientas de IDE o si usás `pnpm` fuera del contenedor.
+**Qué pasa si el host tiene otra versión de Node:** la app igual funciona porque se ejecuta en Docker. El `.nvmrc` solo ayuda a herramientas de IDE o si usás `pnpm` fuera del contenedor.
 
 ---
 

@@ -4,10 +4,10 @@
   "private": true,
   "description": "Software Interno Medias Elasticas - monorepo",
   "engines": {
-    "node": ">=24.16.0 <25",
-    "pnpm": ">=11.7.0 <12"
+    "node": ">=26.13.1 <27",
+    "pnpm": ">=12.21.0 <13"
   },
-  "packageManager": "pnpm@11.7.0",
+  "packageManager": "pnpm@12.21.0",
   "scripts": {
     "prepare": "husky",
     "lint": "pnpm --filter @mediasswint/web lint",

@@ -1,11 +1,14 @@
 # syntax=docker/dockerfile:1.7
 # ------------------------------------------------------------
-# mediasswint - web (Next.js 16.2.9) - multi-stage
-# Base: Debian 13 (trixie) slim + Node 24.16.0 LTS
+# mediasswint - web (Next.js 16) - multi-stage
+# Base: Debian 13 (trixie) slim + Node 26.13.1 LTS (Lithium)
+# Index digest pins the multi-arch tag; BuildKit resolves the
+# matching platform manifest (linux/amd64 or arm64).
 # ------------------------------------------------------------
 
-ARG NODE_IMAGE=node:24.16.0-trixie-slim
-ARG PNPM_VERSION=11.7.0
+ARG NODE_IMAGE=node:26.13.1-trixie-slim@sha256:e6bedef217677b276c591795e169840edd9096dbf13f29df8ef8d1856b8820bc
+# PNPM_VERSION must match root package.json packageManager.
+ARG PNPM_VERSION=12.21.0
 
 # ---------- base ----------
 FROM ${NODE_IMAGE} AS base
@@ -15,7 +18,11 @@ ENV PNPM_HOME=/pnpm \
     NEXT_TELEMETRY_DISABLED=1 \
     CI=1
 WORKDIR /app
-RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
+# Node 26+ official slim images no longer ship Corepack on PATH. Install it
+# first, then activate the exact pnpm pinned by packageManager / PNPM_VERSION.
+RUN npm install -g corepack@latest \
+ && corepack enable \
+ && corepack prepare pnpm@${PNPM_VERSION} --activate
 
 # ---------- deps (cacheable) ----------
 FROM base AS deps
