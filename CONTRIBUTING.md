@@ -15,7 +15,7 @@ this protects against accidental file mix-ups).
 | Unit tests        | `pnpm --filter @mediasswint/web test:unit`            | `Lint + Typecheck` / `Full validation` |
 | Production build  | `pnpm build`                                          | `Build web` / `Full validation` |
 | Docker + smoke    | `docker build … --target runner` + health smoke       | `Docker build (verify image builds)` / `Docker image (runner)` |
-| Trivy             | n/a (CI-only; binary pinned)                          | `Trivy fs, config, base images` + runner image gate |
+| Trivy             | n/a (CI-only; binary pinned; `.trivyignore.runner.yaml` for Debian no-fix only) | `Trivy fs, config, base images` + runner image gate |
 | Secrets scan      | n/a (CI-only)                                         | `Scan commits for secrets` (PR only) |
 | Static analysis   | n/a (CI-only)                                         | `Analyze (javascript-typescript)` |
 

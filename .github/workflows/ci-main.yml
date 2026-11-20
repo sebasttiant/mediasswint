@@ -339,7 +339,8 @@ jobs:
             --output trivy-runner.json \
             "mediasswint/web:main-${{ github.sha }}"
           python3 scripts/trivy-hc-summary.py trivy-runner.json
-          ./trivy image --scanners vuln --severity HIGH,CRITICAL --exit-code 1 --quiet \
+          ./trivy image --scanners vuln --ignorefile .trivyignore.runner.yaml \
+            --severity HIGH,CRITICAL --exit-code 1 --quiet \
             "mediasswint/web:main-${{ github.sha }}"
 
       - name: Upload runner Trivy report

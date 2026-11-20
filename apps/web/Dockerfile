@@ -97,16 +97,29 @@ ENV NODE_ENV=production \
     PORT=3131 \
     HOSTNAME=0.0.0.0
 
-# Usuario no-root dedicado
+# Absorb Debian security uploads that the pinned Node digest may lag
+# (zlib1g). CMD is `node apps/web/server.js`: npm and corepack are unused
+# at runtime, so they leave with their nested HIGH advisories (brace-
+# expansion, undici) — same hardening as ILASESORIAS webnueva.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      zlib1g \
+ && rm -rf /usr/local/lib/node_modules/npm \
+           /usr/local/lib/node_modules/corepack \
+ && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+ && rm -rf /var/lib/apt/lists/*
+
+# Dedicated non-root user (uid 10001). No CAP_SYS_ADMIN; app does not mount.
 RUN groupadd --system --gid 10001 app \
  && useradd  --system --uid 10001 --gid app --home /app --shell /usr/sbin/nologin app
 
-# Copio el output standalone (incluye node_modules traced por Next)
+# Standalone output (includes Next-traced node_modules)
 COPY --from=builder --chown=app:app /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=app:app /app/apps/web/.next/static ./apps/web/.next/static
 COPY --from=builder --chown=app:app /app/apps/web/public ./apps/web/public
 
-# Prisma runtime support (pnpm + monorepo): asegura cliente/engines presentes
+# Prisma runtime support (pnpm + monorepo): keep client/engines present
 COPY --from=deps --chown=app:app /app/node_modules ./node_modules
 COPY --from=deps --chown=app:app /app/apps/web/node_modules ./apps/web/node_modules
 

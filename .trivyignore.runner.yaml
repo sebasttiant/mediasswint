@@ -1,0 +1,44 @@
+# Runner image only. CI passes --ignorefile .trivyignore.runner.yaml to the
+# runner gate and nowhere else.
+#
+# Debian packages with no published fix. Process is USER app (uid 10001),
+# compose has no privileged/cap_add, the app does not mount or exec login.
+# Findings with a Debian/Node patch must not be listed here — upgrade in
+# the Dockerfile instead (see zlib1g + rm npm/corepack).
+#
+# Owner 2026-11-20. Review by 2026-12-20. Retire each ID when Debian
+# publishes a fix, or drop the package (distroless).
+vulnerabilities:
+  - id: CVE-2026-76642
+    expired_at: 2026-12-20
+    statement: "Owner 2026-11-20: util-linux family on the runner only. uid 10001, no CAP_SYS_ADMIN, app does not mount."
+  - id: CVE-2026-78408
+    expired_at: 2026-12-20
+    statement: "Owner 2026-11-20: util-linux family on the runner only."
+  - id: CVE-2026-78409
+    expired_at: 2026-12-20
+    statement: "Owner 2026-11-20: util-linux family on the runner only."
+  - id: CVE-2026-78410
+    expired_at: 2026-12-20
+    statement: "Owner 2026-11-20: util-linux family on the runner only."
+  - id: CVE-2026-54369
+    expired_at: 2026-12-20
+    statement: "Owner 2026-11-20: libacl1 on the runner only. App does not call setfacl."
+  - id: CVE-2026-16742
+    expired_at: 2026-12-20
+    statement: "Owner 2026-11-20: libsystemd0/libudev1 on the runner only. Container does not run systemd."
+  - id: CVE-2025-69720
+    expired_at: 2026-12-20
+    statement: "Owner 2026-11-20: ncurses on the runner only. CMD is node apps/web/server.js."
+  - id: CVE-2026-9538
+    expired_at: 2026-12-20
+    statement: "Owner 2026-11-20: perl-base on the runner only (fix_deferred). App does not spawn perl."
+  - id: CVE-2026-119373
+    expired_at: 2026-12-20
+    statement: "Owner 2026-11-20: libsqlite3-0, no trixie fix (sid only). App uses Postgres; the server does not open SQLite."
+  - id: CVE-2026-119374
+    expired_at: 2026-12-20
+    statement: "Owner 2026-11-20: libsqlite3-0, no trixie fix. Same exposure as CVE-2026-119373."
+  - id: CVE-2026-119379
+    expired_at: 2026-12-20
+    statement: "Owner 2026-11-20: libsqlite3-0, no trixie fix. Same exposure as CVE-2026-119373."
